@@ -1,0 +1,1966 @@
+// Package docs is the route and content layer for reusable documentation
+// sites. It deliberately keeps navigation, search metadata, and page
+// registration in one Router so an extension contributes to the same tree as
+// ordinary documentation pages.
+package docs
+
+import (
+	"context"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	stdhtml "html"
+	"io"
+	"net/url"
+	"os"
+	"sort"
+	"strings"
+
+	uiapp "github.com/DonaldMurillo/gofastr/core-ui/app"
+	"github.com/DonaldMurillo/gofastr/core-ui/component"
+	"github.com/DonaldMurillo/gofastr/core-ui/widget"
+	"github.com/DonaldMurillo/gofastr/core/render"
+	gofastrRouter "github.com/DonaldMurillo/gofastr/core/router"
+	"github.com/DonaldMurillo/gofastr/framework/ui"
+)
+
+// RouteKind identifies how a route is rendered.
+type RouteKind string
+
+const (
+	KindGroup  RouteKind = "group"
+	KindPage   RouteKind = "page"
+	KindScreen RouteKind = "screen"
+	KindPlugin RouteKind = "plugin"
+)
+
+// NavBadgeTone controls the visual emphasis of a route badge. The label is
+// project-owned, so a badge can say "New", "Popular", "Hot", "Beta", or any
+// other short piece of navigation metadata without coupling the Router to a
+// particular product vocabulary.
+type NavBadgeTone string
+
+const (
+	NavBadgeToneNeutral NavBadgeTone = "neutral"
+	NavBadgeToneAccent  NavBadgeTone = "accent"
+	NavBadgeToneInfo    NavBadgeTone = "info"
+	NavBadgeToneSuccess NavBadgeTone = "success"
+	NavBadgeToneWarning NavBadgeTone = "warning"
+)
+
+// NavBadge adds concise, optional metadata to a route in the sidebar.
+// Badges are presentation metadata only: they do not affect URLs, search,
+// ordering, active state, or route visibility.
+type NavBadge struct {
+	Label string
+	Tone  NavBadgeTone
+}
+
+func normalizeNavBadge(badge NavBadge) (NavBadge, error) {
+	badge.Label = strings.TrimSpace(badge.Label)
+	if badge.Label == "" {
+		return NavBadge{}, nil
+	}
+	if badge.Tone == "" {
+		badge.Tone = NavBadgeToneAccent
+	}
+	switch badge.Tone {
+	case NavBadgeToneNeutral, NavBadgeToneAccent, NavBadgeToneInfo, NavBadgeToneSuccess, NavBadgeToneWarning:
+		return badge, nil
+	default:
+		return NavBadge{}, fmt.Errorf("invalid navigation badge tone %q", badge.Tone)
+	}
+}
+
+// PageConfig describes a Markdown or server-rendered documentation page.
+// Source is Markdown when Body is nil. Body is useful when a page needs a
+// custom GoFastr component-like render function but is still a docs page.
+type PageConfig struct {
+	Title       string
+	Description string
+	Source      string
+	SourcePath  string
+	Body        func() render.HTML
+	SearchText  string
+	DisableTOC  bool
+	Order       int
+	Offline     bool
+	Hidden      bool
+	Tags        []string
+	Metadata    ContentMetadata
+	Badge       NavBadge
+	// Components exposes typed GoFastr renderers to Markdown through the
+	// {{< name key="value" >}} shortcode syntax. Components are rendered
+	// server-side and may contain nested Markdown content.
+	Components map[string]MarkdownComponent
+}
+
+// ScreenConfig registers an arbitrary typed GoFastr component in the same
+// documentation tree as Markdown pages.
+type ScreenConfig struct {
+	Title       string
+	Description string
+	Component   component.Component
+	SearchText  string
+	Plugin      string
+	Order       int
+	Offline     bool
+	Hidden      bool
+	Tags        []string
+	Metadata    ContentMetadata
+	Badge       NavBadge
+}
+
+// GroupConfig describes a navigation group. Groups are metadata-only routes;
+// their children are mounted as the actual GoFastr screens.
+type GroupConfig struct {
+	Title       string
+	Description string
+	Order       int
+	Hidden      bool
+	Badge       NavBadge
+}
+
+// Route is a node in the docs route tree. Children are always returned in
+// explicit order, with registration order as the stable tie-breaker.
+type Route struct {
+	ID          string
+	Path        string
+	Title       string
+	Description string
+	Kind        RouteKind
+	Order       int
+	Hidden      bool
+	Offline     bool
+	Tags        []string
+	Plugin      string
+	SearchText  string
+	Metadata    ContentMetadata
+	Badge       NavBadge
+	Parent      *Route
+	Children    []*Route
+
+	page   *PageConfig
+	screen *ScreenConfig
+	seq    int
+}
+
+// NavItem is a flattened, render-agnostic navigation item. Consumers can use
+// it to render a sidebar, breadcrumbs, mobile navigation, or an API index.
+type NavItem struct {
+	ID       string
+	Path     string
+	Title    string
+	Kind     RouteKind
+	Depth    int
+	Active   bool
+	Children int
+	Badge    NavBadge
+}
+
+// SearchEntry is the portable local-search record produced by the Router.
+// A static indexer such as Pagefind can consume these records without knowing
+// anything about GoFastr.
+type SearchEntry struct {
+	ID          string            `json:"id"`
+	Path        string            `json:"path"`
+	Title       string            `json:"title"`
+	Description string            `json:"description"`
+	Text        string            `json:"text"`
+	Tags        []string          `json:"tags,omitempty"`
+	Locale      string            `json:"locale,omitempty"`
+	Version     string            `json:"version,omitempty"`
+	EditURL     string            `json:"editUrl,omitempty"`
+	Canonical   string            `json:"canonical,omitempty"`
+	NoIndex     bool              `json:"noIndex,omitempty"`
+	Kind        RouteKind         `json:"kind,omitempty"`
+	Order       int               `json:"order,omitempty"`
+	Headings    []string          `json:"headings,omitempty"`
+	Alternates  map[string]string `json:"alternates,omitempty"`
+}
+
+// SearchResult is a ranked local-search result. The Router's built-in search
+// is deliberately small and dependency-free, while SearchIndexJSON remains a
+// portable hand-off point for Pagefind or another static indexer.
+type SearchResult struct {
+	Entry   SearchEntry
+	Score   int
+	Matches []string
+}
+
+// SearchProvider lets a project replace the JSON artifact with a richer index
+// such as Pagefind while keeping route registration in the central Router.
+type SearchProvider interface {
+	Build(*Router) ([]byte, error)
+}
+
+// SearchBackend selects how browser search is served. JSON is the portable
+// zero-dependency fallback; Pagefind is a static export enhancement that
+// indexes generated HTML into a chunked browser-local bundle.
+type SearchBackend string
+
+const (
+	SearchBackendJSON     SearchBackend = "json"
+	SearchBackendPagefind SearchBackend = "pagefind"
+)
+
+// WithSearchBackend selects the browser search integration. Invalid values
+// fall back to JSON so a typo cannot make a development server unusable.
+func WithSearchBackend(backend string) Option {
+	return func(r *Router) {
+		if strings.EqualFold(strings.TrimSpace(backend), string(SearchBackendPagefind)) {
+			r.searchBackend = SearchBackendPagefind
+			return
+		}
+		r.searchBackend = SearchBackendJSON
+	}
+}
+
+// WithPagefind is the explicit form of WithSearchBackend for projects that
+// want Pagefind in static exports and the native command palette.
+func WithPagefind() Option {
+	return WithSearchBackend(string(SearchBackendPagefind))
+}
+
+// WithPagefindPath changes the URL prefix used to load the generated
+// Pagefind runtime. The default is /pagefind/; custom prefixes are useful when
+// an export is mounted below a reverse-proxy asset path.
+func WithPagefindPath(path string) Option {
+	return func(r *Router) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		if !strings.HasSuffix(path, "/") {
+			path += "/"
+		}
+		r.pagefindPath = path
+	}
+}
+
+// JSONSearchProvider is the default portable search provider.
+type JSONSearchProvider struct{}
+
+func (JSONSearchProvider) Build(r *Router) ([]byte, error) {
+	return json.MarshalIndent(r.searchIndexEntries(), "", "  ")
+}
+
+// WithSearchProvider replaces the default local JSON search artifact.
+func WithSearchProvider(provider SearchProvider) Option {
+	return func(r *Router) { r.searchProvider = provider }
+}
+
+// Plugin contributes routes or metadata to a Router.
+type Plugin interface {
+	Name() string
+	Apply(*Router) error
+}
+
+// ValidatingPlugin adds plugin-specific checks to the Router's strict build
+// validation without forcing every plugin to own a second validation pass.
+type ValidatingPlugin interface {
+	Plugin
+	Validate(*Router) error
+}
+
+// AssetPlugin lets an extension mount its own browser assets through the
+// project's GoFastr HTTP router. This is optional; ordinary route plugins need
+// only implement Plugin.
+type AssetPlugin interface {
+	Plugin
+	MountAssets(*Router, *gofastrRouter.Router) error
+}
+
+// Option configures a Router.
+type Option func(*Router)
+
+// WithSiteName sets the generated site name used by adapters and templates.
+func WithSiteName(name string) Option {
+	return func(r *Router) {
+		if strings.TrimSpace(name) != "" {
+			r.siteName = strings.TrimSpace(name)
+		}
+	}
+}
+
+// WithIncludeDrafts makes draft routes available to navigation, search, and
+// mounting. It is intended for local preview and content review; production
+// projects should leave the default (false) in place.
+func WithIncludeDrafts(enabled bool) Option {
+	return func(r *Router) { r.includeDrafts = enabled }
+}
+
+// WithLocale limits published content to the requested content locale.
+// Routes without a locale remain shared across every locale. Use
+// WithLanguage when the goal is only to set the document language while
+// keeping runtime locale variants mounted.
+func WithLocale(locale string) Option {
+	return func(r *Router) { r.locale = strings.TrimSpace(locale) }
+}
+
+// WithLanguage sets the document language used by host adapters. It does not
+// filter routes, which makes it safe for sites with runtime locale selectors.
+func WithLanguage(language string) Option {
+	return func(r *Router) {
+		if strings.TrimSpace(language) != "" {
+			r.language = strings.TrimSpace(language)
+		}
+	}
+}
+
+// WithVersion limits published content to the requested documentation
+// version. Routes without a version remain shared across every version.
+func WithVersion(version string) Option {
+	return func(r *Router) { r.version = strings.TrimSpace(version) }
+}
+
+// WithStrictValidation keeps the default safety checks enabled or explicitly
+// disables them for an advanced project. The CLI never disables strict mode
+// unless the project opts out in code.
+func WithStrictValidation(enabled bool) Option {
+	return func(r *Router) { r.strict = enabled }
+}
+
+// Router is the central object for a documentation site. Register pages,
+// screens, groups, and plugins here; adapters and generators derive their
+// navigation and search surfaces from the same object.
+type Router struct {
+	routes                map[string]*Route
+	roots                 []*Route
+	seq                   int
+	strict                bool
+	siteName              string
+	registrationErr       error
+	navigationMounted     bool
+	connectOrigins        []string
+	commandPalette        *widget.Builder
+	commandPaletteVisible render.HTML
+	commandPaletteMounted bool
+	includeDrafts         bool
+	locale                string
+	language              string
+	version               string
+	searchProvider        SearchProvider
+	searchBackend         SearchBackend
+	pagefindPath          string
+	markdownComponents    map[string]MarkdownComponent
+	brand                 BrandConfig
+	plugins               []Plugin
+}
+
+// NewRouter creates a strict Router. Strict validation is intentionally the
+// default so broken links, missing titles, duplicate order, and unusable
+// content fail during startup or build instead of shipping silently.
+func NewRouter(options ...Option) *Router {
+	r := &Router{
+		routes:             make(map[string]*Route),
+		strict:             true,
+		siteName:           "Documentation",
+		language:           "en",
+		searchBackend:      SearchBackendJSON,
+		pagefindPath:       "/pagefind/",
+		markdownComponents: make(map[string]MarkdownComponent),
+	}
+	for _, option := range options {
+		if option != nil {
+			option(r)
+		}
+	}
+	return r
+}
+
+// SiteName returns the configured site name.
+func (r *Router) SiteName() string { return r.siteName }
+
+// Locale returns the active content locale filter, if one was configured.
+func (r *Router) Locale() string { return r.locale }
+
+// Language returns the document language for the host shell. It is separate
+// from Locale, which is an optional build-time content filter.
+func (r *Router) Language() string {
+	if r == nil || strings.TrimSpace(r.language) == "" {
+		return "en"
+	}
+	return r.language
+}
+
+// Version returns the active documentation version filter, if one was
+// configured.
+func (r *Router) Version() string { return r.version }
+
+// RegisterMarkdownComponent adds a reusable typed component to every
+// Markdown page. PageConfig.Components remains available for page-local
+// registrations; global components are useful for a project's shared
+// callouts, tabs, code samples, or custom content blocks.
+func (r *Router) RegisterMarkdownComponent(name string, component MarkdownComponent) error {
+	if r == nil {
+		return errors.New("docs: RegisterMarkdownComponent requires a Router")
+	}
+	name = strings.TrimSpace(name)
+	if !markdownShortcodeName.MatchString(name) || strings.HasPrefix(name, "/") {
+		return fmt.Errorf("docs: invalid Markdown component name %q", name)
+	}
+	if component == nil {
+		return fmt.Errorf("docs: Markdown component %q is nil", name)
+	}
+	if r.markdownComponents == nil {
+		r.markdownComponents = make(map[string]MarkdownComponent)
+	}
+	r.markdownComponents[name] = component
+	return nil
+}
+
+// MarkdownComponents returns a copy of the globally registered Markdown
+// component registry for adapters, tooling, and plugin validation.
+func (r *Router) MarkdownComponents() map[string]MarkdownComponent {
+	if r == nil || len(r.markdownComponents) == 0 {
+		return nil
+	}
+	return cloneMarkdownComponents(r.markdownComponents)
+}
+
+// SearchBackend returns the configured browser search backend.
+func (r *Router) SearchBackend() SearchBackend {
+	if r == nil || r.searchBackend == "" {
+		return SearchBackendJSON
+	}
+	return r.searchBackend
+}
+
+// PagefindPath returns the static Pagefind bundle directory used by the
+// browser runtime.
+func (r *Router) PagefindPath() string {
+	if r == nil || strings.TrimSpace(r.pagefindPath) == "" {
+		return "/pagefind/"
+	}
+	return r.pagefindPath
+}
+
+// AllowConnectOrigin records an origin that a browser-side extension is
+// expected to contact. The generated GoFastr host can use ConnectOrigins to
+// extend its strict CSP without allowing arbitrary network destinations.
+func (r *Router) AllowConnectOrigin(raw string) {
+	origin := normalizeConnectOrigin(raw)
+	if origin == "" {
+		return
+	}
+	for _, existing := range r.connectOrigins {
+		if existing == origin {
+			return
+		}
+	}
+	r.connectOrigins = append(r.connectOrigins, origin)
+}
+
+// ConnectOrigins returns the normalized external origins declared by
+// extensions on this router.
+func (r *Router) ConnectOrigins() []string {
+	return append([]string(nil), r.connectOrigins...)
+}
+
+// ContentSecurityPolicy returns the strict default GoFastr policy with only
+// the explicitly declared browser connect origins added to connect-src.
+func ContentSecurityPolicy(connectOrigins ...string) string {
+	sources := []string{"'self'"}
+	seen := map[string]bool{"'self'": true}
+	for _, raw := range connectOrigins {
+		origin := normalizeConnectOrigin(raw)
+		if origin == "" || seen[origin] {
+			continue
+		}
+		seen[origin] = true
+		sources = append(sources, origin)
+	}
+	return "default-src 'self'; img-src 'self' data:; object-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; connect-src " + strings.Join(sources, " ")
+}
+
+func normalizeConnectOrigin(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.User != nil || parsed.Host == "" {
+		return ""
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return ""
+	}
+	return parsed.Scheme + "://" + parsed.Host
+}
+
+// Group adds a metadata group and returns a scoped registrar for its children.
+func (r *Router) Group(path string, cfg GroupConfig) (*Group, error) {
+	badge, err := normalizeNavBadge(cfg.Badge)
+	if err != nil {
+		return nil, fmt.Errorf("docs: group %q: %w", path, err)
+	}
+	route, err := r.addRoute(path, Route{
+		Title:       cfg.Title,
+		Description: cfg.Description,
+		Kind:        KindGroup,
+		Order:       cfg.Order,
+		Hidden:      cfg.Hidden,
+		Badge:       badge,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &Group{router: r, route: route}, nil
+}
+
+// MustGroup is the concise form for declarative app setup. It panics during
+// startup when the route tree is malformed, which is preferable to a server
+// running with an incomplete navigation tree.
+func (r *Router) MustGroup(path string, cfg GroupConfig) *Group {
+	g, err := r.Group(path, cfg)
+	if err != nil {
+		panic(err)
+	}
+	return g
+}
+
+// Page registers a page at path.
+func (r *Router) Page(path string, cfg PageConfig) error {
+	badge, err := normalizeNavBadge(cfg.Badge)
+	if err != nil {
+		return fmt.Errorf("docs: page %q: %w", path, err)
+	}
+	metadata, source, err := pageMetadata(cfg)
+	if err != nil {
+		return fmt.Errorf("docs: page %q: %w", path, err)
+	}
+	components := mergeMarkdownComponents(r.markdownComponents, cfg.Components)
+	if err := validateMarkdownComponents(source, components); err != nil {
+		return fmt.Errorf("docs: page %q: %w", path, err)
+	}
+	cfg.Metadata = metadata
+	cfg.Components = components
+	if source != "" {
+		cfg.Source = source
+	}
+	if cfg.Title == "" {
+		cfg.Title = metadata.Title
+	}
+	if cfg.Description == "" {
+		cfg.Description = metadata.Description
+		if cfg.Description == "" && cfg.Source != "" {
+			cfg.Description = firstParagraph(cfg.Source)
+		}
+	}
+	if len(cfg.Tags) == 0 {
+		cfg.Tags = cloneStrings(metadata.Tags)
+	}
+	if cfg.Order < 1 && metadata.Order > 0 {
+		cfg.Order = metadata.Order
+	}
+	_, err = r.addRoute(path, Route{
+		Title:       cfg.Title,
+		Description: cfg.Description,
+		Kind:        KindPage,
+		Order:       cfg.Order,
+		Offline:     cfg.Offline,
+		Hidden:      cfg.Hidden,
+		Tags:        cloneStrings(cfg.Tags),
+		SearchText:  cfg.SearchText,
+		Metadata:    metadata,
+		Badge:       badge,
+		page:        &cfg,
+	})
+	return err
+}
+
+// MustPage registers a page and panics on invalid configuration.
+func (r *Router) MustPage(path string, cfg PageConfig) {
+	if err := r.Page(path, cfg); err != nil {
+		panic(err)
+	}
+}
+
+// Markdown is a named convenience for Page when the source is Markdown.
+func (r *Router) Markdown(path string, title string, source string) error {
+	return r.Page(path, PageConfig{Title: title, Source: source})
+}
+
+// PageFile registers a Markdown page whose source is loaded and validated
+// from SourcePath during registration. Keeping the path in the route config
+// means a generated project does not need boilerplate file-reading helpers.
+func (r *Router) PageFile(path string, cfg PageConfig) error {
+	return r.Page(path, cfg)
+}
+
+// MustPageFile is the panic-on-error form of PageFile.
+func (r *Router) MustPageFile(path string, cfg PageConfig) {
+	if err := r.PageFile(path, cfg); err != nil {
+		panic(err)
+	}
+}
+
+// Screen registers a typed GoFastr component in the same route tree.
+func (r *Router) Screen(path string, cfg ScreenConfig) error {
+	badge, err := normalizeNavBadge(cfg.Badge)
+	if err != nil {
+		return fmt.Errorf("docs: screen %q: %w", path, err)
+	}
+	metadata := mergeContentMetadata(cfg.Metadata, ContentMetadata{
+		Title: cfg.Title, Description: cfg.Description, Order: cfg.Order,
+		Tags: cfg.Tags,
+	})
+	cfg.Metadata = metadata
+	if cfg.Title == "" {
+		cfg.Title = metadata.Title
+	}
+	if cfg.Description == "" {
+		cfg.Description = metadata.Description
+	}
+	if len(cfg.Tags) == 0 {
+		cfg.Tags = cloneStrings(metadata.Tags)
+	}
+	if cfg.Order < 1 && metadata.Order > 0 {
+		cfg.Order = metadata.Order
+	}
+	_, err = r.addRoute(path, Route{
+		Title:       cfg.Title,
+		Description: cfg.Description,
+		Kind:        KindScreen,
+		Order:       cfg.Order,
+		Offline:     cfg.Offline,
+		Hidden:      cfg.Hidden,
+		Tags:        cloneStrings(cfg.Tags),
+		SearchText:  cfg.SearchText,
+		Plugin:      cfg.Plugin,
+		Metadata:    metadata,
+		Badge:       badge,
+		screen:      &cfg,
+	})
+	return err
+}
+
+// MustScreen registers a typed screen and panics on invalid configuration.
+func (r *Router) MustScreen(path string, cfg ScreenConfig) {
+	if err := r.Screen(path, cfg); err != nil {
+		panic(err)
+	}
+}
+
+// Use applies a plugin to this Router. A plugin is not a separate app: its
+// routes become ordinary children of the same route tree.
+func (r *Router) Use(plugin Plugin) error {
+	if plugin == nil {
+		return errors.New("docs: nil plugin")
+	}
+	if err := plugin.Apply(r); err != nil {
+		return fmt.Errorf("docs: plugin %q: %w", plugin.Name(), err)
+	}
+	r.plugins = append(r.plugins, plugin)
+	return nil
+}
+
+// MountPluginAssets invokes optional asset hooks after the host HTTP router
+// exists. It is safe to call more than once for idempotent plugins, but a
+// project should normally call it once during host setup.
+func (r *Router) MountPluginAssets(httpRouter *gofastrRouter.Router) error {
+	if httpRouter == nil {
+		return errors.New("docs: MountPluginAssets requires a GoFastr router")
+	}
+	for _, plugin := range r.plugins {
+		if assetPlugin, ok := plugin.(AssetPlugin); ok {
+			if err := assetPlugin.MountAssets(r, httpRouter); err != nil {
+				return fmt.Errorf("docs: plugin %q assets: %w", plugin.Name(), err)
+			}
+		}
+	}
+	return nil
+}
+
+// Routes returns all navigable (non-group) routes in stable tree order.
+func (r *Router) Routes() []*Route {
+	var out []*Route
+	var walk func([]*Route)
+	walk = func(nodes []*Route) {
+		for _, node := range r.sorted(nodes) {
+			if node.Kind != KindGroup {
+				out = append(out, node)
+			}
+			walk(node.Children)
+		}
+	}
+	walk(r.roots)
+	return out
+}
+
+// PublishedRoutes returns routes safe for a public build. Drafts, hidden
+// routes, and routes outside the active locale/version are excluded.
+func (r *Router) PublishedRoutes() []*Route {
+	var out []*Route
+	for _, route := range r.Routes() {
+		if r.routePublished(route) {
+			out = append(out, route)
+		}
+	}
+	return out
+}
+
+// SitemapExcludePaths returns route prefixes that must not be emitted in a
+// sitemap: hidden, draft, locale/version-inactive, and explicit noindex
+// content. Hosts can pass the result directly to uihost.SitemapConfig.
+func (r *Router) SitemapExcludePaths() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, route := range r.Routes() {
+		if !r.routePublished(route) || route.Metadata.NoIndex {
+			if route.Path != "" && !seen[route.Path] {
+				seen[route.Path] = true
+				out = append(out, route.Path)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Tree returns a copy of the root slice. Route nodes are immutable after
+// registration by convention; callers should not mutate them.
+func (r *Router) Tree() []*Route { return append([]*Route(nil), r.sorted(r.roots)...) }
+
+// Navigation returns a flattened navigation model, including groups, in the
+// same order the site should render them.
+func (r *Router) Navigation() []NavItem {
+	return r.NavigationAt("")
+}
+
+// NavigationAt returns the flattened navigation model with active state
+// derived from currentPath. Prefix matching keeps a parent page/group active
+// while a nested route is open; the root route only matches exactly.
+func (r *Router) NavigationAt(currentPath string) []NavItem {
+	currentPath = normalizePath(currentPath)
+	var out []NavItem
+	var walk func([]*Route, int)
+	walk = func(nodes []*Route, depth int) {
+		for _, node := range r.sorted(nodes) {
+			if !r.routeVisible(node) {
+				continue
+			}
+			out = append(out, NavItem{ID: node.ID, Path: node.Path, Title: node.Title, Kind: node.Kind, Depth: depth, Active: pathActive(node.Path, currentPath), Children: len(node.Children), Badge: node.Badge})
+			if len(node.Children) > 0 {
+				walk(node.Children, depth+1)
+			}
+		}
+	}
+	walk(r.roots, 0)
+	return out
+}
+
+// SearchIndex returns records for visible navigable routes. Markdown source is
+// preserved as text so a local indexer can tokenize it later.
+func (r *Router) SearchIndex() []SearchEntry {
+	entries := make([]SearchEntry, 0, len(r.Routes()))
+	for _, route := range r.PublishedRoutes() {
+		if !r.routePublished(route) {
+			continue
+		}
+		entry := SearchEntry{
+			ID: route.ID, Path: route.Path, Title: route.Title,
+			Description: route.Description, Tags: cloneStrings(route.Tags),
+			Locale: route.Metadata.Locale, Version: route.Metadata.Version,
+			EditURL: route.Metadata.EditURL, Canonical: route.Metadata.CanonicalURL,
+			NoIndex: route.Metadata.NoIndex, Kind: route.Kind, Order: route.Order,
+			Alternates: cloneStringMap(route.Metadata.Alternates),
+		}
+		if route.page != nil {
+			entry.Text = pageSource(route.page)
+			for _, heading := range markdownHeadings(entry.Text) {
+				entry.Headings = append(entry.Headings, heading.Title)
+			}
+		}
+		if entry.Text == "" {
+			entry.Text = route.SearchText
+		}
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
+// SearchIndexJSON serializes the portable search records for a local static
+// indexer such as Pagefind or a small client-side search worker.
+func (r *Router) SearchIndexJSON() ([]byte, error) {
+	if err := r.Validate(); err != nil {
+		return nil, err
+	}
+	if r.searchProvider != nil {
+		return r.searchProvider.Build(r)
+	}
+	return json.MarshalIndent(r.searchIndexEntries(), "", "  ")
+}
+
+func (r *Router) searchIndexEntries() []SearchEntry { return r.SearchIndex() }
+
+// Search ranks published content using title, description, tags, headings,
+// and body text. Exact title matches receive the strongest weight; ties are
+// stable in intentional route order.
+func (r *Router) Search(query string) []SearchResult {
+	terms := searchTerms(query)
+	if len(terms) == 0 {
+		return nil
+	}
+	var results []SearchResult
+	for _, entry := range r.SearchIndex() {
+		fields := []struct {
+			value  string
+			weight int
+		}{
+			{entry.Title, 12}, {entry.Description, 6},
+			{strings.Join(entry.Tags, " "), 5}, {strings.Join(entry.Headings, " "), 8},
+			{entry.Text, 1},
+		}
+		score := 0
+		matched := make([]string, 0, len(terms))
+		for _, term := range terms {
+			termScore := 0
+			for _, field := range fields {
+				if strings.Contains(strings.ToLower(field.value), term) {
+					termScore = maxInt(termScore, field.weight)
+				}
+			}
+			if termScore == 0 {
+				continue
+			}
+			score += termScore
+			matched = append(matched, term)
+		}
+		if len(matched) == len(terms) {
+			results = append(results, SearchResult{Entry: entry, Score: score, Matches: matched})
+		}
+	}
+	sort.SliceStable(results, func(i, j int) bool {
+		if results[i].Score != results[j].Score {
+			return results[i].Score > results[j].Score
+		}
+		return results[i].Entry.Order < results[j].Entry.Order
+	})
+	return results
+}
+
+func searchTerms(query string) []string {
+	var terms []string
+	seen := map[string]bool{}
+	for _, term := range strings.Fields(strings.ToLower(query)) {
+		term = strings.Trim(term, ".,:;!?()[]{}\"")
+		if term != "" && !seen[term] {
+			seen[term] = true
+			terms = append(terms, term)
+		}
+	}
+	return terms
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// WriteSearchIndex writes SearchIndexJSON to an output stream.
+func (r *Router) WriteSearchIndex(w io.Writer) error {
+	if w == nil {
+		return errors.New("docs: search index writer is nil")
+	}
+	body, err := r.SearchIndexJSON()
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(body)
+	return err
+}
+
+// Validate checks the full route tree and returns all problems together.
+func (r *Router) Validate() error {
+	var problems []string
+	if r.registrationErr != nil {
+		problems = append(problems, r.registrationErr.Error())
+	}
+	for _, plugin := range r.plugins {
+		if validator, ok := plugin.(ValidatingPlugin); ok {
+			if err := validator.Validate(r); err != nil {
+				problems = append(problems, fmt.Sprintf("plugin %q: %v", plugin.Name(), err))
+			}
+		}
+	}
+	var walk func([]*Route)
+	walk = func(nodes []*Route) {
+		seenOrders := map[int]string{}
+		for _, node := range nodes {
+			if r.strict && node.Order < 1 {
+				problems = append(problems, fmt.Sprintf("route %q: a positive explicit Order is required", node.Path))
+			}
+			if r.strict && node.Title == "" && node.Kind != KindGroup {
+				problems = append(problems, fmt.Sprintf("route %q: title is required", node.Path))
+			}
+			if r.strict && node.Kind == KindGroup && node.Title == "" {
+				problems = append(problems, fmt.Sprintf("group %q: title is required", node.Path))
+			}
+			if r.strict && node.Kind != KindGroup && node.Description == "" {
+				problems = append(problems, fmt.Sprintf("route %q: description is required", node.Path))
+			}
+			if r.strict && node.Order != 0 {
+				if previous, ok := seenOrders[node.Order]; ok {
+					problems = append(problems, fmt.Sprintf("routes %q and %q: duplicate explicit order %d", previous, node.Path, node.Order))
+				}
+				seenOrders[node.Order] = node.Path
+			}
+			if r.strict && (node.Kind == KindPage || node.Kind == KindPlugin) && node.page != nil && node.page.Source == "" && node.page.Body == nil && node.page.SourcePath == "" {
+				problems = append(problems, fmt.Sprintf("page %q: Source, SourcePath, or Body is required", node.Path))
+			}
+			if r.strict && (node.Kind == KindPage || node.Kind == KindPlugin) && node.page != nil && node.page.Source == "" && node.page.Body == nil && node.page.SourcePath != "" {
+				if _, err := os.Stat(node.page.SourcePath); err != nil {
+					problems = append(problems, fmt.Sprintf("page %q: source file %q is not readable: %v", node.Path, node.page.SourcePath, err))
+				}
+			}
+			if node.page != nil && node.page.Body == nil {
+				if err := validateMarkdownComponents(pageSource(node.page), mergeMarkdownComponents(r.markdownComponents, node.page.Components)); err != nil {
+					problems = append(problems, fmt.Sprintf("page %q: %v", node.Path, err))
+				}
+			}
+			if r.strict && node.Kind == KindScreen && (node.screen == nil || node.screen.Component == nil) {
+				problems = append(problems, fmt.Sprintf("screen %q: Component is required", node.Path))
+			}
+			for _, redirect := range node.Metadata.Redirects {
+				if safeRedirectPath(redirect) == "" {
+					problems = append(problems, fmt.Sprintf("route %q: redirect %q must be an internal path", node.Path, redirect))
+				}
+			}
+			walk(node.Children)
+		}
+	}
+	walk(r.roots)
+	if len(problems) > 0 {
+		return errors.New(strings.Join(problems, "; "))
+	}
+	return nil
+}
+
+// Mount registers every navigable route with a GoFastr UI app. The route metadata
+// remains owned by docs.Router; GoFastr owns rendering, DI, policies, and
+// lifecycle after registration.
+func (r *Router) Mount(site *uiapp.App, layout *uiapp.Layout) error {
+	if site == nil {
+		return errors.New("docs: Mount requires a GoFastr app")
+	}
+	if err := r.Validate(); err != nil {
+		return err
+	}
+	if layout == nil {
+		layout = r.Layout()
+	}
+	for _, route := range r.PublishedRoutes() {
+		for _, redirect := range route.Metadata.Redirects {
+			if from := safeRedirectPath(redirect); from != "" && from != route.Path {
+				site.Redirect(from, route.Path)
+			}
+		}
+	}
+	// The supplied layout is the global shell. Each top-level route section
+	// gets its own nested ScreenGroup layout below, so switching sections can
+	// replace the section shell while preserving the shared header/search shell.
+	site.SetDefaultLayout(layout)
+	groups := make(map[string]*uiapp.ScreenGroup)
+	var orderedGroups []*uiapp.ScreenGroup
+	for _, route := range r.PublishedRoutes() {
+		var screen *uiapp.Screen
+		switch route.Kind {
+		case KindPage, KindPlugin:
+			screen = uiapp.NewScreen(route.Path, &pageComponent{router: r, route: route}).
+				WithTitle(route.Title).
+				WithDescription(route.Description)
+		case KindScreen:
+			var screenComponent component.Component = route.screen.Component
+			if routeHasMetadata(route) {
+				screenComponent = &screenMetadataComponent{component: route.screen.Component, route: route}
+			}
+			screen = uiapp.NewScreen(route.Path, screenComponent).
+				WithTitle(route.Title).
+				WithDescription(route.Description)
+		default:
+			continue
+		}
+		root := r.rootRoute(route)
+		if root == nil {
+			site.RegisterScreen(screen, layout)
+			continue
+		}
+		group := groups[root.Path]
+		if group == nil {
+			group = uiapp.NewScreenGroup(root.Path, r.sectionLayout(root))
+			groups[root.Path] = group
+			orderedGroups = append(orderedGroups, group)
+		}
+		group.Screen(screen, nil)
+	}
+	for _, group := range orderedGroups {
+		site.Router.ScreenGroup(group)
+	}
+	return nil
+}
+
+// MountNavigation mounts the framework-owned mobile docs Sidebar drawer.
+// Call it on the GoFastr HTTP router after creating the UI host and before
+// starting or exporting the application. The route tree remains owned by
+// this Router; GoFastr owns drawer focus, escape handling, backdrop, and
+// scroll locking.
+func (r *Router) MountNavigation(httpRouter *gofastrRouter.Router) error {
+	if httpRouter == nil {
+		return errors.New("docs: MountNavigation requires a GoFastr router")
+	}
+	if r.navigationMounted {
+		return nil
+	}
+	ui.MountSidebar(routerMounter{router: httpRouter}, r.sidebarConfig(""))
+	r.navigationMounted = true
+	return nil
+}
+
+// MountCommandPalette mounts GoFastr's native command/search surface. The
+// visible trigger is rendered by Layout; the widget itself must be mounted on
+// the host router once, just like any other GoFastr widget.
+func (r *Router) MountCommandPalette(httpRouter *gofastrRouter.Router) error {
+	if httpRouter == nil {
+		return errors.New("docs: MountCommandPalette requires a GoFastr router")
+	}
+	if r.commandPaletteMounted {
+		return nil
+	}
+	_, palette := r.ensureCommandPalette()
+	widget.Mount(httpRouter, palette.Definition())
+	r.commandPaletteMounted = true
+	return nil
+}
+
+// Layout returns the global white-label shell derived from this Router.
+// Top-level route sections are nested inside this shell by Mount, allowing
+// each section to own its own layout and navigation without duplicating the
+// global header, search, theme, or PWA chrome.
+func (r *Router) Layout() *uiapp.Layout {
+	return uiapp.NewLayout("docs").WithHeader(&docsHeader{router: r})
+}
+
+func (r *Router) sectionLayout(route *Route) *uiapp.Layout {
+	return uiapp.NewLayout(sectionLayoutName(route)).WithSidebar(&docsSidebar{router: r})
+}
+
+func sectionLayoutName(route *Route) string {
+	if route == nil || route.Path == "/" {
+		return "docs-home"
+	}
+	if route.Path == "/api-reference" {
+		return "docs-api"
+	}
+	return "docs-section"
+}
+
+func (r *Router) rootRoute(route *Route) *Route {
+	for route != nil && route.Parent != nil {
+		route = route.Parent
+	}
+	return route
+}
+
+type docsHeader struct{ router *Router }
+
+func (h *docsHeader) Render() render.HTML {
+	return h.render("")
+}
+
+func (h *docsHeader) RenderCtx(ctx context.Context) render.HTML {
+	currentPath := ""
+	if request := uiapp.RequestFromContext(ctx); request != nil && request.URL != nil {
+		currentPath = request.URL.Path
+	}
+	return h.render(currentPath)
+}
+
+func (h *docsHeader) render(currentPath string) render.HTML {
+	searchTrigger, _ := h.router.ensureCommandPalette()
+	brand := render.Join(
+		render.Tag("button", map[string]string{
+			"class":         "fastr-docs-mobile-nav-trigger",
+			"type":          "button",
+			"data-fui-open": "fastr-docs-sections",
+			"aria-label":    "Open navigation",
+		}, render.Raw(`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>`)),
+		render.Tag("a", map[string]string{"href": "/", "class": "fastr-docs-brand", "aria-label": h.router.SiteName() + " home"},
+			h.brandMark(),
+			render.Tag("span", map[string]string{"class": "fastr-docs-brand__name"}, render.Text(h.router.SiteName())),
+		),
+	)
+	actions := render.Join(
+		render.Tag("div", map[string]string{"class": "fastr-docs-command-search"},
+			searchTrigger,
+		),
+		h.router.variantSelectors(currentPath),
+		ui.ThemeToggle(ui.ThemeToggleConfig{Variant: ui.ThemeToggleIcon, Class: "fastr-docs-theme-toggle"}),
+	)
+	header := ui.SiteHeader(ui.SiteHeaderConfig{
+		Brand: brand,
+		MobileBrand: render.Join(
+			render.Tag("button", map[string]string{
+				"class":         "fastr-docs-mobile-nav-trigger",
+				"type":          "button",
+				"data-fui-open": "fastr-docs-sections",
+				"aria-label":    "Open navigation",
+			}, render.Raw(`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>`)),
+			render.Tag("a", map[string]string{"href": "/", "class": "fastr-docs-brand fastr-docs-brand--mobile", "aria-label": h.router.SiteName() + " home"},
+				h.brandMark(),
+			),
+		),
+		NavItems:     h.router.headerItems(),
+		Actions:      actions,
+		Class:        "fastr-docs-site-header",
+		Drawer:       ui.SiteHeaderDrawerPopover,
+		NavUnderline: true,
+	})
+	return render.Join(header, h.router.headerVariantActiveConfig())
+}
+
+// headerVariantActiveScript extends GoFastr's normal exact/prefix active-link
+// matching for route families whose published pages are siblings, such as
+// /locales/pt-BR/v1/guide and /locales/fr/v2/guide. The header still links to
+// the first published variant, but every sibling should keep that section
+// active while the reader switches language or version.
+func (r *Router) headerVariantActiveScript() render.HTML {
+	type activeConfig struct {
+		Links  map[string]string `json:"links"`
+		Routes map[string]string `json:"routes"`
+	}
+	cfg := activeConfig{Links: map[string]string{}, Routes: map[string]string{}}
+	for _, route := range r.sorted(r.roots) {
+		if !r.routeVisible(route) || route.Path == "/" {
+			continue
+		}
+		target := r.headerTarget(route)
+		if target == nil || (target.Metadata.Locale == "" && target.Metadata.Version == "") {
+			continue
+		}
+		family := variantFamily(target)
+		if family == "" {
+			continue
+		}
+		cfg.Links[target.Path] = family
+		for _, candidate := range r.Routes() {
+			if r.variantPublished(candidate) && variantFamily(candidate) == family {
+				cfg.Routes[candidate.Path] = family
+			}
+		}
+	}
+	if len(cfg.Links) == 0 || len(cfg.Routes) == 0 {
+		return render.Text("")
+	}
+	payload, err := json.Marshal(cfg)
+	if err != nil {
+		return render.Text("")
+	}
+	return render.Raw(`<script data-fastr-docs-active-families>(function(){
+  'use strict';
+  if (window.__fastrDocsActiveFamilies) return;
+  window.__fastrDocsActiveFamilies = true;
+  const config = ` + string(payload) + `;
+  const normalize = (value) => {
+    const path = (value || '/').split(/[?#]/, 1)[0] || '/';
+    return path.length > 1 ? path.replace(/\/+$/, '') : path;
+  };
+  const update = (path) => {
+    const family = config.routes[normalize(path)] || '';
+    document.querySelectorAll('header nav a').forEach((link) => {
+      const linkFamily = config.links[normalize(link.getAttribute('href'))];
+      if (!linkFamily) return;
+      link.setAttribute('data-fui-activelink-skip', '');
+      if (family && linkFamily === family) {
+        link.setAttribute('aria-current', 'page');
+        link.classList.add('active');
+      } else {
+        link.removeAttribute('aria-current');
+        link.classList.remove('active');
+      }
+    });
+  };
+  const updateCurrent = () => update(location.pathname + location.search);
+  const root = document.body || document.documentElement;
+  if (root && window.MutationObserver) {
+    new MutationObserver(updateCurrent).observe(root, {childList: true, subtree: true});
+  }
+  window.addEventListener('gofastr:navigate', (event) => {
+    update((event.detail && event.detail.path) || (location.pathname + location.search));
+    setTimeout(updateCurrent, 0);
+  });
+  updateCurrent();
+  setTimeout(updateCurrent, 0);
+})();</script>`)
+}
+
+// headerVariantActiveConfig gives the external docs runtime the route-family
+// data it needs to extend GoFastr's normal exact/prefix active-link matching
+// for published siblings such as /locales/pt-BR/v1/guide and
+// /locales/fr/v2/guide. The header still links to the first published variant,
+// but every sibling should keep that section active while the reader switches
+// language or version.
+func (r *Router) headerVariantActiveConfig() render.HTML {
+	links := map[string]string{}
+	routes := map[string]string{}
+	for _, route := range r.sorted(r.roots) {
+		if !r.routeVisible(route) || route.Path == "/" {
+			continue
+		}
+		target := r.headerTarget(route)
+		if target == nil || (target.Metadata.Locale == "" && target.Metadata.Version == "") {
+			continue
+		}
+		family := variantFamily(target)
+		if family == "" {
+			continue
+		}
+		links[target.Path] = family
+		for _, candidate := range r.Routes() {
+			if r.variantPublished(candidate) && variantFamily(candidate) == family {
+				routes[candidate.Path] = family
+			}
+		}
+	}
+	if len(links) == 0 || len(routes) == 0 {
+		return render.Text("")
+	}
+	payload, err := json.Marshal(map[string]map[string]string{"links": links, "routes": routes})
+	if err != nil {
+		return render.Text("")
+	}
+	return render.VoidTag("meta", map[string]string{
+		"name":    "fastr-docs-active-families",
+		"content": string(payload),
+	})
+}
+
+type docsVariantOption struct {
+	value string
+	href  string
+}
+
+func (r *Router) variantSelectors(currentPath string) render.HTML {
+	currentPath = normalizePath(currentPath)
+	if currentPath == "" {
+		return render.Text("")
+	}
+	current := r.routeAtPath(currentPath)
+	if current == nil {
+		return render.Text("")
+	}
+	var selectors []render.HTML
+	if options := r.variantOptions(current, "locale"); len(options) > 1 {
+		selectors = append(selectors, r.variantSelect("Language", "locale", options, currentPath))
+	}
+	if options := r.variantOptions(current, "version"); len(options) > 1 {
+		selectors = append(selectors, r.variantSelect("Version", "version", options, currentPath))
+	}
+	if len(selectors) == 0 {
+		return render.Text("")
+	}
+	return render.Tag("div", map[string]string{"class": "fastr-docs-variant-selectors"}, selectors...)
+}
+
+func (r *Router) variantSelect(label, dimension string, options []docsVariantOption, currentPath string) render.HTML {
+	items := make([]render.HTML, 0, len(options))
+	for _, option := range options {
+		attrs := map[string]string{"value": option.href, "data-docs-variant-value": option.value}
+		if normalizePath(option.href) == currentPath {
+			attrs["selected"] = ""
+		}
+		items = append(items, render.Tag("option", attrs, render.Text(option.value)))
+	}
+	return render.Tag("label", map[string]string{"class": "fastr-docs-variant-select"},
+		render.Tag("span", map[string]string{"class": "fastr-docs-variant-select__label"}, render.Text(label)),
+		render.Tag("select", map[string]string{
+			"aria-label":               label,
+			"data-docs-variant-select": dimension,
+			"data-docs-current-path":   currentPath,
+		}, items...),
+	)
+}
+
+func (r *Router) variantOptions(current *Route, dimension string) []docsVariantOption {
+	values := make(map[string]bool)
+	for _, route := range r.Routes() {
+		if !r.variantPublished(route) || variantFamily(route) != variantFamily(current) {
+			continue
+		}
+		value := route.Metadata.Locale
+		if dimension == "version" {
+			value = route.Metadata.Version
+		}
+		if strings.TrimSpace(value) != "" {
+			values[value] = true
+		}
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	ordered := make([]string, 0, len(values))
+	for value := range values {
+		ordered = append(ordered, value)
+	}
+	sort.Strings(ordered)
+	options := make([]docsVariantOption, 0, len(ordered))
+	for _, value := range ordered {
+		if target := r.variantTarget(current, dimension, value); target != nil {
+			options = append(options, docsVariantOption{value: value, href: target.Path})
+		}
+	}
+	return options
+}
+
+func (r *Router) variantTarget(current *Route, dimension, value string) *Route {
+	bestScore := -1
+	var best *Route
+	for _, candidate := range r.Routes() {
+		if !r.variantPublished(candidate) || variantFamily(candidate) != variantFamily(current) {
+			continue
+		}
+		candidateValue := candidate.Metadata.Locale
+		if dimension == "version" {
+			candidateValue = candidate.Metadata.Version
+		}
+		if candidateValue != value {
+			continue
+		}
+		score := 0
+		if candidate.Kind == current.Kind {
+			score += 2
+		}
+		if candidate.Title == current.Title {
+			score++
+		}
+		if candidate.Metadata.Locale == current.Metadata.Locale {
+			score++
+		}
+		if candidate.Metadata.Version == current.Metadata.Version {
+			score++
+		}
+		if score > bestScore {
+			bestScore, best = score, candidate
+		}
+	}
+	return best
+}
+
+func (r *Router) routeAtPath(path string) *Route {
+	path = normalizePath(path)
+	for _, route := range r.Routes() {
+		if route.Path == path {
+			return route
+		}
+	}
+	return nil
+}
+
+func (r *Router) variantPublished(route *Route) bool {
+	return route != nil && route.Kind != KindGroup && !route.Hidden && (!route.Metadata.Draft || r.includeDrafts)
+}
+
+func variantFamily(route *Route) string {
+	if route == nil {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(route.Path, "/"), "/")
+	remove := map[string]bool{}
+	if route.Metadata.Locale != "" {
+		remove[route.Metadata.Locale] = true
+	}
+	if route.Metadata.Version != "" {
+		remove[route.Metadata.Version] = true
+	}
+	filtered := parts[:0]
+	for _, part := range parts {
+		if !remove[part] {
+			filtered = append(filtered, part)
+		}
+	}
+	return strings.Join(filtered, "/")
+}
+
+type docsSidebar struct{ router *Router }
+
+func (s *docsSidebar) Render() render.HTML {
+	return s.render("")
+}
+
+func (s *docsSidebar) RenderCtx(ctx context.Context) render.HTML {
+	currentPath := ""
+	if request := uiapp.RequestFromContext(ctx); request != nil && request.URL != nil {
+		currentPath = request.URL.Path
+	}
+	return s.render(currentPath)
+}
+
+func (s *docsSidebar) render(currentPath string) render.HTML {
+	cfg := s.router.sidebarConfig(currentPath)
+	cfg.CurrentPath = currentPath
+	return ui.Sidebar(cfg).Render()
+}
+
+func (r *Router) headerItems() []ui.SiteHeaderLink {
+	items := make([]ui.SiteHeaderLink, 0, len(r.roots))
+	for _, route := range r.sorted(r.roots) {
+		if !r.routeVisible(route) || route.Path == "/" {
+			continue
+		}
+		target := r.headerTarget(route)
+		if target == nil {
+			continue
+		}
+		items = append(items, ui.SiteHeaderLink{Label: route.Title, Href: target.Path, MatchPrefix: true})
+	}
+	return items
+}
+
+func (r *Router) headerTarget(route *Route) *Route {
+	if route == nil {
+		return nil
+	}
+	if route.Kind == KindGroup {
+		return r.firstVisibleDescendant(route)
+	}
+	return route
+}
+
+func (r *Router) firstVisibleDescendant(route *Route) *Route {
+	if route == nil {
+		return nil
+	}
+	for _, child := range r.sorted(route.Children) {
+		if !r.routeVisible(child) {
+			continue
+		}
+		if child.Kind != KindGroup {
+			return child
+		}
+		if descendant := r.firstVisibleDescendant(child); descendant != nil {
+			return descendant
+		}
+	}
+	return nil
+}
+
+func (r *Router) ensureCommandPalette() (render.HTML, *widget.Builder) {
+	if r.commandPalette != nil {
+		return r.commandPaletteVisible, r.commandPalette
+	}
+	commands := make([]ui.PaletteCommand, 0, len(r.Routes()))
+	for _, route := range r.PublishedRoutes() {
+		if !r.routePublished(route) {
+			continue
+		}
+		meta := route.Path
+		if route.Description != "" {
+			meta += " · " + route.Description
+		}
+		commands = append(commands, ui.PaletteCommand{Label: route.Title, Href: route.Path, Meta: meta})
+	}
+	if len(commands) == 0 {
+		commands = append(commands, ui.PaletteCommand{Label: r.SiteName(), Href: "/", Meta: "Home"})
+	}
+	_, palette := ui.CommandPalette(ui.CommandPaletteConfig{
+		Name:         "fastr-docs-command-palette",
+		Placeholder:  "Search documentation…",
+		TriggerLabel: "Open documentation search",
+		Commands:     commands,
+	})
+	visible := render.Tag("button", map[string]string{
+		"type":                          "button",
+		"class":                         "fastr-docs-command-trigger",
+		"data-fui-open":                 "fastr-docs-command-palette",
+		"data-fui-shortcut-click":       "Meta+K",
+		"data-fastr-docs-backend":       string(r.SearchBackend()),
+		"data-fastr-docs-pagefind-path": r.PagefindPath(),
+		"aria-label":                    "Search documentation",
+	},
+		render.Raw(`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4.6 4.6"/></svg>`),
+		render.Tag("span", map[string]string{"class": "fastr-docs-command-trigger__label"}, render.Text("Search")),
+		ui.ShortcutHint(ui.ShortcutHintConfig{Chord: "Mod+K", SROnlyLabel: "Open documentation search", Class: "fastr-docs-command-trigger__hint"}),
+	)
+	r.commandPaletteVisible = visible
+	r.commandPalette = palette
+	return visible, palette
+}
+
+func (r *Router) sidebarConfig(currentPath string) ui.SidebarConfig {
+	return ui.SidebarConfig{
+		Title:                 "Contents",
+		Items:                 r.sidebarItems(r.sidebarRoots(currentPath), currentPath),
+		DrawerName:            "fastr-docs-sections",
+		SuppressDrawerTrigger: true,
+	}
+}
+
+// sidebarRoots keeps the persistent contents rail scoped to the active
+// top-level section. The home route is the global index, so it exposes every
+// top-level route group; section pages then narrow the rail to Home plus the
+// active section's local tree.
+func (r *Router) sidebarRoots(currentPath string) []*Route {
+	if strings.TrimSpace(currentPath) == "" {
+		return r.roots
+	}
+	active := r.rootForPath(currentPath)
+	if active == nil {
+		return r.roots
+	}
+	if active.Path == "/" {
+		return r.roots
+	}
+	roots := make([]*Route, 0, 2)
+	if home := r.routes["/"]; home != nil && r.routeVisible(home) {
+		roots = append(roots, home)
+	}
+	return append(roots, active)
+}
+
+func (r *Router) rootForPath(currentPath string) *Route {
+	path := normalizePath(currentPath)
+	var active *Route
+	for _, root := range r.roots {
+		if !r.routeVisible(root) || !pathActive(root.Path, path) {
+			continue
+		}
+		if active == nil || len(root.Path) > len(active.Path) {
+			active = root
+		}
+	}
+	return active
+}
+
+func (r *Router) sidebarItems(routes []*Route, currentPath string) []ui.SidebarItem {
+	items := make([]ui.SidebarItem, 0, len(routes))
+	for _, route := range r.sorted(routes) {
+		if !r.routeVisible(route) {
+			continue
+		}
+		children := r.sidebarItems(route.Children, currentPath)
+		label := route.Title
+		if route.Path == "/" {
+			label = "Home"
+		}
+		item := ui.SidebarItem{
+			Label:    label,
+			Icon:     sidebarIcon(route.Kind, route.Badge),
+			Children: children,
+			Active:   currentPath != "" && pathActive(route.Path, normalizePath(currentPath)),
+		}
+		if len(children) == 0 && route.Kind != KindGroup {
+			item.Href = route.Path
+		}
+		if item.Href == "" && len(item.Children) == 0 {
+			continue
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+func sidebarIcon(kind RouteKind, badge NavBadge) render.HTML {
+	path := `<rect x="5" y="4" width="14" height="16" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>`
+	if kind == KindGroup {
+		path = `<path d="M4 7.5h6l1.5 2H20v8.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M4 9h16"/>`
+	}
+	markup := `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` + path + `</svg>`
+	if badge.Label != "" {
+		markup += `<span class="fastr-docs-nav-badge fastr-docs-nav-badge--` + string(badge.Tone) + `" aria-hidden="true" data-badge-label="` + render.Escape(badge.Label) + `" title="` + render.Escape(badge.Label) + `"></span>`
+	}
+	return render.Raw(markup)
+}
+
+type routerMounter struct{ router *gofastrRouter.Router }
+
+func (m routerMounter) MountWidget(def *widget.Definition) { widget.Mount(m.router, def) }
+
+// Group scopes page and screen registration beneath a group path.
+type Group struct {
+	router *Router
+	route  *Route
+}
+
+// Page adds a page beneath the group.
+func (g *Group) Page(path string, cfg PageConfig) error {
+	return g.router.Page(joinPath(g.route.Path, path), cfg)
+}
+
+// MustPage adds a page beneath the group and panics on invalid config.
+func (g *Group) MustPage(path string, cfg PageConfig) {
+	g.router.MustPage(joinPath(g.route.Path, path), cfg)
+}
+
+// PageFile adds a Markdown file beneath the group.
+func (g *Group) PageFile(path string, cfg PageConfig) error {
+	return g.router.PageFile(joinPath(g.route.Path, path), cfg)
+}
+
+// MustPageFile adds a Markdown file beneath the group and panics on error.
+func (g *Group) MustPageFile(path string, cfg PageConfig) {
+	g.router.MustPageFile(joinPath(g.route.Path, path), cfg)
+}
+
+// Screen adds a typed screen beneath the group.
+func (g *Group) Screen(path string, cfg ScreenConfig) error {
+	return g.router.Screen(joinPath(g.route.Path, path), cfg)
+}
+
+// MustScreen adds a typed screen beneath the group and panics on invalid config.
+func (g *Group) MustScreen(path string, cfg ScreenConfig) {
+	g.router.MustScreen(joinPath(g.route.Path, path), cfg)
+}
+
+// Route returns the group node.
+func (g *Group) Route() *Route { return g.route }
+
+type pageComponent struct {
+	router *Router
+	route  *Route
+}
+
+type screenMetadataComponent struct {
+	component component.Component
+	route     *Route
+}
+
+func (s *screenMetadataComponent) Render() render.HTML {
+	return s.component.Render()
+}
+
+func (s *screenMetadataComponent) RenderCtx(ctx context.Context) render.HTML {
+	return component.RenderComponentCtx(ctx, s.component)
+}
+
+func (s *screenMetadataComponent) Actions() {
+	if interactive, ok := s.component.(component.InteractiveComponent); ok {
+		interactive.Actions()
+	}
+}
+
+func (s *screenMetadataComponent) ScreenTitle() string { return s.route.Title }
+
+func (s *screenMetadataComponent) ScreenDescription() string { return s.route.Description }
+
+func (s *screenMetadataComponent) ScreenArticle() uiapp.ArticleMeta {
+	meta := s.route.Metadata
+	return uiapp.ArticleMeta{
+		Headline: s.route.Title, Description: s.route.Description,
+		Author: strings.Join(meta.Authors, ", "), DatePublished: meta.DatePublished,
+		DateModified: meta.DateModified, Image: meta.Image,
+	}
+}
+
+func (s *screenMetadataComponent) HeadHTML() string { return metadataHeadHTML(s.route) }
+
+func (p *pageComponent) Render() render.HTML {
+	if p.route.page == nil {
+		return render.Text("")
+	}
+	if p.route.page.Body != nil {
+		return p.router.wrapDocPage(p.route, p.route.page.Body(), nil)
+	}
+	source := pageSource(p.route.page)
+	if source == "" {
+		panic(fmt.Sprintf("docs: page %q has no Markdown source", p.route.Path))
+	}
+	markdown := ui.Markdown(ui.MarkdownConfig{Source: source, ExtraAttrs: map[string]string{
+		"data-docs-route": p.route.Path,
+		"data-offline":    fmt.Sprintf("%t", p.route.Offline),
+	}})
+	components := mergeMarkdownComponents(p.router.markdownComponents, p.route.page.Components)
+	if len(components) > 0 {
+		var err error
+		markdown, err = renderMarkdownWithComponents(source, components, map[string]string{
+			"data-docs-route": p.route.Path,
+			"data-offline":    fmt.Sprintf("%t", p.route.Offline),
+		})
+		if err != nil {
+			panic(fmt.Sprintf("docs: render Markdown components for %q: %v", p.route.Path, err))
+		}
+	}
+	markdown = render.HTML(dedupeMarkdownHeadingIDs(string(markdown)))
+	var headings []Heading
+	if !p.route.page.DisableTOC {
+		headings = markdownHeadings(source)
+	}
+	return p.router.wrapDocPage(p.route, markdown, headings)
+}
+
+func pageSource(page *PageConfig) string {
+	if page == nil {
+		return ""
+	}
+	if page.Source != "" {
+		document, err := ParseMarkdown(page.Source)
+		if err != nil {
+			return page.Source
+		}
+		return document.Body
+	}
+	if page.SourcePath != "" {
+		body, err := os.ReadFile(page.SourcePath)
+		if err != nil {
+			return ""
+		}
+		document, err := ParseMarkdown(string(body))
+		if err != nil {
+			return string(body)
+		}
+		return document.Body
+	}
+	return ""
+}
+
+func (p *pageComponent) ScreenTitle() string       { return p.route.Title }
+func (p *pageComponent) ScreenDescription() string { return p.route.Description }
+
+// ScreenArticle exposes Markdown metadata to GoFastr's Reader Mode and SEO
+// synthesis without making content authors implement a second interface.
+func (p *pageComponent) ScreenArticle() uiapp.ArticleMeta {
+	meta := p.route.Metadata
+	author := strings.Join(meta.Authors, ", ")
+	return uiapp.ArticleMeta{
+		Headline: p.route.Title, Description: p.route.Description, Author: author,
+		DatePublished: meta.DatePublished, DateModified: meta.DateModified,
+		Image: meta.Image,
+	}
+}
+
+// HeadHTML contributes page-local canonical, robots, and alternate-language
+// metadata. Values are escaped before reaching GoFastr's guarded head hook.
+func (p *pageComponent) HeadHTML() string {
+	return metadataHeadHTML(p.route)
+}
+
+func metadataHeadHTML(route *Route) string {
+	if route == nil {
+		return ""
+	}
+	meta := route.Metadata
+	var tags []string
+	if meta.NoIndex || meta.Draft || route.Hidden {
+		tags = append(tags, `<meta name="robots" content="noindex,nofollow">`)
+	}
+	if canonical := safeMetadataURL(meta.CanonicalURL); canonical != "" {
+		tags = append(tags, `<link rel="canonical" href="`+stdhtml.EscapeString(canonical)+`">`)
+	}
+	for _, locale := range strings.Fields(meta.Locale) {
+		if strings.TrimSpace(locale) != "" {
+			tags = append(tags, `<link rel="alternate" hreflang="`+stdhtml.EscapeString(locale)+`" href="`+stdhtml.EscapeString(route.Path)+`">`)
+		}
+	}
+	locales := make([]string, 0, len(meta.Alternates))
+	for locale := range meta.Alternates {
+		locales = append(locales, locale)
+	}
+	sort.Strings(locales)
+	for _, locale := range locales {
+		href := meta.Alternates[locale]
+		if cleanHref := safeMetadataURL(href); cleanHref != "" && strings.TrimSpace(locale) != "" {
+			tags = append(tags, `<link rel="alternate" hreflang="`+stdhtml.EscapeString(locale)+`" href="`+stdhtml.EscapeString(cleanHref)+`">`)
+		}
+	}
+	return strings.Join(tags, "")
+}
+
+func routeHasMetadata(route *Route) bool {
+	if route == nil {
+		return false
+	}
+	meta := route.Metadata
+	return meta.Draft || meta.NoIndex || meta.EditURL != "" || meta.CanonicalURL != "" || meta.Image != "" || len(meta.Authors) > 0 || meta.DatePublished != "" || meta.DateModified != "" || meta.Locale != "" || meta.Version != "" || len(meta.Alternates) > 0
+}
+
+func safeMetadataURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.User != nil || strings.ContainsAny(raw, "<>\"'") {
+		return ""
+	}
+	if parsed.IsAbs() && parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return ""
+	}
+	if parsed.IsAbs() || strings.HasPrefix(raw, "/") {
+		return raw
+	}
+	return ""
+}
+
+func safeRedirectPath(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.HasPrefix(raw, "//") || strings.ContainsAny(raw, "?#") {
+		return ""
+	}
+	path := normalizePath(raw)
+	if path == "" || !strings.HasPrefix(path, "/") {
+		return ""
+	}
+	return path
+}
+
+func (r *Router) addRoute(path string, route Route) (*Route, error) {
+	path = normalizePath(path)
+	if path == "" {
+		return nil, errors.New("docs: route path is required")
+	}
+	if strings.HasPrefix(path, "//") {
+		return nil, fmt.Errorf("docs: route path %q must use one leading slash", path)
+	}
+	if strings.ContainsAny(path, "?#") {
+		return nil, fmt.Errorf("docs: route path %q must not contain query or fragment data", path)
+	}
+	if _, exists := r.routes[path]; exists {
+		err := fmt.Errorf("docs: duplicate route %q", path)
+		r.registrationErr = err
+		return nil, err
+	}
+	r.seq++
+	route.Path = path
+	route.ID = routeID(path)
+	route.seq = r.seq
+	if route.Title == "" && route.Kind == KindPage && route.page != nil {
+		route.Title = titleFromPath(path)
+	}
+	r.routes[path] = &route
+	r.rebuildTree()
+	return &route, nil
+}
+
+func (r *Router) rebuildTree() {
+	r.roots = nil
+	for _, route := range r.routes {
+		route.Parent = nil
+		route.Children = nil
+	}
+	ordered := make([]*Route, 0, len(r.routes))
+	for _, route := range r.routes {
+		ordered = append(ordered, route)
+	}
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].seq < ordered[j].seq })
+	for _, route := range ordered {
+		parent := r.parentFor(route.Path)
+		if parent != nil {
+			route.Parent = parent
+			parent.Children = append(parent.Children, route)
+		} else {
+			r.roots = append(r.roots, route)
+		}
+	}
+}
+
+func (r *Router) parentFor(path string) *Route {
+	best := ""
+	var parent *Route
+	for candidate, route := range r.routes {
+		if candidate == path || !strings.HasPrefix(path, candidate+"/") {
+			continue
+		}
+		if len(candidate) > len(best) {
+			best, parent = candidate, route
+		}
+	}
+	return parent
+}
+
+func (r *Router) sorted(nodes []*Route) []*Route {
+	out := append([]*Route(nil), nodes...)
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Order != out[j].Order {
+			return out[i].Order < out[j].Order
+		}
+		return out[i].seq < out[j].seq
+	})
+	return out
+}
+
+func normalizePath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	path = strings.TrimRight(path, "/")
+	if path == "" {
+		return "/"
+	}
+	return path
+}
+
+func joinPath(prefix, path string) string {
+	if strings.HasPrefix(path, "/") {
+		return normalizePath(path)
+	}
+	return normalizePath(strings.TrimRight(prefix, "/") + "/" + path)
+}
+
+func routeID(path string) string {
+	if path == "/" {
+		return "home"
+	}
+	// Route IDs are consumed by search indexes and client adapters, so they
+	// must be deterministic and collision-free. A readable slug would make
+	// `/foo-bar` and `/foo/bar` (or `/home` and `/`) collide. Keep the root
+	// friendly and encode every other path as a compact, URL-safe byte ID.
+	return "route-" + hex.EncodeToString([]byte(path))
+}
+
+func titleFromPath(path string) string {
+	part := path[strings.LastIndex(path, "/")+1:]
+	part = strings.ReplaceAll(part, "-", " ")
+	if part == "" {
+		return "Home"
+	}
+	return strings.ToUpper(part[:1]) + part[1:]
+}
+
+func cloneStrings(in []string) []string { return append([]string(nil), in...) }
+
+func (r *Router) routePublished(route *Route) bool {
+	if route == nil || route.Kind == KindGroup || route.Hidden {
+		return false
+	}
+	if route.Metadata.Draft && !r.includeDrafts {
+		return false
+	}
+	if r.locale != "" && route.Metadata.Locale != "" && route.Metadata.Locale != r.locale {
+		return false
+	}
+	if r.version != "" && route.Metadata.Version != "" && route.Metadata.Version != r.version {
+		return false
+	}
+	return true
+}
+
+func (r *Router) routeVisible(route *Route) bool {
+	if route == nil || route.Hidden {
+		return false
+	}
+	if route.Kind != KindGroup {
+		return r.routePublished(route)
+	}
+	for _, child := range route.Children {
+		if r.routeVisible(child) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathActive(routePath, currentPath string) bool {
+	if currentPath == "" {
+		return false
+	}
+	if routePath == "/" {
+		return currentPath == "/"
+	}
+	return currentPath == routePath || strings.HasPrefix(currentPath, routePath+"/")
+}

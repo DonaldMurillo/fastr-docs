@@ -1,0 +1,14 @@
+{
+  "name": "fastr-docs-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "pagefind": "^1.5.2"
+  }
+}

@@ -1,0 +1,293 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing/fstest"
+
+	docsite "{{.Module}}/docs"
+	fastrdocs "github.com/DonaldMurillo/fastr-docs"
+	uiapp "github.com/DonaldMurillo/gofastr/core-ui/app"
+	"github.com/DonaldMurillo/gofastr/core/middleware"
+	"github.com/DonaldMurillo/gofastr/core/static"
+	"github.com/DonaldMurillo/gofastr/framework"
+	"github.com/DonaldMurillo/gofastr/framework/uihost"
+	"github.com/DonaldMurillo/fastr-docs/plugin/openapi"
+)
+
+func main() {
+	built, err := buildSite()
+	if err != nil {
+		panic(err)
+	}
+	server := built.server
+	if dir := exportDir(os.Args[1:]); dir != "" {
+		base := normalizeBase(exportBase(os.Args[1:]))
+		if err := server.ExportStatic(context.Background(), dir, base); err != nil {
+			panic(err)
+		}
+		if err := writeRuntimeAssets(dir, built.openAPIRuntime, built.searchIndex, built.manifest); err != nil {
+			panic(err)
+		}
+		if err := copyPublicAssets(dir); err != nil {
+			panic(err)
+		}
+		if err := fastrdocs.WriteAgentAssets(dir, base, server.Router()); err != nil {
+			panic(err)
+		}
+		if err := rewriteRuntimeURLs(dir, base); err != nil {
+			panic(err)
+		}
+		if err := rewriteStaticCSP(dir, fastrdocs.ContentSecurityPolicy(built.serverConnectOrigins...)); err != nil {
+			panic(err)
+		}
+		fmt.Println("static site exported to " + dir)
+		return
+	}
+	addr := ":3070"
+	if port := os.Getenv("PORT"); port != "" {
+		addr = ":" + port
+	}
+	fmt.Println({{goString .SiteName}} + " listening on http://localhost" + addr)
+	if err := server.Start(addr); err != nil {
+		panic(err)
+	}
+}
+
+type generatedSite struct {
+	server         *framework.App
+	openAPIRuntime []byte
+	searchIndex    []byte
+	manifest       []byte
+	serverConnectOrigins []string
+}
+
+func buildSite() (*generatedSite, error) {
+	router := docsite.NewRouter()
+	site := uiapp.NewApp({{goString .SiteName}}).WithTheme(fastrdocs.DefaultTheme()).WithLang(router.Language())
+	if err := router.Mount(site, router.Layout()); err != nil {
+		return nil, err
+	}
+	precache := []string{"/__fastr-docs/docs.js", "/__fastr-docs/openapi.js", "/__fastr-docs/search.json", "/__fastr-docs/manifest.json"}
+	if router.SearchBackend() == fastrdocs.SearchBackendPagefind {
+		precache = append(precache, "/pagefind/pagefind.js")
+	}
+	host := uihost.New(site,
+		uihost.WithDescription({{goString .SiteName}} + " — reusable documentation built with GoFastr."),
+		uihost.WithCustomCSS(router.CSS()+"\n"+router.BrandCSS()+"\n"+docsite.ExamplesCSS()+"\n"+docsite.OpenAPICSS()),
+		uihost.WithPublicLLMMD(),
+		uihost.WithAgentReady(uihost.AgentReadyConfig{
+			Title:    {{goString .SiteName}},
+			Summary:  "Searchable documentation with a router-owned content tree.",
+			WhenToUse: "Use this site to find the project's guides, API reference, and implementation examples.",
+			CLI: &uihost.CLIToolConfig{
+				Name:    "fastr-docs",
+				Install: "go install github.com/DonaldMurillo/fastr-docs/cmd/fastr-docs@latest",
+				Docs:    "/docs/getting-started",
+			},
+		}),
+		uihost.WithHeadHTML(`<link rel="icon" href="/assets/favicon.svg"><meta name="theme-color" content="#f7f5ef">`),
+		uihost.WithSitemap(uihost.SitemapConfig{BaseURL: publicSiteURL(), ExcludePaths: append([]string{"/__fastr-docs/"}, router.SitemapExcludePaths()...)}),
+		uihost.WithRobots(uihost.RobotsConfig{Disallow: []string{"/__fastr-docs/"}}),
+		uihost.WithExtraScripts("/__fastr-docs/docs.js", "/__fastr-docs/openapi.js"),
+		uihost.WithAppIcon(docsite.DefaultIconPNG()),
+		uihost.WithPWA(uihost.PWAConfig{Name: {{goString .SiteName}}, ShortName: {{goString .SiteName}}, Precache: precache}),
+	)
+	server := framework.NewUIHostApp(host, framework.WithConfig(framework.AppConfig{
+		Name: {{goString .SiteName}},
+		SecurityHeaders: middleware.SecurityHeadersConfig{
+			ContentSecurityPolicy: fastrdocs.ContentSecurityPolicy(router.ConnectOrigins()...),
+		},
+	}))
+	if err := router.MountNavigation(server.Router()); err != nil {
+		return nil, err
+	}
+	if err := router.MountCommandPalette(server.Router()); err != nil {
+		return nil, err
+	}
+	if err := router.MountPluginAssets(server.Router()); err != nil {
+		return nil, err
+	}
+	openAPIRuntime, err := fs.ReadFile(openapi.Assets(), "openapi.js")
+	if err != nil {
+		return nil, err
+	}
+	searchIndex, err := router.SearchIndexJSON()
+	if err != nil {
+		return nil, err
+	}
+	manifest, err := router.ExportManifestJSON(exportBase(os.Args[1:]))
+	if err != nil {
+		return nil, err
+	}
+	assets := fstest.MapFS{
+		"docs.js":    &fstest.MapFile{Data: []byte(fastrdocs.RuntimeJS())},
+		"openapi.js": &fstest.MapFile{Data: openAPIRuntime},
+		"search.json": &fstest.MapFile{Data: searchIndex},
+		"manifest.json": &fstest.MapFile{Data: manifest},
+	}
+	server.Router().Get("/__fastr-docs/{path...}", static.Handler(static.Config{FS: assets, Prefix: "/__fastr-docs"}))
+	if _, err := os.Stat("public"); err == nil {
+		if err := router.MountAssets(server.Router(), fastrdocs.AssetConfig{FS: os.DirFS("public"), Prefix: "/assets", MaxAge: 365 * 24 * 60 * 60 * 1e9}); err != nil {
+			return nil, err
+		}
+	}
+	return &generatedSite{server: server, openAPIRuntime: openAPIRuntime, searchIndex: searchIndex, manifest: manifest, serverConnectOrigins: router.ConnectOrigins()}, nil
+}
+
+func writeRuntimeAssets(dir string, openAPIRuntime, searchIndex, manifest []byte) error {
+	assetDir := filepath.Join(dir, "__fastr-docs")
+	if err := os.MkdirAll(assetDir, 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(assetDir, "docs.js"), []byte(fastrdocs.RuntimeJS()), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(assetDir, "openapi.js"), openAPIRuntime, 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(assetDir, "search.json"), searchIndex, 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(assetDir, "manifest.json"), manifest, 0o644)
+}
+
+func copyPublicAssets(dir string) error {
+	if _, err := os.Stat("public"); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	return filepath.WalkDir("public", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel("public", path)
+		if err != nil {
+			return err
+		}
+		destination := filepath.Join(dir, "assets", rel)
+		if entry.IsDir() {
+			return os.MkdirAll(destination, 0o755)
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(destination, body, 0o644)
+	})
+}
+
+func publicSiteURL() string {
+	if value := strings.TrimSpace(os.Getenv("PUBLIC_SITE_URL")); value != "" {
+		return strings.TrimRight(value, "/")
+	}
+	return "http://localhost:3070"
+}
+
+func rewriteRuntimeURLs(dir, base string) error {
+	base = normalizeBase(base)
+	if base == "" {
+		return nil
+	}
+	return filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || filepath.Ext(path) != ".html" {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		updated := strings.ReplaceAll(string(body), `"/__fastr-docs/`, `"`+base+`/__fastr-docs/`)
+		updated = strings.ReplaceAll(updated, `data-fastr-docs-pagefind-path="/pagefind/"`, `data-fastr-docs-pagefind-path="`+base+`/pagefind/"`)
+		if updated == string(body) {
+			return nil
+		}
+		return os.WriteFile(path, []byte(updated), 0o644)
+	})
+}
+
+func rewriteStaticCSP(dir, policy string) error {
+	oldContent := `content="default-src 'self'; img-src 'self' data:; object-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'"`
+	newContent := `content="` + policy + `"`
+	if err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || filepath.Ext(path) != ".html" {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		updated := strings.ReplaceAll(string(body), oldContent, newContent)
+		if updated == string(body) {
+			return nil
+		}
+		return os.WriteFile(path, []byte(updated), 0o644)
+	}); err != nil {
+		return err
+	}
+	headerPath := filepath.Join(dir, "_headers")
+	body, err := os.ReadFile(headerPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	lines := strings.Split(string(body), "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "Content-Security-Policy:") {
+			lines[i] = "  Content-Security-Policy: " + policy
+		}
+	}
+	return os.WriteFile(headerPath, []byte(strings.Join(lines, "\n")), 0o644)
+}
+
+func normalizeBase(base string) string {
+	base = strings.TrimSpace(base)
+	if base == "" || base == "/" {
+		return ""
+	}
+	if !strings.HasPrefix(base, "/") {
+		base = "/" + base
+	}
+	return strings.TrimRight(base, "/")
+}
+
+func exportDir(args []string) string {
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--export" && i+1 < len(args) {
+			return args[i+1]
+		}
+		if strings.HasPrefix(args[i], "--export=") {
+			return strings.TrimPrefix(args[i], "--export=")
+		}
+	}
+	return ""
+}
+
+func exportBase(args []string) string {
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--export-base" && i+1 < len(args) {
+			return args[i+1]
+		}
+		if strings.HasPrefix(args[i], "--export-base=") {
+			return strings.TrimPrefix(args[i], "--export-base=")
+		}
+	}
+	return ""
+}

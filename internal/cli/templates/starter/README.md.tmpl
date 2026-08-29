@@ -1,0 +1,72 @@
+# {{.SiteName}}
+
+Reusable, white-label documentation built with `fastr-docs` and GoFastr.
+
+## Run it
+
+```sh
+fastr-docs check .
+fastr-docs doctor .
+go run .
+# or export a static, installable PWA
+fastr-docs export . --out dist
+# optional chunked static search
+fastr-docs export . --out dist --pagefind
+```
+
+Open <http://localhost:3070>.
+
+## Where to edit
+
+- `docs/router.go` is the central route tree.
+- `content/` contains Markdown pages.
+- `openapi.json` feeds the in-project OpenAPI reference plugin.
+- `API_SERVER_URL` optionally overrides the OpenAPI contract's default server for staging or production.
+- `public/` contains white-label assets served at `/assets/` and copied into static exports.
+- `agents/claude.md` and `.agents/skills/` describe the project conventions to AI agents.
+
+## Content model
+
+Markdown files may start with YAML front matter. Supported fields include
+`title`, `description`, `draft`, `noindex`, `edit_url`, `canonical`, `image`,
+`authors`, `date`, `last_updated`, `locale`, `version`, `alternates`, `tags`,
+`redirects`, and `order`. Front matter is removed before rendering and search.
+
+Markdown can also embed registered typed components:
+
+```md
+{{"{{"}}< callout title="Important" >}}
+This remains Markdown inside a reusable GoFastr callout.
+{{"{{"}}< /callout >}}
+```
+
+Shared components are registered in `docs/router.go` with
+`MarkdownComponentsPlugin`; page-local components can be supplied through
+`PageConfig.Components`.
+
+Route groups, pages, and screens can also set a short `Badge` for sidebar
+metadata such as `New`, `Popular`, or `Beta`. Badges appear in both the
+desktop rail and mobile drawer without changing the route or search record.
+
+For larger sites, register a directory with `router.MarkdownCollection` so
+the route tree, ordering, locale/version filters, drafts, redirects, and
+search metadata stay derived from the same files. Set `DOCS_INCLUDE_DRAFTS=1`
+for local review. `DOCS_LOCALE` sets the document language while
+`DOCS_CONTENT_LOCALE` / `DOCS_CONTENT_VERSION` select a build-time content
+slice; leaving the content filters empty keeps runtime locale/version
+switchers available.
+
+`PUBLIC_SITE_URL` configures absolute sitemap URLs. `API_SERVER_URL` controls
+the OpenAPI request origin. Use `fastr-docs export --base /docs` when the
+static site is deployed below a path prefix.
+
+The shell is composed from GoFastr UI primitives. The generated `main.go`
+mounts the framework-owned mobile sidebar drawer and native command palette;
+the primary header reflects top-level route groups and `Meta/Control + K`
+opens route search. Extend the header, navigation, document layout, and
+scrollspy through GoFastr components rather than adding a parallel interaction
+layer. If the project registers localized or versioned route siblings, the
+header also provides route-aware Language and Version selectors.
+
+Use `fastr-docs export --pagefind` for the optional Pagefind static search
+bundle. Development and exports without that flag use the portable JSON index.

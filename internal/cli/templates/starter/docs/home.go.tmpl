@@ -1,0 +1,60 @@
+package docs
+
+import "github.com/DonaldMurillo/gofastr/core/render"
+
+// HomeBody is the generated site's editorial landing surface. It stays a
+// Screen-like GoFastr render function so the starter demonstrates the same
+// router composition point that product sites can extend with their own UI.
+func HomeBody() render.HTML {
+	return render.Raw(`
+<div class="fastr-docs-home">
+  <div class="fastr-docs-home__hero">
+    <div class="fastr-docs-home__hero-copy">
+      <span class="fastr-docs-home__eyebrow">Router-first documentation</span>
+      <h1>A docs framework that starts as a router.</h1>
+      <p>Pages, screens, extensions, search, and offline content all share one explicit composition point.</p>
+      <div class="fastr-docs-home__actions">
+        <a class="fastr-docs-home__button fastr-docs-home__button--primary" href="/docs">Open the docs <span aria-hidden="true">→</span></a>
+        <a class="fastr-docs-home__button fastr-docs-home__button--ghost" href="/docs/getting-started">Read the guide <span aria-hidden="true">↗</span></a>
+      </div>
+    </div>
+    <div class="fastr-docs-home__hero-art" aria-label="Route graph illustration" role="img">
+      <div class="fastr-docs-home__grid"></div>
+      <div class="fastr-docs-home__orbit fastr-docs-home__orbit--one"></div>
+      <div class="fastr-docs-home__orbit fastr-docs-home__orbit--two"></div>
+      <div class="fastr-docs-home__pin"><span></span></div>
+      <span class="fastr-docs-home__art-label">ROUTER / 001 · STATIC READY</span>
+    </div>
+  </div>
+
+  <div class="fastr-docs-home__metrics" aria-label="Project capabilities">
+    <div><strong>01</strong><span>central router</span></div>
+    <div><strong>02</strong><span>render modes</span></div>
+    <div><strong>∞</strong><span>extensions</span></div>
+  </div>
+
+  <section class="fastr-docs-home__section">
+    <div class="fastr-docs-home__section-intro"><h2>One router, every surface</h2><p>Pages and screens are rendering strategies. Navigation, search, breadcrumbs, and export are derived from the same tree.</p></div>
+    <div class="fastr-docs-home__feature-grid">
+      <article><span class="fastr-docs-home__feature-icon">▤</span><h3>Page routes</h3><p>Markdown pages with explicit order, metadata, table of contents, search, and offline export.</p></article>
+      <article><span class="fastr-docs-home__feature-icon">□</span><h3>Screen routes</h3><p>Typed GoFastr screens for API explorers, playgrounds, and custom interactive experiences.</p></article>
+      <article><span class="fastr-docs-home__feature-icon">⌘</span><h3>Project extensions</h3><p>OpenAPI and future plugins contribute to this router without creating parallel navigation systems.</p></article>
+    </div>
+  </section>
+
+  <section class="fastr-docs-home__section">
+    <div class="fastr-docs-home__section-intro"><h2>Generated project anatomy</h2><p>Every decision stays visible in the project that the generator creates.</p></div>
+    <div class="fastr-docs-home__anatomy">
+      <div class="fastr-docs-home__route-panel"><div class="fastr-docs-home__panel-head"><strong>registered routes</strong><span>18 routes</span></div><div class="fastr-docs-home__route-row fastr-docs-home__route-row--active"><span>page</span><b>Home</b><code>/</code></div><div class="fastr-docs-home__route-row"><span>page</span><b>Documentation</b><code>/docs</code></div><div class="fastr-docs-home__route-row"><span>group</span><b>Concepts</b><code>/docs/concepts/*</code></div><div class="fastr-docs-home__route-row"><span>group</span><b>Build</b><code>/docs/build/*</code></div><div class="fastr-docs-home__route-row"><span>plugin</span><b>API reference</b><code>/api-reference</code></div><div class="fastr-docs-home__route-row"><span>group</span><b>Examples</b><code>/examples/*</code></div></div>
+      <pre class="fastr-docs-home__code"><span class="fastr-docs-home__panel-head"><strong>docs/router.go</strong><span>Go</span></span><code><span>router := docs.NewRouter(</span>
+  <span>docs.WithSiteName(<em>"Your Docs"</em>),</span>
+  <span>docs.WithStrictValidation(<b>true</b>),</span>
+<span>)</span>
+<span>router.MustPage(<em>"/guide"</em>, docs.PageConfig{...})</span>
+<span>router.Use(openapi.Plugin{...})</span></code></pre>
+    </div>
+  </section>
+
+  <aside class="fastr-docs-home__callout"><span class="fastr-docs-home__callout-mark">◎</span><div><strong>AI-ready from the first commit</strong><p>The generated project includes agent references and authoring skills so humans and agents can extend the same route tree safely.</p></div></aside>
+</div>`)
+}

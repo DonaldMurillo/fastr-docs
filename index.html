@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f5ef">
+  <meta name="description" content="A white-label, router-first documentation project.">
+  <title>starter-docs — Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="ambient ambient--top" aria-hidden="true"></div>
+  <div class="ambient ambient--bottom" aria-hidden="true"></div>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <button class="mobile-toggle" type="button" data-mobile-toggle aria-label="Open navigation" aria-expanded="false"><span data-icon="menu"></span></button>
+      <a class="brand" href="#/" aria-label="starter-docs home">
+        <span class="brand__mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="brand__name">starter<span>/</span>docs</span>
+      </a>
+      <div class="topbar__divider"></div>
+      <span class="topbar__context">Documentation</span>
+      <nav class="topnav" aria-label="Primary navigation">
+        <a class="topnav__link topnav__link--active" href="#/docs">Docs</a>
+        <a class="topnav__link" href="#/docs/getting-started">Getting started</a>
+        <a class="topnav__link" href="#/api-reference">OpenAPI</a>
+      </nav>
+      <div class="topbar__actions">
+        <button class="search-trigger" type="button" data-open-search>
+          <span data-icon="search"></span>
+          <span class="search-trigger__text">Search</span>
+          <kbd>⌘ K</kbd>
+        </button>
+        <a class="top-icon" href="https://github.com/DonaldMurillo/gofastr" target="_blank" rel="noreferrer" aria-label="Open project repository" data-tooltip="Repository"><span data-icon="github"></span></a>
+        <button class="top-icon" type="button" data-theme-toggle aria-label="Switch theme"><span data-icon="sun"></span></button>
+      </div>
+    </header>
+
+    <div class="mobile-drawer" data-mobile-drawer hidden>
+      <a href="#/">Home</a>
+      <a href="#/docs">Docs</a>
+      <a href="#/docs/getting-started">Getting started</a>
+      <a href="#/api-reference">OpenAPI reference</a>
+    </div>
+
+    <div class="layout">
+      <aside class="sidebar" data-sidebar>
+        <div class="router-heading"><span class="router-heading__line"></span><span>Contents</span></div>
+        <nav class="route-tree" aria-label="Project routes" data-route-tree></nav>
+      </aside>
+
+      <main class="main" id="main-content">
+        <div class="mobile-crumb"><button type="button" data-open-drawer><span data-icon="menu"></span> Routes</button><span>/</span><span data-mobile-route>Home</span></div>
+        <details class="mobile-toc" data-mobile-toc hidden>
+          <summary><span>On this page</span><span class="mobile-toc__meta" data-mobile-toc-count></span></summary>
+          <nav data-mobile-toc-links aria-label="On this page"></nav>
+        </details>
+        <div data-view></div>
+      </main>
+
+      <aside class="right-rail" data-right-rail>
+        <div class="rail-label">In this project</div>
+        <div class="rail-tree">
+          <a href="#/#get-router" data-rail-link="get-router">Router</a>
+          <a href="#/docs#get-page" data-rail-link="get-page">Page routes</a>
+          <a href="#/docs#get-screen" data-rail-link="get-screen">Screen routes</a>
+          <a href="#/api-reference" data-rail-link="get-openapi">OpenAPI reference</a>
+          <a href="#/#get-agents" data-rail-link="get-agents">AI references</a>
+        </div>
+        <div class="rail-note"><span class="rail-note__icon" data-icon="cloud"></span><span>Static pages are available offline through the GoFastr PWA shell.</span></div>
+        <a class="rail-edit" href="https://github.com/DonaldMurillo/gofastr" target="_blank" rel="noreferrer"><span data-icon="pencil"></span> Edit project docs</a>
+      </aside>
+    </div>
+  </div>
+
+  <div class="search-overlay" data-search-overlay hidden>
+    <div class="search-backdrop" data-close-search></div>
+    <section class="search-dialog" role="dialog" aria-modal="true" aria-label="Search documentation">
+      <div class="search-dialog__input"><span data-icon="search"></span><input type="search" data-search-input placeholder="Search routes, concepts, and guides…" autocomplete="off"><kbd>ESC</kbd></div>
+      <div class="search-dialog__results" data-search-results><p class="search-placeholder">Search the router tree.</p></div>
+      <div class="search-dialog__footer"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span></div>
+    </section>
+  </div>
+
+  <div class="toast" data-toast role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

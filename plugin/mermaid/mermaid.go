@@ -117,6 +117,11 @@ func (Plugin) RuntimeAssets() (map[string][]byte, error) {
 	return assets, nil
 }
 
+// PageScripts keeps the Mermaid bundle out of the page. It is several
+// megabytes and the frame document loads it for itself; only the host adapter
+// belongs in a page <script> tag.
+func (Plugin) PageScripts() []string { return []string{AdapterPath} }
+
 // MountAssets serves the three framed files with the headers the sandbox
 // requires. Router.MountRuntimeAssets already serves everything the plugin
 // contributed; these routes take precedence for the files the frame loads.

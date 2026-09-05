@@ -420,6 +420,7 @@ type Router struct {
 	markdownComponents    map[string]MarkdownComponent
 	markdownContainers    map[string]MarkdownContainer
 	markdownRaws          map[string]MarkdownRawComponent
+	markdownTransforms    []namedSourceTransform
 	gitMeta               *GitMetadataConfig
 	gitMetaResolved       bool
 	localeFallback        bool
@@ -614,6 +615,7 @@ func (r *Router) vocabulary(components map[string]MarkdownComponent, containers 
 		components: mergeMarkdownComponents(r.markdownComponents, components),
 		containers: mergeMarkdownContainers(r.markdownContainers, containers),
 		raws:       mergeMarkdownRaws(r.markdownRaws, nil),
+		transforms: r.markdownTransforms,
 	}
 }
 

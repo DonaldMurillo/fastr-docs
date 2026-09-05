@@ -1,0 +1,16 @@
+{
+  "name": "@fastr-docs/katex-runtime",
+  "private": true,
+  "version": "0.0.0-dev",
+  "description": "Page-side KaTeX runtime for fastr-docs. Renders in the page, no iframe: KaTeX applies layout through CSSOM, which the strict page CSP allows.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "katex": "0.16.25"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  }
+}

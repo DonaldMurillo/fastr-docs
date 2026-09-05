@@ -202,3 +202,20 @@ func TestBundledAssetsAreEmbedded(t *testing.T) {
 		t.Fatal("host adapter is not embedded")
 	}
 }
+
+// The bundle is megabytes and belongs to the frame. Selecting page scripts by
+// file extension would put it on every page.
+func TestOnlyTheAdapterIsAPageScript(t *testing.T) {
+	if scripts := (Plugin{}).PageScripts(); len(scripts) != 1 || scripts[0] != AdapterPath {
+		t.Fatalf("PageScripts() = %v, want [%s]", scripts, AdapterPath)
+	}
+	names, err := routerWithPlugin(t, Plugin{}).RuntimeScriptNames("")
+	if err != nil {
+		t.Fatalf("RuntimeScriptNames() error = %v", err)
+	}
+	for _, name := range names {
+		if name == AssetDir+"/diagram.js" {
+			t.Fatal("the Mermaid bundle was listed as a page script")
+		}
+	}
+}

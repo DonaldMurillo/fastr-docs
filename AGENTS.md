@@ -141,7 +141,8 @@ translated site, which a test caught immediately.
 `runtime_assets.go` collects `docs.js`, the search index, the export manifest,
 and every `RuntimeAssetPlugin`'s files. `MountRuntimeAssets` serves them,
 `WriteRuntimeAssets` exports them, `RuntimeAssetNames` feeds the precache list
-and the host's script tags.
+and `RuntimeScriptNames` the host's script tags. See "Page scripts vs served
+assets" for why those are two lists.
 
 Before it, the generated `main.go` hand-wrote each file twice, once for serving
 and once for export, so any new asset-bearing plugin meant editing every
@@ -180,7 +181,66 @@ Two things are easy to get wrong here, and both fail silently:
 Rebuild it with `cd plugin/mermaid/js && npm install && npm run build`. It is a
 separate Go package, so nothing links it in unless the project imports it.
 
-KaTeX is not implemented. The same frame model would work for it.
+## Math (plugin/katex)
+
+Takes the opposite approach to diagrams, on purpose. Math renders in the page,
+with no frame and no relaxed policy.
+
+KaTeX builds its layout as DOM nodes and assigns sizes through CSSOM
+(`node.style.height = "0.68em"`). CSP polices style attributes in parsed markup
+and `<style>` elements, not CSSOM, so the strict page policy holds untouched.
+Verified rather than assumed: the rendered page carries about 150 inline style
+attributes and reports zero policy violations. The e2e spec asserts both numbers
+together, because either alone proves nothing.
+
+Rendering in the page is also the only way inline math works. A frame is a
+rectangle and cannot share a line box with the sentence around it.
+
+The one place KaTeX would trip the policy is its own error path, which calls
+`setAttribute("style", "color:...")`. The runtime sets `throwOnError` and renders
+its own error text instead, so a mistyped formula never produces a violation.
+`\fcolorbox` and `\textsf` shadows take the same path and are the known
+exception; nothing else does.
+
+The dollar scanner in `dollar.go` follows Pandoc's rules: no whitespace after
+the opening `$`, none before the closing `$`, no digit after it, and a backslash
+escapes. Fenced blocks and inline code spans are skipped outright. Those rules
+are why `from $5 to $10` and `$HOME` stay prose, and the table in
+`site/content/build-math.md` documents them for writers.
+
+`assets/` is generated: a 266KB esbuild bundle, `katex.css` rewritten to woff2
+only, and 20 font faces. Rebuild with
+`cd plugin/katex/js && npm install && npm run build`. The placeholder CSS lives
+in `build.mjs` and is appended to the stylesheet, so the plugin owns its
+presentation and a project needs no CSS of its own.
+
+## Markdown source transforms
+
+`markdown_transform.go` lets a plugin rewrite Markdown source before the parser
+runs. A shortcode can only claim text a writer wrapped in `{{< >}}`; `$x^2$` in
+the middle of a sentence needs this instead.
+
+The transform receives a `place` function, hands it rendered HTML, and splices
+the returned marker into the source. The parser only ever sees the marker. It is
+the same mechanism option-carrying code fences already use, and the three marker
+namespaces (`FASTRDOCSSHORTCODESLOT`, `FASTRDOCSFENCESLOT`,
+`FASTRDOCSTRANSFORMSLOT`) are distinct so slot zero of one cannot eat slot zero
+of another.
+
+Transforms run before shortcodes expand, so a transform can claim text inside a
+shortcode body. That is why the math scanner skips code but a shortcode cannot
+opt out of it.
+
+## Page scripts vs served assets
+
+`RuntimeAssetNames` lists everything served. `RuntimeScriptNames` lists only what
+belongs in a `<script>` tag, and they are not the same set.
+
+Picking page scripts by file extension put the 3.3MB Mermaid frame bundle on
+every page, where nothing loaded it: the frame document fetches it itself. A
+plugin now declares `PageScripts()` to narrow this; one that does not still
+contributes all its `.js`, which is right for a single-file runtime like
+`openapi.js`.
 
 ## Known GoFastr limitations worked around here
 

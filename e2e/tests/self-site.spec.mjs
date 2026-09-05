@@ -237,3 +237,80 @@ test('a diagram falls back to its source without JavaScript', async ({ browser }
   await expect(page.locator('.fastr-docs-mermaid iframe')).toHaveCount(0);
   await context.close();
 });
+
+// Math takes the opposite approach to diagrams: it renders in the page, with no
+// frame and no relaxed policy, because KaTeX applies layout through CSSOM
+// rather than style attributes. These assert that claim rather than trusting it.
+test('math renders in the page under the strict policy', async ({ page }) => {
+  const cspViolations = [];
+  page.on('console', (m) => { if (/Content Security Policy/i.test(m.text())) cspViolations.push(m.text()); });
+
+  await page.goto(selfPage('/docs/build/math'));
+  const roots = page.locator('.fastr-docs-math');
+  await expect(roots).toHaveCount(6);
+  await expect(roots.first().locator('.katex')).toBeVisible({ timeout: 20_000 });
+
+  const state = await page.evaluate(() => {
+    const all = [...document.querySelectorAll('.fastr-docs-math')];
+    return {
+      rendered: all.filter((r) => r.querySelector('.katex')).length,
+      failed: all.filter((r) => r.hasAttribute('data-fastr-docs-math-failed')).length,
+      // KaTeX sizes struts and rules with these. Their presence together with
+      // an empty violation list is the whole argument for rendering in-page.
+      styleAttrs: all.reduce((n, r) => n + r.querySelectorAll('[style]').length, 0),
+      frames: document.querySelectorAll('.fastr-docs-math iframe').length,
+    };
+  });
+  expect(state.rendered).toBe(6);
+  expect(state.failed).toBe(0);
+  expect(state.styleAttrs).toBeGreaterThan(50);
+  expect(state.frames).toBe(0);
+  expect(cspViolations, cspViolations.join('\n')).toHaveLength(0);
+});
+
+test('inline math shares a line with the sentence around it', async ({ page }) => {
+  await page.goto(selfPage('/docs/build/math'));
+  const inline = page.locator('.fastr-docs-math:not(.fastr-docs-math--display)').first();
+  await expect(inline.locator('.katex')).toBeVisible({ timeout: 20_000 });
+  const shares = await inline.evaluate((el) => {
+    const paragraph = el.closest('p');
+    return paragraph ? paragraph.getBoundingClientRect().height < el.getBoundingClientRect().height * 3 : false;
+  });
+  expect(shares).toBeTruthy();
+});
+
+test('the KaTeX stylesheet and fonts are served from the site itself', async ({ request }) => {
+  const css = await request.get(selfPage('/__fastr-docs/katex/katex.css'));
+  expect(css.ok()).toBeTruthy();
+  const body = await css.text();
+  // A CDN reference would be blocked by default-src 'self' and would leak
+  // readers to a third party.
+  expect(body).not.toContain('https://');
+  expect(body).not.toContain('.ttf');
+
+  const font = await request.get(selfPage('/__fastr-docs/katex/fonts/KaTeX_Main-Regular.woff2'));
+  expect(font.ok()).toBeTruthy();
+  expect(font.headers()['content-type']).toBe('font/woff2');
+  expect(font.headers()['cache-control']).toContain('immutable');
+});
+
+test('math falls back to its source without JavaScript', async ({ browser }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  const page = await context.newPage();
+  await page.goto(selfPage('/docs/build/math'));
+  await expect(page.locator('.fastr-docs-math').first()).toContainText('gamma');
+  await expect(page.locator('.fastr-docs-math .katex')).toHaveCount(0);
+  await context.close();
+});
+
+// A plugin bundle that belongs somewhere other than the page must not be loaded
+// by the page. The Mermaid bundle is megabytes and the frame fetches it itself.
+test('only page-side plugin runtimes are loaded as page scripts', async ({ page }) => {
+  await page.goto(selfPage('/docs/build/math'));
+  const scripts = await page.evaluate(() =>
+    [...document.querySelectorAll('script[src]')].map((s) => s.getAttribute('src')).filter((s) => s.includes('__fastr-docs')));
+  expect(scripts).toContain('/__fastr-docs/katex/katex.js');
+  expect(scripts).toContain('/__fastr-docs/mermaid/adapter.js');
+  expect(scripts).not.toContain('/__fastr-docs/mermaid/diagram.js');
+  expect(scripts.filter((s) => s.endsWith('.css'))).toHaveLength(0);
+});

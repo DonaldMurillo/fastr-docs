@@ -153,3 +153,52 @@ func normalizeAssetPrefix(prefix string) string {
 	}
 	return prefix
 }
+
+// PageScriptPlugin narrows which of a plugin's runtime assets belong in a
+// <script> tag on every page.
+//
+// Without this, a project picks page scripts by file extension, and any .js a
+// plugin contributes is loaded on every page. That is wrong for a plugin whose
+// bundle is meant for somewhere else: the Mermaid frame bundle is several
+// megabytes and is loaded by the frame document, never by the page.
+type PageScriptPlugin interface {
+	RuntimeAssetPlugin
+	// PageScripts returns the subset of RuntimeAssets names to load on every
+	// page. An empty slice means the plugin has no page script at all.
+	PageScripts() []string
+}
+
+// RuntimeScriptNames lists the assets that belong in a page <script> tag,
+// sorted, relative to the asset prefix.
+//
+// A plugin that does not implement PageScriptPlugin contributes every .js file
+// it owns, which is what a single-file browser runtime wants.
+func (r *Router) RuntimeScriptNames(exportBase string) ([]string, error) {
+	if r == nil {
+		return nil, errors.New("docs: RuntimeScriptNames requires a Router")
+	}
+	scripts := []string{"docs.js"}
+	for _, plugin := range r.plugins {
+		contributor, ok := plugin.(RuntimeAssetPlugin)
+		if !ok {
+			continue
+		}
+		if narrowed, ok := plugin.(PageScriptPlugin); ok {
+			for _, name := range narrowed.PageScripts() {
+				scripts = append(scripts, path.Clean(strings.TrimPrefix(strings.TrimSpace(name), "/")))
+			}
+			continue
+		}
+		files, err := contributor.RuntimeAssets()
+		if err != nil {
+			return nil, fmt.Errorf("docs: plugin %q assets: %w", plugin.Name(), err)
+		}
+		for name := range files {
+			if strings.HasSuffix(name, ".js") {
+				scripts = append(scripts, path.Clean(strings.TrimPrefix(strings.TrimSpace(name), "/")))
+			}
+		}
+	}
+	sort.Strings(scripts)
+	return scripts, nil
+}

@@ -109,6 +109,13 @@ func buildSite() (*generatedSite, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Page scripts are asked for by name rather than filtered by suffix: a
+	// plugin may ship JavaScript that belongs somewhere other than the page,
+	// such as the Mermaid bundle the sandboxed frame loads for itself.
+	scriptNames, err := router.RuntimeScriptNames(normalizeBase(exportBase(os.Args[1:])))
+	if err != nil {
+		return nil, err
+	}
 	precache := make([]string, 0, len(assetNames)+1)
 	for _, name := range assetNames {
 		precache = append(precache, router.AssetPrefix()+"/"+name)
@@ -140,7 +147,7 @@ func buildSite() (*generatedSite, error) {
 		uihost.WithThemeColor(router.ThemeColor()),
 		uihost.WithSitemap(uihost.SitemapConfig{BaseURL: publicSiteURL(), ExcludePaths: append([]string{"/__fastr-docs/"}, router.SitemapExcludePaths()...)}),
 		uihost.WithRobots(uihost.RobotsConfig{Disallow: []string{"/__fastr-docs/"}}),
-		uihost.WithExtraScripts(scriptAssets(router, assetNames)...),
+		uihost.WithExtraScripts(assetURLs(router, scriptNames)...),
 		uihost.WithAppIcon(docsite.DefaultIconPNG()),
 		uihost.WithPWA(uihost.PWAConfig{Name: "fastr-docs", ShortName: "fastr-docs", Precache: precache}),
 	)
@@ -291,14 +298,12 @@ func exportBase(args []string) string {
 	return ""
 }
 
-// scriptAssets returns the JavaScript the host should load, derived from the
-// collected runtime assets rather than a list repeated by hand.
-func scriptAssets(router *fastrdocs.Router, names []string) []string {
-	scripts := make([]string, 0, len(names))
+// assetURLs turns runtime asset names into the URLs the host serves them
+// from.
+func assetURLs(router *fastrdocs.Router, names []string) []string {
+	urls := make([]string, 0, len(names))
 	for _, name := range names {
-		if strings.HasSuffix(name, ".js") {
-			scripts = append(scripts, router.AssetPrefix()+"/"+name)
-		}
+		urls = append(urls, router.AssetPrefix()+"/"+name)
 	}
-	return scripts
+	return urls
 }

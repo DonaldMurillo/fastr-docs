@@ -4,6 +4,7 @@ import (
 	"os"
 
 	docs "github.com/DonaldMurillo/fastr-docs"
+	"github.com/DonaldMurillo/fastr-docs/plugin/katex"
 	"github.com/DonaldMurillo/fastr-docs/plugin/mermaid"
 	"github.com/DonaldMurillo/fastr-docs/plugin/openapi"
 	uiapp "github.com/DonaldMurillo/gofastr/core-ui/app"
@@ -37,6 +38,12 @@ func NewRouter() *docs.Router {
 	// Diagrams render inside a sandboxed frame so the pages keep their strict
 	// content policy. See docs/build/diagrams.
 	if err := router.Use(mermaid.Plugin{}); err != nil {
+		panic(err)
+	}
+	// Math renders in the page instead, because KaTeX needs no policy
+	// relaxation and inline math has to sit on the text baseline. See
+	// docs/build/math.
+	if err := router.Use(katex.Plugin{}); err != nil {
 		panic(err)
 	}
 	if err := router.Use(docs.MarkdownComponentsPlugin{Components: map[string]docs.MarkdownComponent{
@@ -152,6 +159,14 @@ func NewRouter() *docs.Router {
 		Description: "Render Mermaid diagrams without weakening the content policy.",
 		SourcePath:  contentFile("build-diagrams.md"),
 		Order:       8,
+		Offline:     true,
+		Badge:       docs.NavBadge{Label: "New", Tone: docs.NavBadgeToneInfo},
+	})
+	build.MustPage("math", docs.PageConfig{
+		Title:       "Math",
+		Description: "Write TeX with dollar delimiters and render it in the page.",
+		SourcePath:  contentFile("build-math.md"),
+		Order:       9,
 		Offline:     true,
 		Badge:       docs.NavBadge{Label: "New", Tone: docs.NavBadgeToneInfo},
 	})

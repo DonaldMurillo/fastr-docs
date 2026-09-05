@@ -57,10 +57,11 @@ type markdownVocabulary struct {
 	components map[string]MarkdownComponent
 	containers map[string]MarkdownContainer
 	raws       map[string]MarkdownRawComponent
+	transforms []namedSourceTransform
 }
 
 func (v markdownVocabulary) empty() bool {
-	return len(v.components) == 0 && len(v.containers) == 0 && len(v.raws) == 0
+	return len(v.components) == 0 && len(v.containers) == 0 && len(v.raws) == 0 && len(v.transforms) == 0
 }
 
 func (v markdownVocabulary) knows(name string) bool {
@@ -237,11 +238,15 @@ func markdownOffsetInFence(source string, offset int) bool {
 }
 
 func renderMarkdownWithComponents(source string, vocab markdownVocabulary, attrs map[string]string) (render.HTML, error) {
+	// Transforms run first so a shortcode body still reaches its component as
+	// the writer typed it, minus whatever a transform legitimately claimed.
+	source, lifted := applyMarkdownTransforms(source, vocab.transforms)
 	expanded, replacements, err := expandMarkdownShortcodes(source, vocab, false)
 	if err != nil {
 		return "", err
 	}
-	return applyShortcodes(renderDocsMarkdown(expanded, attrs), replacements), nil
+	html := applyShortcodes(renderDocsMarkdown(expanded, attrs), replacements)
+	return applyShortcodes(html, lifted), nil
 }
 
 // applyShortcodes substitutes rendered components back into the document.

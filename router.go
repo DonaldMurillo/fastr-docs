@@ -420,6 +420,8 @@ type Router struct {
 	markdownComponents    map[string]MarkdownComponent
 	markdownContainers    map[string]MarkdownContainer
 	markdownRaws          map[string]MarkdownRawComponent
+	gitMeta               *GitMetadataConfig
+	gitMetaResolved       bool
 	brand                 BrandConfig
 	themeConfig           ThemeConfig
 	ui                    UIStrings
@@ -1087,6 +1089,9 @@ func (r *Router) WriteSearchIndex(w io.Writer) error {
 
 // Validate checks the full route tree and returns all problems together.
 func (r *Router) Validate() error {
+	// Fills in edit links and last-updated dates before anything reads route
+	// metadata. Mount calls Validate, so both paths are covered.
+	r.resolveGitMetadata()
 	var problems []string
 	if r.registrationErr != nil {
 		problems = append(problems, r.registrationErr.Error())

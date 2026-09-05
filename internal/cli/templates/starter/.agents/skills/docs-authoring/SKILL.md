@@ -33,6 +33,11 @@ page-local configuration:
 RSS. After changing draft status, confirm the page is absent from all five,
 not just the sidebar.
 
+Do not hand-maintain `last_updated` or `edit_url`. `WithGitMetadata` in
+`docs/router.go` fills both from git history, and front matter only needs them
+when you want to override what history says. Set `DOCS_REPO_URL` to turn on
+edit links.
+
 ## Components in Markdown
 
 A shortcode vocabulary is registered by default. Nothing to import, nothing to

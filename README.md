@@ -186,6 +186,27 @@ When a project contains localized or versioned route siblings, the header emits
 route-aware Language and Version selectors that preserve the current page
 family.
 
+## Dates and edit links from git
+
+`edit_url` and `last_updated` can both be derived from history instead of being
+typed into every page and left to rot:
+
+```go
+router := docs.NewRouter(docs.WithGitMetadata(docs.GitMetadataConfig{
+    RepoURL: "https://github.com/acme/docs",
+    Branch:  "main",
+}))
+```
+
+Front matter always wins, so a page that declares either keeps what it
+declared. One `git log` covers the whole repository rather than one process per
+page. Pages served from an `embed.FS` have no file on disk and are skipped.
+
+It degrades silently by design: no git binary, no repository, or a shallow
+clone leaves every page exactly as authored, because a documentation build must
+not require version-control history to be present. `EditURLFor` replaces the
+built-in GitHub-style link for hosts that shape edit URLs differently.
+
 Use `WithPagefindPath` when the generated search bundle is served from a
 custom asset prefix, such as a reverse-proxy mount:
 

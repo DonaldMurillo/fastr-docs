@@ -23,6 +23,12 @@ func NewRouter() *docs.Router {
 		docs.WithVersion(os.Getenv("DOCS_CONTENT_VERSION")),
 		docs.WithTemplate(docs.ParseTemplate(os.Getenv("DOCS_TEMPLATE"))),
 		docs.WithSearchBackend(os.Getenv("DOCS_SEARCH_BACKEND")),
+		// Last-updated dates come from git history, so no page has to carry a
+		// hand-maintained date. Set DOCS_REPO_URL to also get edit links.
+		docs.WithGitMetadata(docs.GitMetadataConfig{
+			RepoURL: os.Getenv("DOCS_REPO_URL"),
+			Branch:  os.Getenv("DOCS_REPO_BRANCH"),
+		}),
 	)
 	if err := router.Use(docs.MarkdownComponentsPlugin{Components: map[string]docs.MarkdownComponent{
 		"callout": func(props map[string]string, body render.HTML) render.HTML {

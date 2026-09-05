@@ -1,0 +1,26 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Example content API",
+    "description": "A small contract used to exercise fastr-docs' OpenAPI plugin.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/v1/projects": {
+      "get": {
+        "summary": "List projects",
+        "operationId": "listProjects",
+        "responses": {"200": {"description": "A page of projects."}}
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Project": {
+        "type": "object",
+        "description": "A project in the workspace.",
+        "properties": {"id": {"type": "string"}, "name": {"type": "string"}}
+      }
+    }
+  }
+}

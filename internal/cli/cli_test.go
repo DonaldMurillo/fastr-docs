@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -539,4 +540,139 @@ func TestInitShipsSkillsToBothAgentDirectoriesAndTheGitignore(t *testing.T) {
 			t.Fatalf(".gitignore missing %q:\n%s", rule, ignore)
 		}
 	}
+}
+
+func TestCheckReportsEveryKindOfSkillDrift(t *testing.T) {
+	target := t.TempDir()
+	var output bytes.Buffer
+	if err := Run([]string{"init", target, "--name", "Drift Docs", "--module", "example.com/drift-docs"}, &output, &output); err != nil {
+		t.Fatalf("init: %v\n%s", err, output.String())
+	}
+	if drift, err := skillDrift(target); err != nil || len(drift) != 0 {
+		t.Fatalf("skillDrift() on a fresh project = %v, %v; want none", drift, err)
+	}
+
+	// One of each: an edit that landed only in the authored copy, a deleted
+	// mirror, and a file that exists only in the mirror.
+	edited := filepath.Join(target, filepath.FromSlash(agentSkillsDir), "docs-blog", "SKILL.md")
+	body, err := os.ReadFile(edited)
+	if err != nil {
+		t.Fatalf("read %s: %v", edited, err)
+	}
+	if err := os.WriteFile(edited, append(body, "\nA later edit.\n"...), 0o644); err != nil {
+		t.Fatalf("write %s: %v", edited, err)
+	}
+	if err := os.Remove(filepath.Join(target, filepath.FromSlash(claudeSkillsDir), "docs-theming", "SKILL.md")); err != nil {
+		t.Fatalf("remove mirrored skill: %v", err)
+	}
+	orphan := filepath.Join(target, filepath.FromSlash(claudeSkillsDir), "orphan")
+	if err := os.MkdirAll(orphan, 0o755); err != nil {
+		t.Fatalf("create orphan: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(orphan, "SKILL.md"), []byte("stale"), 0o644); err != nil {
+		t.Fatalf("write orphan: %v", err)
+	}
+
+	drift, err := skillDrift(target)
+	if err != nil {
+		t.Fatalf("skillDrift: %v", err)
+	}
+	for _, want := range []string{
+		"docs-blog/SKILL.md: differs between " + agentSkillsDir + " and " + claudeSkillsDir,
+		"docs-theming/SKILL.md: missing from " + claudeSkillsDir,
+		"orphan/SKILL.md: present in " + claudeSkillsDir + " but not " + agentSkillsDir,
+	} {
+		if !slices.Contains(drift, want) {
+			t.Fatalf("skillDrift() = %v, missing %q", drift, want)
+		}
+	}
+
+	output.Reset()
+	if err := Run([]string{"check", target}, &output, &output); err == nil {
+		t.Fatal("check passed on a drifted project")
+	} else if !strings.Contains(err.Error(), "agent skills have drifted") {
+		t.Fatalf("check error did not name the drift: %v", err)
+	}
+
+	// sync-skills alone repairs the stale and missing copies but leaves the
+	// orphan, because deleting is opt-in.
+	output.Reset()
+	if err := Run([]string{"sync-skills", target}, &output, &output); err != nil {
+		t.Fatalf("sync-skills: %v\n%s", err, output.String())
+	}
+	drift, err = skillDrift(target)
+	if err != nil {
+		t.Fatalf("skillDrift after sync: %v", err)
+	}
+	if len(drift) != 1 || !strings.HasPrefix(drift[0], "orphan/SKILL.md") {
+		t.Fatalf("skillDrift() after sync = %v, want only the orphan", drift)
+	}
+
+	output.Reset()
+	if err := Run([]string{"sync-skills", target, "--prune"}, &output, &output); err != nil {
+		t.Fatalf("sync-skills --prune: %v\n%s", err, output.String())
+	}
+	if drift, err := skillDrift(target); err != nil || len(drift) != 0 {
+		t.Fatalf("skillDrift() after prune = %v, %v; want none", drift, err)
+	}
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Fatalf("prune left the empty orphan directory behind: %v", err)
+	}
+}
+
+// TestDogfoodSiteSkillsMatchTheTemplate guards the copies inside this
+// repository. site/ is a checked-in generated project, so its two skill
+// directories have to stay identical to the template they came from; nothing
+// else would notice if an edit landed in only one of the three.
+func TestDogfoodSiteSkillsMatchTheTemplate(t *testing.T) {
+	siteRoot := filepath.Join("..", "..", "site")
+	if _, err := os.Stat(siteRoot); os.IsNotExist(err) {
+		t.Skip("no dogfood site in this checkout")
+	}
+	siteAgents, err := skillFiles(filepath.Join(siteRoot, filepath.FromSlash(agentSkillsDir)))
+	if err != nil {
+		t.Fatalf("read site %s: %v", agentSkillsDir, err)
+	}
+	siteClaude, err := skillFiles(filepath.Join(siteRoot, filepath.FromSlash(claudeSkillsDir)))
+	if err != nil {
+		t.Fatalf("read site %s: %v", claudeSkillsDir, err)
+	}
+
+	template := make(map[string][]byte)
+	for _, skill := range starterSkills() {
+		rel := skill + "/SKILL.md"
+		body, err := starterTemplates.ReadFile("templates/starter/" + agentSkillsDir + "/" + rel)
+		if err != nil {
+			t.Fatalf("read template skill %s: %v", rel, err)
+		}
+		template[rel] = body
+	}
+
+	for _, pair := range []struct {
+		name  string
+		files map[string][]byte
+	}{
+		{"site/" + agentSkillsDir, siteAgents},
+		{"site/" + claudeSkillsDir, siteClaude},
+	} {
+		if len(pair.files) != len(template) {
+			t.Fatalf("%s has %d skill files, template has %d", pair.name, len(pair.files), len(template))
+		}
+		for rel, want := range template {
+			got, ok := pair.files[rel]
+			if !ok {
+				t.Fatalf("%s is missing %s", pair.name, rel)
+			}
+			// The site copies are checked in, so on Windows they arrive with
+			// CRLF while the embedded template keeps LF. Compare content, not
+			// the checkout's line-ending policy.
+			if !bytes.Equal(normalizeNewlines(got), normalizeNewlines(want)) {
+				t.Fatalf("%s/%s has drifted from the starter template; copy the template version across", pair.name, rel)
+			}
+		}
+	}
+}
+
+func normalizeNewlines(body []byte) []byte {
+	return bytes.ReplaceAll(body, []byte("\r\n"), []byte("\n"))
 }

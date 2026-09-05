@@ -31,8 +31,9 @@ Task-specific guidance lives in skill files, one per workflow:
 | `docs-publishing` | Check, build, export, deploy, search backends |
 
 They are authored in `.agents/skills/` and mirrored to `.claude/skills/`,
-which is where Claude Code loads them. Edit the `.agents/skills/` copy and
-copy it across, or re-run `fastr-docs init --force`.
+which is where Claude Code loads them. Edit the `.agents/skills/` copy, then
+run `fastr-docs sync-skills .`. `fastr-docs check .` fails when the two have
+drifted, so the two agents cannot quietly end up reading different rules.
 
 ## Framework UI
 

@@ -14,7 +14,15 @@ fastr-docs build .              # GoFastr build gates and compiler
 fastr-docs dev .                # watch, rebuild, refresh open tabs
 fastr-docs export . --out dist  # static PWA export
 fastr-docs upgrade .            # review GoFastr migrations
+fastr-docs sync-skills .        # copy .agents/skills over .claude/skills
 ```
+
+`check` fails if `.claude/skills` has drifted from `.agents/skills`. They are
+one authored set copied to two places, so a difference means an edit landed in
+only one and one of your agents is reading stale guidance. Edit the
+`.agents/skills` copy, then run `sync-skills`. Add `--prune` to delete files
+that exist only under `.claude/skills`; that is opt-in, because a file there
+may be a deliberate Claude-only skill rather than a leftover.
 
 `go run .` runs the server once with no watcher. Use it when the dev loop's
 rebuilds get in the way.

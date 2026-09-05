@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -68,6 +69,8 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		return runGofastrUpgrade(args[1:], stdout, stderr)
 	case "export":
 		return runExport(args[1:], stdout, stderr)
+	case "sync-skills":
+		return runSyncSkills(args[1:], stdout, stderr)
 	default:
 		return fmt.Errorf("unknown command %q (run `fastr-docs help`)", args[0])
 	}
@@ -166,8 +169,11 @@ func runCheck(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("resolve target: %w", err)
 	}
 	required := []string{"go.mod", "main.go", "docs/router.go", "docs/icon.go", "content/index.md", "content/getting-started.md", "content/blog/index.md", "openapi.json", "public/favicon.svg", ".gitignore", "agents/claude.md"}
+	// Only the authored copy is required here. The .claude mirror is the
+	// drift check's job, which reports a stale or orphaned file rather than
+	// just naming an absent one.
 	for _, skill := range starterSkills() {
-		required = append(required, agentSkillsDir+"/"+skill+"/SKILL.md", claudeSkillsDir+"/"+skill+"/SKILL.md")
+		required = append(required, agentSkillsDir+"/"+skill+"/SKILL.md")
 	}
 	var missing []string
 	for _, name := range required {
@@ -196,6 +202,14 @@ func runCheck(args []string, stdout, stderr io.Writer) error {
 		if !strings.Contains(source, marker) {
 			return fmt.Errorf("project check failed; docs/router.go does not contain %q", marker)
 		}
+	}
+	drift, err := skillDrift(absTarget)
+	if err != nil {
+		return fmt.Errorf("project check failed; %w", err)
+	}
+	if len(drift) > 0 {
+		return fmt.Errorf("project check failed; agent skills have drifted:\n  %s\nedit %s, then run `fastr-docs sync-skills .` (add --prune to delete files that exist only in %s)",
+			strings.Join(drift, "\n  "), agentSkillsDir, claudeSkillsDir)
 	}
 	if err := validateProjectRouter(absTarget, stdout, stderr); err != nil {
 		return fmt.Errorf("project check failed; Router validation: %w", err)
@@ -766,24 +780,187 @@ func writeStarter(target string, data templateData, force bool) error {
 	return mirrorSkills(target, force)
 }
 
-// mirrorSkills copies each .agents/skills entry to .claude/skills so the same
-// guidance is discoverable by Claude Code without a second authored copy.
-func mirrorSkills(target string, force bool) error {
-	for _, skill := range starterSkills() {
-		source := filepath.Join(target, filepath.FromSlash(agentSkillsDir), skill, "SKILL.md")
-		body, err := os.ReadFile(source)
-		if err != nil {
-			return fmt.Errorf("read skill %s: %w", skill, err)
-		}
-		destination := filepath.Join(target, filepath.FromSlash(claudeSkillsDir), skill, "SKILL.md")
-		if _, err := os.Stat(destination); err == nil && !force {
+// mirrorSkills copies .agents/skills to .claude/skills so the same guidance is
+// discoverable by Claude Code without a second authored copy. It walks what is
+// on disk rather than the template list, so a project's own skills are mirrored
+// too.
+func mirrorSkills(target string, overwrite bool) error {
+	sources, err := skillFiles(filepath.Join(target, filepath.FromSlash(agentSkillsDir)))
+	if err != nil {
+		return fmt.Errorf("read %s: %w", agentSkillsDir, err)
+	}
+	for _, rel := range sortedKeys(sources) {
+		destination := filepath.Join(target, filepath.FromSlash(claudeSkillsDir), filepath.FromSlash(rel))
+		if _, err := os.Stat(destination); err == nil && !overwrite {
 			return fmt.Errorf("refusing to overwrite %s; use --force", destination)
 		}
 		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 			return fmt.Errorf("create %s: %w", filepath.Dir(destination), err)
 		}
-		if err := os.WriteFile(destination, body, 0o644); err != nil {
+		if err := os.WriteFile(destination, sources[rel], 0o644); err != nil {
 			return fmt.Errorf("write %s: %w", destination, err)
+		}
+	}
+	return nil
+}
+
+// skillFiles reads a skills directory into slash-separated relative paths. A
+// missing directory is not an error; it reports as an empty set so the drift
+// check can name it rather than failing to run.
+func skillFiles(root string) (map[string][]byte, error) {
+	files := make(map[string][]byte)
+	if _, err := os.Stat(root); errors.Is(err, fs.ErrNotExist) {
+		return files, nil
+	}
+	err := filepath.WalkDir(root, func(current string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(root, current)
+		if err != nil {
+			return err
+		}
+		body, err := os.ReadFile(current)
+		if err != nil {
+			return err
+		}
+		files[filepath.ToSlash(rel)] = body
+		return nil
+	})
+	return files, err
+}
+
+func sortedKeys(files map[string][]byte) []string {
+	keys := make([]string, 0, len(files))
+	for key := range files {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// skillDrift reports every way .claude/skills disagrees with .agents/skills.
+// The two are one authored set copied to two locations, so any difference means
+// an edit landed in only one of them and one of the agents is reading stale
+// guidance.
+func skillDrift(target string) ([]string, error) {
+	agents, err := skillFiles(filepath.Join(target, filepath.FromSlash(agentSkillsDir)))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", agentSkillsDir, err)
+	}
+	claude, err := skillFiles(filepath.Join(target, filepath.FromSlash(claudeSkillsDir)))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", claudeSkillsDir, err)
+	}
+	var drift []string
+	for _, rel := range sortedKeys(agents) {
+		switch other, ok := claude[rel]; {
+		case !ok:
+			drift = append(drift, rel+": missing from "+claudeSkillsDir)
+		case !bytes.Equal(agents[rel], other):
+			drift = append(drift, rel+": differs between "+agentSkillsDir+" and "+claudeSkillsDir)
+		}
+	}
+	for _, rel := range sortedKeys(claude) {
+		if _, ok := agents[rel]; !ok {
+			drift = append(drift, rel+": present in "+claudeSkillsDir+" but not "+agentSkillsDir)
+		}
+	}
+	sort.Strings(drift)
+	return drift, nil
+}
+
+func runSyncSkills(args []string, stdout, stderr io.Writer) error {
+	target := "."
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		target = args[0]
+	}
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return fmt.Errorf("resolve target: %w", err)
+	}
+	prune := false
+	for _, arg := range args {
+		if arg == "--prune" {
+			prune = true
+		}
+	}
+	if err := mirrorSkills(absTarget, true); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(stdout, "mirrored %s to %s in %s\n", agentSkillsDir, claudeSkillsDir, absTarget)
+	if !prune {
+		return nil
+	}
+	// Deleting is opt-in. A file that exists only under .claude/skills may be a
+	// deliberate Claude-only skill rather than a leftover, and this cannot tell
+	// the difference.
+	removed, err := pruneMirroredSkills(absTarget)
+	if err != nil {
+		return err
+	}
+	for _, rel := range removed {
+		_, _ = fmt.Fprintf(stdout, "removed %s/%s\n", claudeSkillsDir, rel)
+	}
+	return nil
+}
+
+// pruneMirroredSkills deletes files under .claude/skills with no counterpart in
+// .agents/skills and reports what it removed.
+func pruneMirroredSkills(target string) ([]string, error) {
+	agents, err := skillFiles(filepath.Join(target, filepath.FromSlash(agentSkillsDir)))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", agentSkillsDir, err)
+	}
+	claudeRoot := filepath.Join(target, filepath.FromSlash(claudeSkillsDir))
+	claude, err := skillFiles(claudeRoot)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", claudeSkillsDir, err)
+	}
+	var removed []string
+	for _, rel := range sortedKeys(claude) {
+		if _, ok := agents[rel]; ok {
+			continue
+		}
+		if err := os.Remove(filepath.Join(claudeRoot, filepath.FromSlash(rel))); err != nil {
+			return nil, fmt.Errorf("remove %s: %w", rel, err)
+		}
+		removed = append(removed, rel)
+	}
+	if len(removed) > 0 {
+		if err := removeEmptyDirs(claudeRoot); err != nil {
+			return nil, err
+		}
+	}
+	return removed, nil
+}
+
+// removeEmptyDirs deletes directories left behind by pruning, without touching
+// the root itself.
+func removeEmptyDirs(root string) error {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		child := filepath.Join(root, entry.Name())
+		if err := removeEmptyDirs(child); err != nil {
+			return err
+		}
+		remaining, err := os.ReadDir(child)
+		if err != nil {
+			return err
+		}
+		if len(remaining) == 0 {
+			if err := os.Remove(child); err != nil {
+				return fmt.Errorf("remove %s: %w", child, err)
+			}
 		}
 	}
 	return nil
@@ -816,6 +993,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  build [dir]  run GoFastr's build gates and compile the project")
 	_, _ = fmt.Fprintln(w, "  export [dir] export a static PWA to dist (use --out or --pagefind to change it)")
 	_, _ = fmt.Fprintln(w, "  upgrade [dir] guide or apply GoFastr framework migrations")
+	_, _ = fmt.Fprintln(w, "  sync-skills [dir] copy .agents/skills over .claude/skills (--prune drops extras)")
 }
 
 func humanize(name string) string {

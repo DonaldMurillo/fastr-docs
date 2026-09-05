@@ -62,6 +62,24 @@ Skills are authored once under `.agents/skills/` and mirrored to
 directory under `.agents/skills/`; `starterSkills()` reads the embedded
 filesystem, so no code change is needed.
 
+## Skill drift
+
+The same skills live in four places: the template source, a generated
+project's two copies, and `site/`'s two copies. Two checks keep them honest,
+and both must stay in place.
+
+`fastr-docs check` fails when a project's `.claude/skills` disagrees with its
+`.agents/skills`, reporting stale, missing, and orphaned files by name.
+`fastr-docs sync-skills` repairs it; `--prune` also deletes files that exist
+only under `.claude/skills`, which is opt-in because such a file may be a
+deliberate Claude-only skill.
+
+`TestDogfoodSiteSkillsMatchTheTemplate` covers this repository: it fails if
+either of `site/`'s copies drifts from the starter template. After editing a
+template skill, copy it to `site/.agents/skills/` and `site/.claude/skills/`.
+It normalizes line endings, because the checked-in site copies arrive with
+CRLF on Windows while the embedded template keeps LF.
+
 ## Checks
 
 ```sh

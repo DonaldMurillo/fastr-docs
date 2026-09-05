@@ -6,10 +6,14 @@ for guidance on authoring a docs project, that lives in the skills under
 
 ## Toolchain
 
-Go 1.27. If `go` is missing from `PATH`, the working toolchain is at
-`C:\Users\Dom\sdk\go.bak\bin`. `C:\Program Files\Go\bin` and
-`C:\Users\Dom\go\go\bin` are Go 1.26.3 trees with `go.exe` removed; they are on
-`PATH` but do not work.
+`go.mod` requires Go 1.27, which arrives through toolchain switching rather
+than a local install. The only working local toolchain is Go 1.25.5 at
+`C:\Users\Dom\sdk\go`, and `GOROOT` and `PATH` point there.
+
+If `go` ever goes missing from `PATH` again, that is the cause: two Go 1.26.3
+trees, `C:\Program Files\Go` and `C:\Users\Dom\go\go`, still sit on `PATH` with
+`go.exe` deleted from them and only `gofmt.exe` left. They are dead but
+harmless as long as `C:\Users\Dom\sdk\go\bin` comes first.
 
 ## Modules
 

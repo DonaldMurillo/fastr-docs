@@ -22,8 +22,11 @@ func (r *Router) wrapDocPage(route *Route, body render.HTML, headings []Heading)
 		body = render.Join(body, render.Tag("p", map[string]string{"class": "fastr-docs-edit-link"},
 			render.Tag("a", map[string]string{
 				"href": editURL, "rel": "nofollow noopener", "target": "_blank",
-			}, render.Text("Edit this page ↗")),
+			}, render.Text(r.UIStrings().EditPage)),
 		))
+	}
+	if metadata := r.docMetadata(route); metadata != "" {
+		body = render.Join(metadata, body)
 	}
 	cfg := ui.DocLayoutConfig{
 		Crumbs: r.docCrumbs(route),
@@ -43,13 +46,13 @@ func (r *Router) wrapDocPage(route *Route, body render.HTML, headings []Heading)
 				TargetSelector:  "h2[id], h3[id]",
 				Class:           "fastr-docs-toc fastr-docs-toc--rail",
 			})
-			cfg.Toc = render.Join(rail, docsTocSelect(headings))
+			cfg.Toc = render.Join(rail, r.docsTocSelect(headings))
 		}
 	}
 	return ui.DocLayout(cfg, body)
 }
 
-func docsTocSelect(headings []Heading) render.HTML {
+func (r *Router) docsTocSelect(headings []Heading) render.HTML {
 	options := make([]ui.SelectOption, 0, len(headings))
 	for i, heading := range headings {
 		options = append(options, ui.SelectOption{
@@ -61,13 +64,49 @@ func docsTocSelect(headings []Heading) render.HTML {
 	return ui.Select(ui.SelectConfig{
 		Name:    "docs-toc",
 		ID:      "fastr-docs-toc-select",
-		Label:   "On this page",
+		Label:   r.UIStrings().OnThisPage,
 		Options: options,
 		Class:   "fastr-docs-toc-select",
 		ExtraAttrs: html.Attrs{
 			"data-docs-toc-select": "true",
 		},
 	})
+}
+
+func (r *Router) docMetadata(route *Route) render.HTML {
+	if route == nil {
+		return ""
+	}
+	meta := route.Metadata
+	if meta.DateModified == "" && meta.DatePublished == "" && len(meta.Authors) == 0 {
+		return ""
+	}
+	labels := r.UIStrings()
+	parts := make([]render.HTML, 0, 3)
+	if meta.DateModified != "" {
+		parts = append(parts, render.Join(
+			render.Text(labels.LastUpdated+" "),
+			render.Tag("time", map[string]string{"datetime": meta.DateModified}, render.Text(meta.DateModified)),
+		))
+	} else if meta.DatePublished != "" {
+		parts = append(parts, render.Join(
+			render.Text(labels.Published+" "),
+			render.Tag("time", map[string]string{"datetime": meta.DatePublished}, render.Text(meta.DatePublished)),
+		))
+	}
+	if len(meta.Authors) > 0 {
+		parts = append(parts, render.Text(labels.By+" "+strings.Join(meta.Authors, ", ")))
+	}
+	content := make([]render.HTML, 0, len(parts)*2-1)
+	for i, part := range parts {
+		if i > 0 {
+			content = append(content, render.Text(" · "))
+		}
+		content = append(content, part)
+	}
+	return render.Tag("p", map[string]string{
+		"class": "fastr-docs-page-meta", "data-docs-page-meta": "true",
+	}, content...)
 }
 
 func (r *Router) docCrumbs(route *Route) []ui.DocCrumb {

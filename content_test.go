@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/DonaldMurillo/gofastr/core/render"
 )
@@ -12,6 +13,7 @@ import (
 func TestParseMarkdownFrontMatterSupportsAliasesAndStripsHeader(t *testing.T) {
 	document, err := ParseMarkdown("---\n" +
 		"title: Routing\n" +
+		"slug: guide\n" +
 		"description: Register pages\n" +
 		"draft: true\n" +
 		"no_index: true\n" +
@@ -23,6 +25,9 @@ func TestParseMarkdownFrontMatterSupportsAliasesAndStripsHeader(t *testing.T) {
 	}
 	if document.Metadata.Title != "Routing" || document.Metadata.Description != "Register pages" {
 		t.Fatalf("metadata = %#v", document.Metadata)
+	}
+	if document.Metadata.Slug != "guide" {
+		t.Fatalf("slug metadata = %q", document.Metadata.Slug)
 	}
 	if !document.Metadata.Draft || !document.Metadata.NoIndex {
 		t.Fatalf("boolean metadata = %#v", document.Metadata)
@@ -95,6 +100,110 @@ func TestMarkdownCollectionRegistersMetadataAndFiltersDraftsLocaleAndVersion(t *
 	}
 	if !foundFrench {
 		t.Fatalf("locale-prefixed routes = %#v", prefixed.PublishedRoutes())
+	}
+}
+
+func TestMarkdownCollectionFSSupportsVirtualContentAndCollectionDrafts(t *testing.T) {
+	content := fstest.MapFS{
+		"docs/index.md":    &fstest.MapFile{Data: []byte("# Embedded docs\n\nStart here.")},
+		"docs/guide.md":    &fstest.MapFile{Data: []byte("---\ntitle: Embedded guide\norder: 2\n---\n# Guide\n\nRead this.")},
+		"docs/draft.md":    &fstest.MapFile{Data: []byte("---\ntitle: Embedded draft\ndraft: true\n---\n# Draft\n\nPreview only.")},
+		"docs/_partial.md": &fstest.MapFile{Data: []byte("# Hidden\n\nNot a route.")},
+	}
+	r := NewRouter()
+	if err := r.MarkdownCollectionFS("/docs", content, "docs", CollectionConfig{IncludeDrafts: true}); err != nil {
+		t.Fatalf("MarkdownCollectionFS() error = %v", err)
+	}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if got := len(r.PublishedRoutes()); got != 3 {
+		t.Fatalf("published virtual routes = %d, want 3", got)
+	}
+	var guide *Route
+	for _, route := range r.Routes() {
+		if route.Path == "/docs/guide" {
+			guide = route
+			break
+		}
+	}
+	if guide == nil || guide.Title != "Embedded guide" {
+		t.Fatalf("virtual guide route = %#v", guide)
+	}
+	if source := pageSource(guide.page); strings.Contains(source, "title: Embedded guide") {
+		t.Fatal("virtual collection body retained front matter")
+	}
+}
+
+func TestCollectionDraftVisibilityDoesNotLeakAcrossCollections(t *testing.T) {
+	content := fstest.MapFS{
+		"public.md": &fstest.MapFile{Data: []byte("---\ntitle: Public\n---\n# Public")},
+		"draft.md":  &fstest.MapFile{Data: []byte("---\ntitle: Draft\ndraft: true\n---\n# Draft")},
+	}
+	r := NewRouter()
+	if err := r.MarkdownCollectionFS("/preview", content, ".", CollectionConfig{IncludeDrafts: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.MarkdownCollectionFS("/public", content, ".", CollectionConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	if r.routes["/preview/draft"] == nil || !r.routePublished(r.routes["/preview/draft"]) {
+		t.Fatal("collection draft was not visible in its opted-in collection")
+	}
+	if r.routes["/public/draft"] == nil || r.routePublished(r.routes["/public/draft"]) {
+		t.Fatal("collection draft visibility leaked into another collection")
+	}
+}
+
+func TestMarkdownCollectionSupportsCustomSlugs(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "reference.md"), []byte("---\ntitle: Routing reference\nslug: guides/router\n---\n# Routing reference\n\nStart here."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := NewRouter()
+	if err := r.MarkdownCollection("/docs", dir, CollectionConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	routes := r.PublishedRoutes()
+	if len(routes) != 1 || routes[0].Path != "/docs/guides/router" || routes[0].Metadata.Slug != "guides/router" {
+		t.Fatalf("custom slug route = %#v", routes)
+	}
+}
+
+func TestMarkdownCollectionRejectsUnsafeSlugs(t *testing.T) {
+	for _, slug := range []string{"../outside", "guides/../router", "guide?tab=one", ".hidden"} {
+		t.Run(slug, func(t *testing.T) {
+			dir := t.TempDir()
+			body := "---\ntitle: Invalid\nslug: " + slug + "\n---\n# Invalid"
+			if err := os.WriteFile(filepath.Join(dir, "page.md"), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := NewRouter().MarkdownCollection("/docs", dir, CollectionConfig{}); err == nil {
+				t.Fatalf("slug %q was accepted", slug)
+			}
+		})
+	}
+}
+
+func TestMarkdownCollectionPluginAcceptsVirtualContent(t *testing.T) {
+	r := NewRouter()
+	plugin := MarkdownCollectionPlugin{
+		Path: "/handbook",
+		FS: fstest.MapFS{
+			"pages/index.md": &fstest.MapFile{Data: []byte("---\ntitle: Handbook\n---\n# Handbook\n\nStart here.")},
+		},
+		Root:   "pages",
+		Config: CollectionConfig{OrderStart: 3},
+	}
+	if err := r.Use(plugin); err != nil {
+		t.Fatalf("Use(MarkdownCollectionPlugin) error = %v", err)
+	}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	routes := r.PublishedRoutes()
+	if len(routes) != 1 || routes[0].Path != "/handbook" || routes[0].Order != 3 {
+		t.Fatalf("virtual plugin routes = %#v", routes)
 	}
 }
 
@@ -197,5 +306,58 @@ func TestMarkdownComponentsPluginRegistersGlobalVocabulary(t *testing.T) {
 	page := r.Routes()[0]
 	if !strings.Contains(string((&pageComponent{router: r, route: page}).Render()), `data-global-component="note"`) {
 		t.Fatal("global Markdown component did not render")
+	}
+}
+
+func TestContentIssuesFindBrokenRoutesAndAnchorsWithSourceLocations(t *testing.T) {
+	r := NewRouter()
+	r.MustPage("/docs", PageConfig{
+		Title: "Docs", Description: "Docs", Order: 1,
+		Source: "# Docs\n\n[Guide](/guide#setup)\n\n[Missing](/missing)\n\n[Bad anchor](/guide#nope)",
+	})
+	r.MustPage("/guide", PageConfig{
+		Title: "Guide", Description: "Guide", Order: 2,
+		Source: "# Guide\n\n## Setup",
+	})
+
+	issues := r.ContentIssues()
+	if len(issues) != 2 {
+		t.Fatalf("ContentIssues() = %#v, want missing route and anchor", issues)
+	}
+	if issues[0].Line != 5 || issues[1].Line != 7 {
+		t.Fatalf("issue locations = %#v, want lines 5 and 7", issues)
+	}
+	if !strings.Contains(issues[0].Message, "unpublished route") || !strings.Contains(issues[1].Message, "does not exist") {
+		t.Fatalf("issue messages = %#v", issues)
+	}
+	if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "content /docs:5") {
+		t.Fatalf("Validate() error = %v, want source-level content diagnostics", err)
+	}
+}
+
+func TestContentIssuesResolveRelativeLinksAndIgnoreExternalLinksAndFences(t *testing.T) {
+	r := NewRouter()
+	r.MustPage("/docs/index", PageConfig{
+		Title: "Docs", Description: "Docs", Order: 1,
+		Source: "# Docs\n\n[Guide](guide)\n\n[External](https://example.com/docs)\n\n```md\n[Ignored](/missing)\n```",
+	})
+	r.MustPage("/docs/guide", PageConfig{
+		Title: "Guide", Description: "Guide", Order: 2,
+		Source: "# Guide\n\n## Setup",
+	})
+	if issues := r.ContentIssues(); len(issues) != 0 {
+		t.Fatalf("ContentIssues() = %#v, want relative and fenced links to pass", issues)
+	}
+}
+
+func TestContentIssuesRejectUnsafeLinkSchemes(t *testing.T) {
+	r := NewRouter()
+	r.MustPage("/docs", PageConfig{
+		Title: "Docs", Description: "Docs", Order: 1,
+		Source: "# Docs\n\n[Unsafe](javascript:alert(1))",
+	})
+	issues := r.ContentIssues()
+	if len(issues) != 1 || !strings.Contains(issues[0].Message, "unsupported link scheme") {
+		t.Fatalf("unsafe link issues = %#v", issues)
 	}
 }

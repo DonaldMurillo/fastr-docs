@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,7 +18,9 @@ import (
 // Markdown pages can provide the same fields in a YAML front matter block.
 type ContentMetadata struct {
 	Title         string            `json:"title,omitempty" yaml:"title,omitempty"`
+	Slug          string            `json:"slug,omitempty" yaml:"slug,omitempty"`
 	Description   string            `json:"description,omitempty" yaml:"description,omitempty"`
+	Excerpt       string            `json:"excerpt,omitempty" yaml:"excerpt,omitempty"`
 	Draft         bool              `json:"draft,omitempty" yaml:"draft,omitempty"`
 	NoIndex       bool              `json:"noIndex,omitempty" yaml:"noindex,omitempty"`
 	EditURL       string            `json:"editUrl,omitempty" yaml:"edit_url,omitempty"`
@@ -81,10 +84,10 @@ func LoadMarkdownFile(path string) (MarkdownDocument, error) {
 	return ParseMarkdown(string(body))
 }
 
-// CollectionConfig configures MarkdownCollection. Files are discovered in
-// lexical path order, while each document can override its order in front
-// matter. Drafts remain registered for validation and preview, but are not
-// published unless the Router is configured with WithIncludeDrafts.
+// CollectionConfig configures MarkdownCollection and MarkdownCollectionFS.
+// Files are discovered in lexical path order, while each document can
+// override its order in front matter. Drafts remain registered for validation
+// and preview, but IncludeDrafts or WithIncludeDrafts makes them publishable.
 type CollectionConfig struct {
 	OrderStart     int
 	Offline        bool
@@ -102,13 +105,16 @@ type CollectionConfig struct {
 // maps to the collection prefix; nested files map to their relative path.
 // This is the reusable content-collection primitive behind generated sites.
 func (r *Router) MarkdownCollection(prefix, dir string, cfg CollectionConfig) error {
+	return r.markdownCollection(prefix, dir, cfg, "", false)
+}
+
+func (r *Router) markdownCollection(prefix, dir string, cfg CollectionConfig, version string, prefixVersion bool) error {
 	if r == nil {
 		return errors.New("docs: MarkdownCollection requires a Router")
 	}
 	if strings.TrimSpace(dir) == "" {
 		return errors.New("docs: MarkdownCollection requires a directory")
 	}
-	prefix = normalizePath(prefix)
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -151,50 +157,215 @@ func (r *Router) MarkdownCollection(prefix, dir string, cfg CollectionConfig) er
 		}
 		rel = filepath.ToSlash(rel)
 		rel = strings.TrimSuffix(rel, filepath.Ext(rel))
-		if strings.HasSuffix(rel, "/index") {
-			rel = strings.TrimSuffix(rel, "/index")
-		} else if rel == "index" {
-			rel = ""
-		}
-		routePrefix := prefix
-		if cfg.LocalePrefix && meta.Locale != "" && meta.Locale != cfg.DefaultLocale && !strings.HasPrefix(rel, meta.Locale+"/") {
-			routePrefix = joinPath(routePrefix, meta.Locale)
-		}
-		if cfg.VersionPrefix && meta.Version != "" && meta.Version != cfg.DefaultVersion && !strings.HasPrefix(rel, meta.Version+"/") {
-			routePrefix = joinPath(routePrefix, meta.Version)
-		}
-		routePath := routePrefix
-		if rel != "" {
-			routePath = joinPath(routePrefix, rel)
-		}
-		title := meta.Title
-		if title == "" {
-			title = humanizeContentName(filepath.Base(rel))
-			if rel == "" {
-				title = humanizeContentName(filepath.Base(dir))
-			}
-		}
-		description := meta.Description
-		if description == "" {
-			description = firstParagraph(document.Body)
-		}
-		order := meta.Order
-		if order < 1 {
-			order = cfg.OrderStart + index
-		}
-		if err := r.Page(routePath, PageConfig{
-			Title:       title,
-			Description: description,
-			SourcePath:  path,
-			Order:       order,
-			Offline:     cfg.Offline,
-			Hidden:      false,
-			Metadata:    meta,
-		}); err != nil {
+		rel = collectionRelativePath(rel)
+		if err := r.registerCollectionDocument(prefix, dir, rel, path, document, index, cfg, version, prefixVersion); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// MarkdownCollectionFS registers Markdown content from any fs.FS, including
+// embed.FS, fstest.MapFS, and application-provided virtual filesystems. `root`
+// is an fs.ValidPath relative to content; use "." for the filesystem root.
+// Unlike MarkdownCollection, the document body is captured at registration so
+// a virtual filesystem does not need to masquerade as an OS path.
+func (r *Router) MarkdownCollectionFS(prefix string, content fs.FS, root string, cfg CollectionConfig) error {
+	return r.markdownCollectionFS(prefix, content, root, cfg, "", false)
+}
+
+func (r *Router) markdownCollectionFS(prefix string, content fs.FS, root string, cfg CollectionConfig, version string, prefixVersion bool) error {
+	if r == nil {
+		return errors.New("docs: MarkdownCollectionFS requires a Router")
+	}
+	if content == nil {
+		return errors.New("docs: MarkdownCollectionFS requires an fs.FS")
+	}
+	root = strings.TrimSpace(root)
+	if root == "" {
+		root = "."
+	}
+	if !fs.ValidPath(root) {
+		return fmt.Errorf("docs: MarkdownCollectionFS root %q is not a valid fs path", root)
+	}
+	var files []string
+	err := fs.WalkDir(content, root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if entry.Name() != "." && strings.HasPrefix(entry.Name(), ".") {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), "_") || !strings.EqualFold(pathpkg.Ext(path), ".md") {
+			return nil
+		}
+		files = append(files, path)
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("docs: scan Markdown collection FS %q: %w", root, err)
+	}
+	sort.Strings(files)
+	if cfg.OrderStart < 1 {
+		cfg.OrderStart = 1
+	}
+	for index, filePath := range files {
+		body, err := fs.ReadFile(content, filePath)
+		if err != nil {
+			return fmt.Errorf("docs: load collection file %q: %w", filePath, err)
+		}
+		document, err := ParseMarkdown(string(body))
+		if err != nil {
+			return fmt.Errorf("docs: load collection file %q: %w", filePath, err)
+		}
+		rel, err := collectionFSRelativePath(root, filePath)
+		if err != nil {
+			return fmt.Errorf("docs: resolve collection file %q: %w", filePath, err)
+		}
+		rel = strings.TrimSuffix(rel, pathpkg.Ext(rel))
+		rel = collectionRelativePath(rel)
+		if err := r.registerCollectionDocument(prefix, root, rel, "", document, index, cfg, version, prefixVersion); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func collectionRelativePath(rel string) string {
+	if strings.HasSuffix(rel, "/index") {
+		return strings.TrimSuffix(rel, "/index")
+	}
+	if rel == "index" {
+		return ""
+	}
+	return rel
+}
+
+func collectionFSRelativePath(root, filePath string) (string, error) {
+	root = pathpkg.Clean(root)
+	filePath = pathpkg.Clean(filePath)
+	if root == "." {
+		return filePath, nil
+	}
+	if filePath == root {
+		return "", nil
+	}
+	prefix := root + "/"
+	if !strings.HasPrefix(filePath, prefix) {
+		return "", fmt.Errorf("path is outside collection root %q", root)
+	}
+	return strings.TrimPrefix(filePath, prefix), nil
+}
+
+func (r *Router) registerCollectionDocument(prefix, sourceRoot, rel, sourcePath string, document MarkdownDocument, index int, cfg CollectionConfig, version string, prefixVersion bool) error {
+	meta := document.Metadata
+	if meta.Slug != "" {
+		slug, err := collectionSlug(meta.Slug)
+		if err != nil {
+			return fmt.Errorf("docs: collection document %q: %w", rel, err)
+		}
+		rel = slug
+	}
+	if meta.Locale == "" {
+		meta.Locale = cfg.DefaultLocale
+	}
+	if version != "" {
+		if meta.Version != "" && meta.Version != version {
+			return fmt.Errorf("docs: collection document %q declares version %q, want snapshot version %q", rel, meta.Version, version)
+		}
+		meta.Version = version
+	} else if meta.Version == "" {
+		meta.Version = cfg.DefaultVersion
+	}
+	routePrefix := normalizePath(prefix)
+	if cfg.LocalePrefix && meta.Locale != "" && meta.Locale != cfg.DefaultLocale && !strings.HasPrefix(rel, meta.Locale+"/") {
+		routePrefix = joinPath(routePrefix, meta.Locale)
+	}
+	if prefixVersion && version != "" && !strings.HasPrefix(rel, version+"/") {
+		routePrefix = joinPath(routePrefix, version)
+	} else if cfg.VersionPrefix && meta.Version != "" && meta.Version != cfg.DefaultVersion && !strings.HasPrefix(rel, meta.Version+"/") {
+		routePrefix = joinPath(routePrefix, meta.Version)
+	}
+	routePath := routePrefix
+	if rel != "" {
+		routePath = joinPath(routePrefix, rel)
+	}
+	title := meta.Title
+	if title == "" {
+		title = humanizeContentName(filepath.Base(rel))
+		if rel == "" {
+			title = collectionRootTitle(sourceRoot)
+		}
+	}
+	description := meta.Description
+	if description == "" {
+		description = firstParagraph(document.Body)
+	}
+	config := PageConfig{
+		Title:       title,
+		Description: description,
+		Order:       collectionOrder(meta.Order, cfg.OrderStart, index),
+		Offline:     cfg.Offline,
+		Hidden:      false,
+		Metadata:    meta,
+	}
+	if sourcePath != "" {
+		config.SourcePath = sourcePath
+	} else {
+		config.Source = document.Body
+	}
+	if err := r.Page(routePath, config); err != nil {
+		return err
+	}
+	r.routes[normalizePath(routePath)].includeDrafts = cfg.IncludeDrafts
+	return nil
+}
+
+func collectionSlug(raw string) (string, error) {
+	raw = strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	if raw == "" || raw == "." {
+		return "", errors.New("slug must not be empty")
+	}
+	if raw == "/" {
+		return "", nil
+	}
+	if strings.ContainsAny(raw, "?#") || strings.HasPrefix(raw, "//") {
+		return "", fmt.Errorf("slug %q must be a relative path without query or fragment", raw)
+	}
+	raw = strings.TrimPrefix(raw, "/")
+	for _, segment := range strings.Split(raw, "/") {
+		if segment == "." || segment == ".." {
+			return "", fmt.Errorf("slug %q must stay inside the collection", raw)
+		}
+	}
+	clean := pathpkg.Clean(raw)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || strings.Contains(clean, "/../") {
+		return "", fmt.Errorf("slug %q must stay inside the collection", raw)
+	}
+	for _, segment := range strings.Split(clean, "/") {
+		if segment == "" || segment == "." || segment == ".." || strings.HasPrefix(segment, ".") || strings.HasPrefix(segment, "_") {
+			return "", fmt.Errorf("slug %q contains an unusable path segment", raw)
+		}
+	}
+	return clean, nil
+}
+
+func collectionOrder(explicit, start, index int) int {
+	if explicit > 0 {
+		return explicit
+	}
+	return start + index
+}
+
+func collectionRootTitle(sourceRoot string) string {
+	cleaned := strings.TrimSpace(strings.TrimRight(sourceRoot, `/\`))
+	if cleaned == "" || cleaned == "." {
+		return "Documentation"
+	}
+	return humanizeContentName(filepath.Base(cleaned))
 }
 
 // pageMetadata reads front matter once during registration and combines it
@@ -226,7 +397,9 @@ func pageMetadata(cfg PageConfig) (ContentMetadata, string, error) {
 
 type frontMatter struct {
 	Title         string            `yaml:"title"`
+	Slug          string            `yaml:"slug"`
 	Description   string            `yaml:"description"`
+	Excerpt       string            `yaml:"excerpt"`
 	Draft         bool              `yaml:"draft"`
 	NoIndex       bool              `yaml:"noindex"`
 	NoIndexSnake  bool              `yaml:"no_index"`
@@ -251,7 +424,7 @@ func (f frontMatter) metadata() ContentMetadata {
 		canonical = f.CanonicalLong
 	}
 	return ContentMetadata{
-		Title: f.Title, Description: f.Description, Draft: f.Draft,
+		Title: f.Title, Slug: f.Slug, Description: f.Description, Excerpt: f.Excerpt, Draft: f.Draft,
 		NoIndex: f.NoIndex || f.NoIndexSnake, EditURL: f.EditURL,
 		CanonicalURL: canonical, Image: f.Image, Authors: append([]string(nil), f.Authors...),
 		DatePublished: f.DatePublished, DateModified: f.DateModified,
@@ -282,6 +455,12 @@ func mergeContentMetadata(base, override ContentMetadata) ContentMetadata {
 	}
 	if override.Description != "" {
 		merged.Description = override.Description
+	}
+	if override.Excerpt != "" {
+		merged.Excerpt = override.Excerpt
+	}
+	if override.Slug != "" {
+		merged.Slug = override.Slug
 	}
 	if override.Draft {
 		merged.Draft = true

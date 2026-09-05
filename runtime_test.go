@@ -10,7 +10,7 @@ import (
 func TestRuntimeJSSyntax(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {
-		t.Skip("node is not installed")
+		t.Fatalf("RuntimeJS syntax test requires node: %v", err)
 	}
 	path := filepath.Join(t.TempDir(), "docs.js")
 	if err := os.WriteFile(path, []byte(RuntimeJS()), 0o600); err != nil {

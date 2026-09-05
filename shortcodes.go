@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/DonaldMurillo/gofastr/core/render"
-	"github.com/DonaldMurillo/gofastr/framework/ui"
 )
 
 // MarkdownComponent renders a typed component embedded in Markdown. Props are
@@ -71,7 +70,7 @@ func expandMarkdownShortcodes(source string, components map[string]MarkdownCompo
 		}
 		body := render.HTML("")
 		if renderBody || strings.TrimSpace(bodySource) != "" {
-			body = ui.Markdown(ui.MarkdownConfig{Source: bodySource})
+			body = renderDocsMarkdown(bodySource, nil)
 			for _, replacement := range nested {
 				body = replaceShortcode(body, replacement)
 			}
@@ -158,7 +157,7 @@ func renderMarkdownWithComponents(source string, components map[string]MarkdownC
 	if err != nil {
 		return "", err
 	}
-	html := ui.Markdown(ui.MarkdownConfig{Source: expanded, ExtraAttrs: attrs})
+	html := renderDocsMarkdown(expanded, attrs)
 	for _, replacement := range replacements {
 		html = replaceShortcode(html, replacement)
 	}

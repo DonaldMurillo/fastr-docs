@@ -3,7 +3,7 @@ module github.com/DonaldMurillo/fastr-docs
 go 1.27.0
 
 require (
-	github.com/DonaldMurillo/gofastr v0.73.0
+	github.com/DonaldMurillo/gofastr v0.76.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

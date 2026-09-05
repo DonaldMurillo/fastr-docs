@@ -1,0 +1,214 @@
+package docs
+
+import (
+	"fmt"
+	"net/url"
+	pathpkg "path"
+	"regexp"
+	"strings"
+)
+
+// ContentIssue is a source-level problem found in a Markdown page. The
+// Router reports these during strict validation so a broken link can be fixed
+// in the file that authored it instead of being discovered after deployment.
+type ContentIssue struct {
+	RoutePath  string
+	SourcePath string
+	Link       string
+	Line       int
+	Column     int
+	Message    string
+}
+
+func (i ContentIssue) Error() string {
+	location := i.RoutePath
+	if i.SourcePath != "" {
+		location = i.SourcePath
+	}
+	if i.Line > 0 {
+		location = fmt.Sprintf("%s:%d", location, i.Line)
+		if i.Column > 0 {
+			location += fmt.Sprintf(":%d", i.Column)
+		}
+	}
+	if i.Link != "" {
+		return fmt.Sprintf("content %s: %s (%s)", location, i.Message, i.Link)
+	}
+	return fmt.Sprintf("content %s: %s", location, i.Message)
+}
+
+// ContentIssues checks internal Markdown links and heading fragments without
+// making network requests. External HTTP links are intentionally left to a
+// deployment-time checker because a documentation build must remain
+// deterministic and usable offline.
+func (r *Router) ContentIssues() []ContentIssue {
+	if r == nil {
+		return nil
+	}
+	var issues []ContentIssue
+	for _, route := range r.Routes() {
+		if route == nil || route.page == nil || route.page.Body != nil {
+			continue
+		}
+		source := pageSource(route.page)
+		for _, link := range markdownLinks(source) {
+			resolved, fragment, kind, err := resolveContentLink(route.Path, link.Target)
+			base := ContentIssue{
+				RoutePath: route.Path, SourcePath: route.page.SourcePath,
+				Link: link.Target, Line: link.Line, Column: link.Column,
+			}
+			if err != nil {
+				base.Message = err.Error()
+				issues = append(issues, base)
+				continue
+			}
+			if kind == contentLinkExternal {
+				continue
+			}
+			target := r.routes[resolved]
+			if target == nil || !r.routePublished(target) {
+				base.Message = fmt.Sprintf("internal link resolves to unpublished route %q", resolved)
+				issues = append(issues, base)
+				continue
+			}
+			if fragment == "" || target.page == nil || target.page.Body != nil {
+				continue
+			}
+			if !markdownAnchorIDs(pageSource(target.page))[fragment] {
+				base.Message = fmt.Sprintf("heading anchor %q does not exist on %q", fragment, resolved)
+				issues = append(issues, base)
+			}
+		}
+	}
+	return issues
+}
+
+// ValidateContent returns all Markdown link and anchor problems as one error.
+// Callers that need structured diagnostics should use ContentIssues directly.
+func (r *Router) ValidateContent() error {
+	issues := r.ContentIssues()
+	if len(issues) == 0 {
+		return nil
+	}
+	parts := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		parts = append(parts, issue.Error())
+	}
+	return fmt.Errorf("docs: content validation failed: %s", strings.Join(parts, "; "))
+}
+
+type contentLinkKind uint8
+
+const (
+	contentLinkInternal contentLinkKind = iota
+	contentLinkExternal
+)
+
+type markdownLink struct {
+	Target string
+	Line   int
+	Column int
+}
+
+var markdownLinkPattern = regexp.MustCompile(`(?:^|[^!])\[[^\]\r\n]*\]\(\s*(?:<([^>\r\n]+)>|([^\s)]+))`)
+
+func markdownLinks(source string) []markdownLink {
+	var links []markdownLink
+	inFence := false
+	lineStart := 0
+	for _, line := range strings.SplitAfter(strings.ReplaceAll(source, "\r\n", "\n"), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inFence = !inFence
+			lineStart += len(line)
+			continue
+		}
+		if !inFence {
+			for _, match := range markdownLinkPattern.FindAllStringSubmatchIndex(line, -1) {
+				valueStart, valueEnd := match[2], match[3]
+				if valueStart < 0 {
+					valueStart, valueEnd = match[4], match[5]
+				}
+				if valueStart < 0 || valueEnd <= valueStart {
+					continue
+				}
+				links = append(links, markdownLink{
+					Target: line[valueStart:valueEnd],
+					Line:   strings.Count(source[:lineStart], "\n") + 1,
+					Column: match[0] + 1,
+				})
+			}
+		}
+		lineStart += len(line)
+	}
+	return links
+}
+
+func resolveContentLink(currentPath, raw string) (string, string, contentLinkKind, error) {
+	raw = strings.TrimSpace(raw)
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", "", contentLinkInternal, fmt.Errorf("invalid Markdown link: %v", err)
+	}
+	if parsed.Scheme != "" {
+		switch strings.ToLower(parsed.Scheme) {
+		case "http", "https", "mailto", "tel":
+			return "", "", contentLinkExternal, nil
+		default:
+			return "", "", contentLinkInternal, fmt.Errorf("unsupported link scheme %q", parsed.Scheme)
+		}
+	}
+	if parsed.Host != "" || strings.HasPrefix(raw, "//") {
+		return "", "", contentLinkExternal, nil
+	}
+	fragment, err := url.PathUnescape(parsed.Fragment)
+	if err != nil {
+		return "", "", contentLinkInternal, fmt.Errorf("invalid link fragment: %v", err)
+	}
+	if parsed.Path == "" {
+		return normalizePath(currentPath), fragment, contentLinkInternal, nil
+	}
+	linkPath, err := url.PathUnescape(parsed.Path)
+	if err != nil {
+		return "", "", contentLinkInternal, fmt.Errorf("invalid link path: %v", err)
+	}
+	if strings.HasPrefix(linkPath, "/") {
+		return normalizePath(pathpkg.Clean(linkPath)), fragment, contentLinkInternal, nil
+	}
+	base := pathpkg.Dir(normalizePath(currentPath))
+	return normalizePath(pathpkg.Join(base, linkPath)), fragment, contentLinkInternal, nil
+}
+
+func markdownAnchorIDs(source string) map[string]bool {
+	ids := make(map[string]bool)
+	counts := make(map[string]int)
+	inFence := false
+	for _, line := range strings.Split(strings.ReplaceAll(source, "\r\n", "\n"), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			inFence = !inFence
+			continue
+		}
+		if inFence || len(trimmed) < 2 || trimmed[0] != '#' {
+			continue
+		}
+		level := 0
+		for level < len(trimmed) && trimmed[level] == '#' {
+			level++
+		}
+		if level < 1 || level > 6 || (level < len(trimmed) && trimmed[level] != ' ') {
+			continue
+		}
+		title := strings.TrimSpace(strings.TrimLeft(trimmed, "# "))
+		id := headingSlug(title)
+		if id == "" {
+			continue
+		}
+		counts[id]++
+		if counts[id] > 1 {
+			id = fmt.Sprintf("%s-%d", id, counts[id])
+		}
+		ids[id] = true
+	}
+	return ids
+}

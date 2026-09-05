@@ -3,6 +3,7 @@ package docs
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"strings"
 )
 
@@ -12,6 +13,8 @@ import (
 type MarkdownCollectionPlugin struct {
 	Path   string
 	Dir    string
+	FS     fs.FS
+	Root   string
 	Config CollectionConfig
 }
 
@@ -21,8 +24,14 @@ func (p MarkdownCollectionPlugin) Apply(r *Router) error {
 	if r == nil {
 		return errors.New("router is nil")
 	}
+	if p.FS != nil {
+		if err := r.MarkdownCollectionFS(p.Path, p.FS, p.Root, p.Config); err != nil {
+			return fmt.Errorf("load collection: %w", err)
+		}
+		return nil
+	}
 	if strings.TrimSpace(p.Dir) == "" {
-		return errors.New("Dir is required")
+		return errors.New("Dir or FS is required")
 	}
 	if err := r.MarkdownCollection(p.Path, p.Dir, p.Config); err != nil {
 		return fmt.Errorf("load collection: %w", err)

@@ -18,6 +18,8 @@ type ExportManifest struct {
 	SearchBackend SearchBackend      `json:"searchBackend"`
 	SearchPath    string             `json:"searchPath,omitempty"`
 	AssetsPrefix  string             `json:"assetsPrefix"`
+	Locales       []string           `json:"locales,omitempty"`
+	Versions      []string           `json:"versions,omitempty"`
 	Routes        []ManifestRoute    `json:"routes"`
 	Redirects     []ManifestRedirect `json:"redirects,omitempty"`
 }
@@ -33,6 +35,8 @@ type ManifestRoute struct {
 	Tags        []string  `json:"tags,omitempty"`
 	Offline     bool      `json:"offline,omitempty"`
 	NoIndex     bool      `json:"noIndex,omitempty"`
+	Blog        bool      `json:"blog,omitempty"`
+	BlogIndex   bool      `json:"blogIndex,omitempty"`
 }
 
 type ManifestRedirect struct {
@@ -53,6 +57,8 @@ func (r *Router) ExportManifestJSON(basePath string) ([]byte, error) {
 		SearchBackend: r.SearchBackend(),
 		SearchPath:    basePath + r.PagefindPath(),
 		AssetsPrefix:  basePath + "/assets/",
+		Locales:       r.Locales(),
+		Versions:      r.Versions(),
 	}
 	for _, route := range r.PublishedRoutes() {
 		manifest.Routes = append(manifest.Routes, ManifestRoute{
@@ -60,7 +66,7 @@ func (r *Router) ExportManifestJSON(basePath string) ([]byte, error) {
 			Description: route.Description, Kind: route.Kind,
 			Locale: route.Metadata.Locale, Version: route.Metadata.Version,
 			Tags: cloneStrings(route.Tags), Offline: route.Offline,
-			NoIndex: route.Metadata.NoIndex,
+			NoIndex: route.Metadata.NoIndex, Blog: route.Blog, BlogIndex: route.BlogIndex,
 		})
 		for _, from := range route.Metadata.Redirects {
 			if clean := safeRedirectPath(from); clean != "" {

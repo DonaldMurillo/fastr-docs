@@ -17,6 +17,19 @@ type testScreen struct{}
 
 func (*testScreen) Render() render.HTML { return render.Raw("<section>screen</section>") }
 
+type lifecycleScreen struct{}
+
+func (*lifecycleScreen) Render() render.HTML        { return render.Raw("<section>dynamic screen</section>") }
+func (*lifecycleScreen) Load(context.Context) error { return nil }
+func (*lifecycleScreen) StaticPaths(context.Context) []map[string]string {
+	return []map[string]string{{"slug": "one"}}
+}
+func (*lifecycleScreen) ComponentID() string          { return "lifecycle-screen" }
+func (*lifecycleScreen) ScreenTitle() string          { return "Lifecycle screen" }
+func (*lifecycleScreen) ScreenDescription() string    { return "Lifecycle screen" }
+func (*lifecycleScreen) ScreenType() uiapp.ScreenType { return uiapp.ScreenPage }
+func (*lifecycleScreen) HeadHTML() string             { return `<meta name="x-screen" content="custom">` }
+
 func TestRouterBuildsOrderedNestedNavigationAndSearch(t *testing.T) {
 	r := NewRouter(WithSiteName("Acme"))
 	r.MustPage("/", PageConfig{Title: "Home", Description: "Welcome", Source: "# Welcome", Order: 1, Tags: []string{"overview"}})
@@ -70,6 +83,133 @@ func TestSearchProviderCanReplacePortableArtifact(t *testing.T) {
 	}
 	if string(body) != `{"custom":true}` {
 		t.Fatalf("custom search artifact = %s", body)
+	}
+}
+
+func TestRouterExposesLocalizedChromeLabels(t *testing.T) {
+	r := NewRouter(WithSiteName("Acme"), WithUIStrings(UIStrings{
+		Contents: "Contenu", Home: "Accueil", OnThisPage: "Sur cette page",
+		Search: "Rechercher", SearchPlaceholder: "Rechercher la documentation…",
+		OpenSearch: "Ouvrir la recherche", CloseSearch: "Fermer la recherche",
+		OpenNavigation: "Ouvrir la navigation", EditPage: "Modifier cette page",
+		LastUpdated: "Mis à jour", Published: "Publié", By: "Par",
+		Language: "Langue", Version: "Version",
+	}))
+	r.MustPage("/", PageConfig{Title: "Home", Description: "Home", Source: "# Home", Order: 1})
+	r.MustPage("/guide", PageConfig{
+		Title: "Guide", Description: "Guide", Source: "# Guide\n\n## Setup",
+		Order: 1, Metadata: ContentMetadata{DateModified: "2026-08-30", Authors: []string{"Ada"}, EditURL: "https://example.com/edit"},
+	})
+	header := string((&docsHeader{router: r}).Render())
+	if !strings.Contains(header, `aria-label="Ouvrir la recherche"`) || !strings.Contains(header, "Rechercher") {
+		t.Fatalf("localized search chrome missing: %s", header)
+	}
+	sidebar := string((&docsSidebar{router: r}).Render())
+	if !strings.Contains(sidebar, ">Contenu<") || !strings.Contains(sidebar, ">Accueil<") {
+		t.Fatalf("localized sidebar chrome missing: %s", sidebar)
+	}
+	page := r.Routes()[1]
+	rendered := string((&pageComponent{router: r, route: page}).Render())
+	for _, marker := range []string{"data-docs-page-meta", "Mis à jour", "2026-08-30", "Par Ada", "Modifier cette page"} {
+		if !strings.Contains(rendered, marker) {
+			t.Fatalf("localized page chrome missing %q: %s", marker, rendered)
+		}
+	}
+}
+
+func TestRouterPreservesGoFastrScreenCapabilitiesAndPreload(t *testing.T) {
+	r := NewRouter()
+	r.MustScreen("/items/:slug", ScreenConfig{
+		Title: "Item", Description: "A dynamic item", Component: &lifecycleScreen{},
+		Preload: "hover", Metadata: ContentMetadata{DateModified: "2026-08-30"}, Order: 1,
+	})
+	site := uiapp.NewApp("Docs")
+	if err := r.Mount(site, r.Layout()); err != nil {
+		t.Fatalf("Mount() error = %v", err)
+	}
+	screen, ok := site.Router.ScreenByPattern("/items/:slug")
+	if !ok {
+		t.Fatal("dynamic screen was not registered")
+	}
+	if screen.Preload != uiapp.PreloadHover {
+		t.Fatalf("screen preload = %q, want %q", screen.Preload, uiapp.PreloadHover)
+	}
+	if _, ok := screen.Component.(uiapp.ScreenLoader); !ok {
+		t.Fatal("metadata wrapper hid ScreenLoader")
+	}
+	provider, ok := screen.Component.(uiapp.StaticPathsProvider)
+	if !ok || len(provider.StaticPaths(context.Background())) != 1 {
+		t.Fatal("metadata wrapper hid StaticPathsProvider")
+	}
+	identified, ok := screen.Component.(uiapp.ScreenComponentID)
+	if !ok || identified.ComponentID() != "lifecycle-screen" {
+		t.Fatal("metadata wrapper hid ScreenComponentID")
+	}
+	if seo, ok := screen.Component.(interface{ HeadHTML() string }); !ok || !strings.Contains(seo.HeadHTML(), `x-screen`) {
+		t.Fatal("metadata wrapper hid custom head HTML")
+	}
+}
+
+func TestRouterPreloadRejectsUnknownModes(t *testing.T) {
+	if err := NewRouter().Page("/guide", PageConfig{Title: "Guide", Description: "Guide", Source: "# Guide", Preload: "sometimes"}); err == nil {
+		t.Fatal("unknown page preload mode was accepted")
+	}
+	if err := NewRouter().Screen("/guide", ScreenConfig{Title: "Guide", Description: "Guide", Component: &testScreen{}, Preload: "sometimes"}); err == nil {
+		t.Fatal("unknown screen preload mode was accepted")
+	}
+}
+
+func TestRouterExportsLocaleAndVersionInventories(t *testing.T) {
+	r := NewRouter()
+	for order, variant := range []struct{ path, locale, version string }{
+		{"en/v1/guide", "en", "v1"}, {"fr/v2/guide", "fr", "v2"}, {"es/v1/guide", "es", "v1"},
+	} {
+		r.MustPage("/"+variant.path, PageConfig{
+			Title: "Guide", Description: "Guide", Source: "# Guide", Order: order + 1,
+			Metadata: ContentMetadata{Locale: variant.locale, Version: variant.version},
+		})
+	}
+	if got := strings.Join(r.Locales(), ","); got != "en,es,fr" {
+		t.Fatalf("Locales() = %q", got)
+	}
+	if got := strings.Join(r.Versions(), ","); got != "v1,v2" {
+		t.Fatalf("Versions() = %q", got)
+	}
+	manifest, err := r.ExportManifestJSON("")
+	if err != nil || !strings.Contains(string(manifest), `"locales": [`) || !strings.Contains(string(manifest), `"versions": [`) {
+		t.Fatalf("manifest variant inventory missing: %s (%v)", manifest, err)
+	}
+}
+
+func TestRouterLayoutFactoriesCustomizeGlobalAndSectionShells(t *testing.T) {
+	r := NewRouter(WithLayouts(LayoutConfig{
+		Global: func(*Router) *uiapp.Layout { return uiapp.NewLayout("custom-global") },
+		Section: func(_ *Router, route *Route) *uiapp.Layout {
+			return uiapp.NewLayout("custom-section-" + strings.TrimPrefix(route.Path, "/"))
+		},
+	}))
+	r.MustPage("/docs", PageConfig{Title: "Docs", Description: "Docs", Source: "# Docs", Order: 1})
+	if got := r.Layout().Name; got != "custom-global" {
+		t.Fatalf("global layout = %q", got)
+	}
+	if got := r.sectionLayout(r.Routes()[0]).Name; got != "custom-section-docs" {
+		t.Fatalf("section layout = %q", got)
+	}
+}
+
+func TestNoIndexRoutesStayOutOfPublicSearch(t *testing.T) {
+	r := NewRouter()
+	r.MustPage("/public", PageConfig{Title: "Public", Description: "Public", Source: "# Public", Order: 1})
+	r.MustPage("/private", PageConfig{Title: "Private", Description: "Private", Source: "# Private", Order: 2, Metadata: ContentMetadata{NoIndex: true}})
+	if err := r.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	entries := r.SearchIndex()
+	if len(entries) != 1 || entries[0].Path != "/public" {
+		t.Fatalf("SearchIndex() = %#v, want only public route", entries)
+	}
+	if got := r.Search("private"); len(got) != 0 {
+		t.Fatalf("Search() returned noindex route: %#v", got)
 	}
 }
 
@@ -131,6 +271,24 @@ func TestSidebarOpensTheActiveNestedRoute(t *testing.T) {
 	html := (&docsSidebar{router: r}).RenderCtx(uiapp.WithRequest(context.Background(), req))
 	if !strings.Contains(string(html), `<details class="ui-sidebar__group"`) || !strings.Contains(string(html), " open>") {
 		t.Fatalf("active nested route did not open its parent disclosure: %s", html)
+	}
+}
+
+func TestSidebarMarksAnActiveParentPageWithChildren(t *testing.T) {
+	r := NewRouter()
+	r.MustPage("/docs", PageConfig{Title: "Documentation", Description: "Docs", Source: "# Docs", Order: 1})
+	r.MustPage("/docs/getting-started", PageConfig{Title: "Getting started", Description: "Start here", Source: "# Start here", Order: 1})
+
+	req := httptest.NewRequest("GET", "/docs", nil)
+	html := (&docsSidebar{router: r}).RenderCtx(uiapp.WithRequest(context.Background(), req))
+	if !strings.Contains(string(html), `data-fastr-docs-active="true"`) {
+		t.Fatalf("active parent page marker missing: %s", html)
+	}
+
+	req = httptest.NewRequest("GET", "/docs/getting-started", nil)
+	html = (&docsSidebar{router: r}).RenderCtx(uiapp.WithRequest(context.Background(), req))
+	if strings.Contains(string(html), `data-fastr-docs-active="true"`) {
+		t.Fatalf("nested page incorrectly marked its parent page as exact active: %s", html)
 	}
 }
 
@@ -270,6 +428,57 @@ func TestPageFileFeedsValidationAndSearch(t *testing.T) {
 	}
 }
 
+func TestPageMetadataEmitsSEOWithoutDuplicatingNativeArticleData(t *testing.T) {
+	r := NewRouter()
+	r.MustPage("/guide", PageConfig{
+		Title:       "Deployment guide",
+		Description: "Ship the documentation site.",
+		Metadata: ContentMetadata{
+			CanonicalURL:  "https://docs.example.com/guide",
+			Image:         "/assets/guide.png",
+			Authors:       []string{"Ada Lovelace", "Grace Hopper"},
+			DatePublished: "2026-08-01",
+			DateModified:  "2026-08-29",
+			Locale:        "en-US",
+			Tags:          []string{"deployment", "hosting"},
+			NoIndex:       true,
+		},
+		Source: "# Deployment guide\n\nShip the site.",
+		Order:  1,
+	})
+
+	html := metadataHeadHTML(r.Routes()[0])
+	for _, marker := range []string{
+		`<meta name="twitter:title" content="Deployment guide">`,
+		`<meta name="twitter:description" content="Ship the documentation site.">`,
+		`<meta name="twitter:image" content="/assets/guide.png">`,
+		`<meta name="twitter:card" content="summary_large_image">`,
+		`<meta name="author" content="Ada Lovelace">`,
+		`<meta property="article:published_time" content="2026-08-01">`,
+		`<meta property="article:tag" content="deployment">`,
+		`<meta name="robots" content="noindex,nofollow">`,
+		`<link rel="canonical" href="https://docs.example.com/guide">`,
+	} {
+		if !strings.Contains(html, marker) {
+			t.Fatalf("metadata head missing %q: %s", marker, html)
+		}
+	}
+
+	r = NewRouter()
+	r.MustPage("/unsafe", PageConfig{
+		Title: "Unsafe metadata", Description: "A page", Source: "# Unsafe", Order: 1,
+		Metadata: ContentMetadata{Image: "javascript:alert(1)"},
+	})
+	html = metadataHeadHTML(r.Routes()[0])
+	if strings.Contains(html, "javascript:") || strings.Contains(html, "og:image") {
+		t.Fatalf("unsafe image metadata was emitted: %s", html)
+	}
+	article := (&pageComponent{router: r, route: r.Routes()[0]}).ScreenArticle()
+	if article.Headline != "Unsafe metadata" || article.Description != "A page" || article.Image != "javascript:alert(1)" {
+		t.Fatalf("page did not expose native article metadata: %#v", article)
+	}
+}
+
 func TestMountRegistersPagesAndTypedScreensWithGoFastr(t *testing.T) {
 	r := NewRouter()
 	r.MustPage("/", PageConfig{Title: "Home", Description: "Home", Source: "# Home\n\n## Setup\n\nRead this guide.", Order: 1})
@@ -313,6 +522,86 @@ func TestDefaultThemeIncludesEditorialLightAndDarkTokens(t *testing.T) {
 		if !strings.Contains(css, marker) {
 			t.Fatalf("DefaultTheme() CSS missing %q", marker)
 		}
+	}
+}
+
+func TestThemeTemplatesExposeFiveCompleteDistinctPresets(t *testing.T) {
+	templates := ThemeTemplates()
+	if len(templates) != 5 {
+		t.Fatalf("ThemeTemplates() returned %d templates, want 5", len(templates))
+	}
+	seen := make(map[Template]bool, len(templates))
+	primaries := make(map[string]bool, len(templates))
+	for _, template := range templates {
+		if seen[template] {
+			t.Fatalf("ThemeTemplates() repeated %q", template)
+		}
+		seen[template] = true
+		r := NewRouter(WithTemplate(template))
+		if r.Template() != template {
+			t.Fatalf("Router.Template() = %q, want %q", r.Template(), template)
+		}
+		th := r.Theme()
+		if th.Colors.Background.Value == "" || th.Colors.Primary.Value == "" || th.DarkColors["background"] == "" {
+			t.Fatalf("template %q did not produce a complete adaptive theme", template)
+		}
+		primaries[th.Colors.Primary.Value] = true
+		if !strings.Contains(r.CSS(), "--fastr-docs-template: "+string(template)) {
+			t.Fatalf("template %q CSS marker is missing", template)
+		}
+		if strings.TrimSpace(TemplateDescription(template)) == "" {
+			t.Fatalf("template %q has no description", template)
+		}
+	}
+	if len(primaries) != len(templates) {
+		t.Fatalf("templates do not have distinct primary tokens: %#v", primaries)
+	}
+}
+
+func TestWithThemeAppliesCustomTokensAndCSSAfterTemplate(t *testing.T) {
+	r := NewRouter(
+		WithTheme(ThemeConfig{
+			Template: TemplateBlueprint,
+			Overrides: ThemeOverrides{
+				Primary:    "#123456",
+				DarkColors: map[string]string{"primary": "#abcdef"},
+			},
+			CustomCSS: ".project-docs { --example: 1; }",
+		}),
+	)
+	if r.Template() != TemplateBlueprint {
+		t.Fatalf("Router.Template() = %q, want %q", r.Template(), TemplateBlueprint)
+	}
+	if got := r.Theme().Colors.Primary.Value; got != "#123456" {
+		t.Fatalf("custom light primary = %q, want #123456", got)
+	}
+	if got := r.Theme().DarkColors["primary"]; got != "#abcdef" {
+		t.Fatalf("custom dark primary = %q, want #abcdef", got)
+	}
+	if !strings.Contains(r.CSS(), ".project-docs { --example: 1; }") {
+		t.Fatal("custom CSS was not appended to the router stylesheet")
+	}
+
+	ordered := NewRouter(
+		WithTheme(ThemeConfig{Overrides: ThemeOverrides{Primary: "#654321"}}),
+		WithTemplate(TemplateStudio),
+	)
+	if got := ordered.Theme().Colors.Primary.Value; got != "#654321" {
+		t.Fatalf("custom primary was lost when WithTemplate followed WithTheme: %q", got)
+	}
+}
+
+func TestThemeColorFollowsTemplateAndBrandOverride(t *testing.T) {
+	blueprint := NewRouter(WithTemplate(TemplateBlueprint))
+	if got := blueprint.ThemeColor(); got != blueprint.Theme().Colors.Background.Value {
+		t.Fatalf("ThemeColor() = %q, want the active light background %q", got, blueprint.Theme().Colors.Background.Value)
+	}
+	branded := NewRouter(
+		WithTemplate(TemplateNotebook),
+		WithBrand(BrandConfig{ThemeColor: "#123456"}),
+	)
+	if got := branded.ThemeColor(); got != "#123456" {
+		t.Fatalf("branded ThemeColor() = %q, want #123456", got)
 	}
 }
 
@@ -519,5 +808,34 @@ func TestSearchBackendOptionsNormalizeAndFallback(t *testing.T) {
 	r = NewRouter(WithSearchBackend("PAGEFIND"), WithPagefindPath("/search/"))
 	if r.SearchBackend() != SearchBackendPagefind || r.PagefindPath() != "/search/" {
 		t.Fatalf("normalized Pagefind options were not retained: backend=%q path=%q", r.SearchBackend(), r.PagefindPath())
+	}
+}
+
+func TestSearchIndexPathDefaultsAndOverrides(t *testing.T) {
+	if got := NewRouter().SearchIndexPath(); got != "/__fastr-docs/search.json" {
+		t.Fatalf("SearchIndexPath() = %q, want the mounted starter default", got)
+	}
+	for _, testCase := range []struct{ in, want string }{
+		{"/__manual/search.json", "/__manual/search.json"},
+		{"assets/search.json", "/assets/search.json"},
+		{"   ", "/__fastr-docs/search.json"},
+	} {
+		if got := NewRouter(WithSearchIndexPath(testCase.in)).SearchIndexPath(); got != testCase.want {
+			t.Fatalf("WithSearchIndexPath(%q) = %q, want %q", testCase.in, got, testCase.want)
+		}
+	}
+}
+
+func TestCommandPaletteTriggerPublishesConfiguredSearchIndexPath(t *testing.T) {
+	r := NewRouter(WithSearchIndexPath("/__manual/search.json"))
+	r.MustPage("/", PageConfig{Title: "Home", Source: "# Home"})
+
+	visible, _ := r.ensureCommandPalette()
+	markup := string(visible)
+	if !strings.Contains(markup, `data-fastr-docs-index-path="/__manual/search.json"`) {
+		t.Fatalf("command palette trigger did not publish the configured index path: %s", markup)
+	}
+	if strings.Contains(markup, "/__fastr-docs/search.json") {
+		t.Fatalf("command palette trigger kept the hardcoded index path: %s", markup)
 	}
 }

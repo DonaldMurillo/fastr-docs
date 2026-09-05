@@ -419,6 +419,7 @@ type Router struct {
 	searchIndexPath       string
 	markdownComponents    map[string]MarkdownComponent
 	markdownContainers    map[string]MarkdownContainer
+	markdownRaws          map[string]MarkdownRawComponent
 	brand                 BrandConfig
 	themeConfig           ThemeConfig
 	ui                    UIStrings
@@ -433,15 +434,18 @@ type Router struct {
 // content fail during startup or build instead of shipping silently.
 func NewRouter(options ...Option) *Router {
 	r := &Router{
-		routes:             make(map[string]*Route),
-		strict:             true,
-		siteName:           "Documentation",
-		language:           "en",
-		searchBackend:      SearchBackendJSON,
-		pagefindPath:       "/pagefind/",
-		searchIndexPath:    defaultSearchIndexPath,
-		markdownComponents: make(map[string]MarkdownComponent),
-		markdownContainers: make(map[string]MarkdownContainer),
+		routes:          make(map[string]*Route),
+		strict:          true,
+		siteName:        "Documentation",
+		language:        "en",
+		searchBackend:   SearchBackendJSON,
+		pagefindPath:    "/pagefind/",
+		searchIndexPath: defaultSearchIndexPath,
+		// Registered before options run so WithoutDefaultComponents, and any
+		// project registering the same name, still wins.
+		markdownComponents: DefaultMarkdownComponents(),
+		markdownContainers: DefaultMarkdownContainers(),
+		markdownRaws:       DefaultMarkdownRawComponents(),
 		blogs:              make(map[string]blogCollection),
 		blogViews:          make(map[string]blogView),
 		themeConfig:        ThemeConfig{Template: TemplateEditorial},
@@ -530,6 +534,7 @@ func (r *Router) RegisterMarkdownComponent(name string, component MarkdownCompon
 		r.markdownComponents = make(map[string]MarkdownComponent)
 	}
 	delete(r.markdownContainers, name)
+	delete(r.markdownRaws, name)
 	r.markdownComponents[name] = component
 	return nil
 }
@@ -554,8 +559,39 @@ func (r *Router) RegisterMarkdownContainer(name string, container MarkdownContai
 		r.markdownContainers = make(map[string]MarkdownContainer)
 	}
 	delete(r.markdownComponents, name)
+	delete(r.markdownRaws, name)
 	r.markdownContainers[name] = container
 	return nil
+}
+
+// RegisterMarkdownRawComponent registers a shortcode that receives its body
+// unrendered. A name resolves to one kind, so registering one retires the rest.
+func (r *Router) RegisterMarkdownRawComponent(name string, raw MarkdownRawComponent) error {
+	if r == nil {
+		return errors.New("docs: RegisterMarkdownRawComponent requires a Router")
+	}
+	name = strings.TrimSpace(name)
+	if !markdownShortcodeName.MatchString(name) {
+		return fmt.Errorf("docs: invalid Markdown component name %q", name)
+	}
+	if raw == nil {
+		return fmt.Errorf("docs: Markdown raw component %q is nil", name)
+	}
+	if r.markdownRaws == nil {
+		r.markdownRaws = make(map[string]MarkdownRawComponent)
+	}
+	delete(r.markdownComponents, name)
+	delete(r.markdownContainers, name)
+	r.markdownRaws[name] = raw
+	return nil
+}
+
+// MarkdownRawComponents returns the registered raw vocabulary.
+func (r *Router) MarkdownRawComponents() map[string]MarkdownRawComponent {
+	if r == nil || len(r.markdownRaws) == 0 {
+		return nil
+	}
+	return cloneMarkdownRaws(r.markdownRaws)
 }
 
 // MarkdownContainers returns the registered container vocabulary.
@@ -572,6 +608,7 @@ func (r *Router) vocabulary(components map[string]MarkdownComponent, containers 
 	return markdownVocabulary{
 		components: mergeMarkdownComponents(r.markdownComponents, components),
 		containers: mergeMarkdownContainers(r.markdownContainers, containers),
+		raws:       mergeMarkdownRaws(r.markdownRaws, nil),
 	}
 }
 

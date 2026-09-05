@@ -1,0 +1,126 @@
+---
+tags: [guide, authoring, components]
+---
+
+# Markdown components
+
+Every fastr-docs project starts with this shortcode vocabulary registered. No
+Go code, no imports, no configuration. Register the same name yourself to
+replace any of them.
+
+## Admonitions
+
+{{< note title="Heads up" >}}
+`note` and `info` are the same callout. Use whichever reads better.
+{{< /note >}}
+
+{{< tip >}}
+`tip` and `success` share a tone. Bodies are still Markdown, so [links](/docs)
+and **emphasis** work.
+{{< /tip >}}
+
+{{< warning title="Check your order" >}}
+Sibling routes need explicit `Order` values.
+{{< /warning >}}
+
+{{< danger >}}
+`danger` renders with `role="alert"`.
+{{< /danger >}}
+
+`callout` takes the tone as a prop when you would rather not pick a name:
+
+```md
+{{< callout variant="warning" title="Important" >}}
+Body text.
+{{< /callout >}}
+```
+
+## Tabs
+
+{{< tabs >}}
+{{< tab label="Go" >}}
+Tabs are native `<details>` elements. No JavaScript runs to switch them.
+{{< /tab >}}
+{{< tab label="Shell" >}}
+Each set gets its own group name, so two sets on one page stay independent.
+{{< /tab >}}
+{{< tab label="Notes" >}}
+The first tab opens by default.
+{{< /tab >}}
+{{< /tabs >}}
+
+## Cards
+
+{{< cards >}}
+{{< card title="Routing" description="One tree owns navigation and search." href="/docs/concepts/router" >}}
+{{< /card >}}
+{{< card title="Content" description="Markdown with front matter." href="/docs/concepts/content" >}}
+{{< /card >}}
+{{< card title="Publishing" description="Check, export, deploy." href="/docs/operate/deploy" >}}
+{{< /card >}}
+{{< /cards >}}
+
+## Steps
+
+{{< steps >}}
+1. Run `fastr-docs init my-docs` to scaffold a project.
+2. Edit `content/` and register routes in `docs/router.go`.
+3. Run `fastr-docs check .` before you commit.
+{{< /steps >}}
+
+## File tree
+
+Write the tree as a fenced block and indent it. `filetree` reads its body
+unrendered, so the indentation survives; nesting comes from it, and a trailing
+`/` marks a directory.
+
+{{< filetree >}}
+```
+my-docs/
+  content/
+    index.md
+    getting-started.md
+  docs/
+    router.go
+  main.go
+  openapi.json
+```
+{{< /filetree >}}
+
+## Smaller pieces
+
+Collapsible sections:
+
+{{< details summary="What does strict validation check?" >}}
+Broken internal links, missing heading anchors, duplicate sibling order, and
+pages with no title or description.
+{{< /details >}}
+
+Badges and tags: {{< badge label="New" variant="success" />}} {{< badge label="Beta" variant="warning" />}} {{< tag label="routing" href="/docs/concepts/router" />}}
+
+Icons come from the GoFastr registry: {{< icon name="check" label="Supported" />}} {{< icon name="info" />}}
+
+## Diffs
+
+{{< diff left="Before" right="After" >}}
+```
+ router := docs.NewRouter(
+-    docs.WithSiteName("Docs"),
++    docs.WithSiteName("Acme Docs"),
++    docs.WithTemplate(docs.TemplateBlueprint),
+ )
+```
+{{< /diff >}}
+
+## Replacing a default
+
+Registering a name replaces whatever held it:
+
+```go
+router.RegisterMarkdownComponent("note", func(props map[string]string, body render.HTML) render.HTML {
+    return ui.Callout(ui.CalloutConfig{Title: props["title"], Variant: ui.StatusNeutral}, body)
+})
+```
+
+Pass `docs.WithoutDefaultComponents()` to start from an empty vocabulary, where
+any unregistered shortcode fails the build instead of rendering.

@@ -62,6 +62,35 @@ Skills are authored once under `.agents/skills/` and mirrored to
 directory under `.agents/skills/`; `starterSkills()` reads the embedded
 filesystem, so no code change is needed.
 
+## Markdown shortcodes
+
+Three registrable shapes, all in `shortcodes.go`, merged per page by
+`Router.vocabulary`. A name resolves to exactly one kind, and registering it
+retires the others.
+
+`MarkdownComponent` gets its body as rendered Markdown. `MarkdownContainer`
+gets its nested shortcodes as `[]MarkdownChild` plus any prose between them,
+which is the only way to build tabs or card grids. `MarkdownRawComponent` gets
+the body unrendered, for content that is data rather than prose.
+
+`diff` and `filetree` are raw for a concrete reason: rendering their bodies
+first collapses every line into one and pulls the code block's own chrome
+("3 lines", the copy glyphs) into the text. `filetree` also cannot wrap a
+Markdown list, because `core/markdown` does not support nested lists and
+flattens them into one item joined by `<br>`.
+
+The defaults live in `markdown_components.go` and are registered in
+`NewRouter` before options run, so a project still overrides any name.
+Every prop is sanitized through a fixed table: `ui.Callout` panics on an
+unregistered `StatusVariant`, `tabs.New` panics without a name or tabs, and
+`ui.Banner` panics without a title. Those inputs come from Markdown files, so
+none of them may reach a component unchecked.
+
+Shortcode bodies are themselves `.ui-markdown` blocks nested inside the page's.
+`styles.go` resets `.ui-markdown .ui-markdown` because the page-level prose
+rules otherwise add a max width and 75px of bottom padding inside every
+callout and card.
+
 ## Skill drift
 
 The same skills live in four places: the template source, a generated

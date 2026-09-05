@@ -139,21 +139,40 @@ an MCP endpoint.
 
 ## Content components and plugins
 
-Markdown can embed typed GoFastr components with a small shortcode syntax:
+Every Router registers a shortcode vocabulary by default, so Markdown authors
+get components without writing Go:
+
+```md
+{{< warning title="Important" >}}
+This body is still Markdown and can contain links and emphasis.
+{{< /warning >}}
+```
+
+`note`, `info`, `tip`, `success`, `warning`, `caution`, and `danger` are
+admonitions; `callout` takes the tone as a prop. `cards` lays out `card`
+children, `tabs` holds `tab` children, and `hero` holds `action` children.
+`steps`, `filetree`, `details`, `badge`, `tag`, `banner`, `icon`, and `diff`
+round it out.
+
+Shortcodes come in three shapes. `MarkdownComponent` receives its body as
+rendered Markdown. `MarkdownContainer` receives its nested shortcodes as
+separate children, which is what tabs and card grids need. `MarkdownRawComponent`
+receives the body unrendered, for content that is data rather than prose:
+`diff` and `filetree` both read line structure that Markdown rendering would
+destroy.
+
+Registering a name replaces whatever held it:
 
 ```go
 router.Use(docs.MarkdownComponentsPlugin{Components: map[string]docs.MarkdownComponent{
     "note": func(props map[string]string, body render.HTML) render.HTML {
-        return ui.Callout(ui.CalloutConfig{Title: props["title"], Variant: ui.StatusInfo}, body)
+        return ui.Callout(ui.CalloutConfig{Title: props["title"], Variant: ui.StatusNeutral}, body)
     },
 }})
 ```
 
-```md
-{{< note title="Important" >}}
-This body is still Markdown and can contain links and emphasis.
-{{< /note >}}
-```
+`docs.WithoutDefaultComponents()` starts from an empty vocabulary, where any
+unregistered shortcode fails the build instead of rendering.
 
 `MarkdownCollectionPlugin` packages filesystem content discovery for projects
 that want a plugin-owned collection. Use `MarkdownCollectionFS` for `embed.FS`

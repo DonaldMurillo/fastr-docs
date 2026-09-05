@@ -24,9 +24,12 @@ func NewRouter() *docs.Router {
 		docs.WithTemplate(docs.ParseTemplate(os.Getenv("DOCS_TEMPLATE"))),
 		docs.WithSearchBackend(os.Getenv("DOCS_SEARCH_BACKEND")),
 	)
+	// The default shortcode vocabulary (note, tip, warning, tabs, cards, steps,
+	// filetree, and the rest) is already registered. Add project components
+	// here, or register one of the default names to replace it.
 	if err := router.Use(docs.MarkdownComponentsPlugin{Components: map[string]docs.MarkdownComponent{
-		"callout": func(props map[string]string, body render.HTML) render.HTML {
-			return ui.Callout(ui.CalloutConfig{Title: props["title"], Variant: ui.StatusInfo}, body)
+		"metric": func(props map[string]string, body render.HTML) render.HTML {
+			return ui.Callout(ui.CalloutConfig{Title: props["label"], Variant: ui.StatusNeutral}, body)
 		},
 	}}); err != nil {
 		panic(err)
@@ -124,6 +127,13 @@ func NewRouter() *docs.Router {
 		Description: "Choose one of five visual starting points and customize its tokens.",
 		SourcePath:  "content/build-themes.md",
 		Order:       6,
+		Offline:     true,
+	})
+	build.MustPage("components", docs.PageConfig{
+		Title:       "Markdown components",
+		Description: "The shortcode vocabulary this project starts with.",
+		SourcePath:  "content/build-components.md",
+		Order:       7,
 		Offline:     true,
 	})
 	if err := router.MarkdownBlog("/blog", "content/blog", docs.BlogConfig{

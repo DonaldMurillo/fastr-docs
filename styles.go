@@ -242,7 +242,7 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
 .layout-docs .ui-markdown p { max-width: 73ch; margin: 0 0 16px; }
 .layout-docs .ui-markdown a { color: var(--docs-orange-deep); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--docs-orange) 45%, transparent); text-underline-offset: 3px; }
 .layout-docs .ui-markdown code { padding: 2px 5px; border-radius: 4px; color: var(--docs-orange-deep); background: var(--docs-orange-wash); font-size: .86em; }
-.layout-docs .ui-markdown pre:not(.ui-code-block):not(.ui-code-block__body) { overflow-x: auto; padding: 17px 19px 19px; border: 1px solid var(--color-code-border, #2d392f); border-radius: 8px; color: var(--docs-code-text); background: var(--docs-code); box-shadow: var(--docs-shadow); font-size: 11px; line-height: 1.8; }
+.layout-docs .ui-markdown pre:not(.ui-code-block):not(.ui-code-block__body):not(.ui-diff-viewer__code) { overflow-x: auto; padding: 17px 19px 19px; border: 1px solid var(--color-code-border, #2d392f); border-radius: 8px; color: var(--docs-code-text); background: var(--docs-code); box-shadow: var(--docs-shadow); font-size: 11px; line-height: 1.8; }
 .layout-docs .ui-markdown pre code { padding: 0; color: inherit; background: transparent; }
 .layout-docs .ui-markdown [data-fui-comp="ui-code-block"] { margin: 20px 0 24px; border-radius: 8px; box-shadow: var(--docs-shadow); }
 .layout-docs .ui-markdown [data-fui-comp="ui-code-block"] .ui-code-block__head { padding: 2px 12px; }
@@ -274,6 +274,39 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
 .layout-docs .ui-sidebar__hamburger { border-color: var(--docs-line); color: var(--docs-muted); background: var(--docs-paper); }
 .layout-docs .ui-sidebar__hamburger:hover { color: var(--docs-ink); border-color: var(--docs-line-strong); }
 .layout-docs [data-fui-comp="ui-button"] { border-radius: 6px; }
+
+/* A shortcode body is itself a .ui-markdown block, nested inside the page's.
+   The page-level prose rules set a max width and 75px of bottom padding, which
+   a callout or card must not inherit. */
+.ui-markdown .ui-markdown { width: auto; margin-inline: 0; padding: 0; }
+/* A card with an href is itself the anchor, so the prose underline would run
+   under its heading and description. */
+.layout-docs .ui-markdown a.ui-card, .layout-docs .ui-markdown a.ui-tag { text-decoration: none; }
+.ui-markdown .ui-markdown > :last-child { margin-bottom: 0; }
+
+/* Shortcode components. Steps and file trees are authored as ordinary Markdown
+   lists so the source stays readable in a plain editor; the presentation is
+   carried entirely by these rules. */
+.fastr-docs-steps { margin: 24px 0; }
+.fastr-docs-steps > * > ol { counter-reset: fastr-docs-step; margin: 0; padding: 0; list-style: none; }
+.fastr-docs-steps > * > ol > li { position: relative; margin: 0; padding: 0 0 24px 44px; border-left: 1px solid var(--docs-line); counter-increment: fastr-docs-step; }
+.fastr-docs-steps > * > ol > li:last-child { padding-bottom: 0; border-left-color: transparent; }
+.fastr-docs-steps > * > ol > li::before { position: absolute; top: -2px; left: -14px; display: grid; width: 27px; height: 27px; border: 1px solid var(--docs-line); border-radius: 50%; color: var(--docs-ink); background: var(--docs-paper); font: 11px var(--font-mono, monospace); place-items: center; content: counter(fastr-docs-step); }
+.fastr-docs-steps > * > ol > li > :first-child { margin-top: 0; }
+.fastr-docs-steps > * > ol > li > :last-child { margin-bottom: 0; }
+
+.fastr-docs-filetree { margin: 24px 0; padding: 16px 18px; border: 1px solid var(--docs-line); border-radius: 7px; background: var(--docs-paper); font: 12px/1.9 var(--font-mono, monospace); }
+.fastr-docs-filetree ul { margin: 0; padding-left: 17px; list-style: none; }
+.fastr-docs-filetree > ul { padding-left: 0; }
+.fastr-docs-filetree li { position: relative; color: var(--docs-ink-soft); }
+.fastr-docs-filetree ul ul { border-left: 1px solid var(--docs-line); }
+.fastr-docs-filetree ul ul li { padding-left: 14px; }
+.fastr-docs-filetree ul ul li::before { position: absolute; top: 0.95em; left: 0; width: 9px; height: 1px; background: var(--docs-line); content: ""; }
+.fastr-docs-filetree li > code { padding: 0; background: none; font-size: inherit; }
+.fastr-docs-filetree__dir { color: var(--docs-ink); font-weight: 600; }
+.fastr-docs-filetree__file { color: var(--docs-ink-soft); }
+
+.fastr-docs-hero { margin-bottom: 40px; }
 
 @media (max-width: 1120px) {
   .fastr-docs-doc-layout { display: flex; flex-direction: column; }

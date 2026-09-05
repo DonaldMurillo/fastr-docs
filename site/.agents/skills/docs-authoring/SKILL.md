@@ -33,15 +33,32 @@ page-local configuration:
 RSS. After changing draft status, confirm the page is absent from all five,
 not just the sidebar.
 
-## Embedding components in Markdown
+## Components in Markdown
 
-Register a component adapter once, then use the shortcode:
+A shortcode vocabulary is registered by default. Nothing to import, nothing to
+wire up:
+
+`note` `info` `tip` `success` `warning` `caution` `danger` for admonitions,
+`callout` when you want to pass the tone as a prop, `card` and `cards` for a
+grid, `tabs` with `tab` children, `steps`, `filetree`, `details`, `badge`,
+`tag`, `banner`, `icon`, `diff`, and `hero` with `action` children.
 
 ```md
-{{< note title="Important" >}}
-The body is still Markdown and can contain links and emphasis.
-{{< /note >}}
+{{< warning title="Check your order" >}}
+Sibling routes need explicit `Order` values.
+{{< /warning >}}
 ```
+
+Bodies are still Markdown. `diff` and `filetree` are the exceptions: they read
+their body unrendered so line structure survives, so write those as a fenced
+block.
+
+Register a name to replace it, in `docs/router.go`. Three shapes are
+available: `MarkdownComponent` receives the rendered body, `MarkdownContainer`
+receives its nested shortcodes as separate children, and
+`MarkdownRawComponent` receives the body unrendered. Pass
+`docs.WithoutDefaultComponents()` to start from nothing, where an unregistered
+shortcode fails the build.
 
 ## Before you call it done
 

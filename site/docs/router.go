@@ -129,6 +129,14 @@ func NewRouter() *docs.Router {
 		Order:       6,
 		Offline:     true,
 	})
+	build.MustPage("components", docs.PageConfig{
+		Title:       "Markdown components",
+		Description: "The shortcode vocabulary every project starts with.",
+		SourcePath:  contentFile("build-components.md"),
+		Order:       7,
+		Offline:     true,
+		Badge:       docs.NavBadge{Label: "New", Tone: docs.NavBadgeToneInfo},
+	})
 	if err := router.MarkdownBlog("/blog", siteFile("content", "blog"), docs.BlogConfig{
 		Title: "Blog", Description: "Release notes and implementation updates for fastr-docs.", Order: 5,
 		PostsPerPage: 10, RelatedPosts: 3,

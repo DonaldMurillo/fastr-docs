@@ -45,22 +45,37 @@ type MarkdownChild struct {
 //	{{< /tabs >}}
 type MarkdownContainer func(props map[string]string, children []MarkdownChild, body render.HTML) render.HTML
 
+// MarkdownRawComponent renders a shortcode from its unrendered body. Use it
+// when the content is data rather than prose: a diff patch, a file tree, a
+// table. Rendering the body as Markdown first turns line structure into markup
+// and there is no reliable way to get it back.
+type MarkdownRawComponent func(props map[string]string, raw string) render.HTML
+
 // markdownVocabulary is the merged shortcode namespace for one page. A name
-// resolves to either a component or a container, never both.
+// resolves to exactly one kind.
 type markdownVocabulary struct {
 	components map[string]MarkdownComponent
 	containers map[string]MarkdownContainer
+	raws       map[string]MarkdownRawComponent
 }
 
 func (v markdownVocabulary) empty() bool {
-	return len(v.components) == 0 && len(v.containers) == 0
+	return len(v.components) == 0 && len(v.containers) == 0 && len(v.raws) == 0
 }
 
 func (v markdownVocabulary) knows(name string) bool {
 	if _, ok := v.containers[name]; ok {
 		return true
 	}
+	if _, ok := v.raws[name]; ok {
+		return true
+	}
 	_, ok := v.components[name]
+	return ok
+}
+
+func (v markdownVocabulary) isRaw(name string) bool {
+	_, ok := v.raws[name]
 	return ok
 }
 
@@ -121,15 +136,22 @@ func expandMarkdownShortcodes(source string, vocab markdownVocabulary, renderBod
 		if !vocab.knows(node.name) {
 			return fmt.Errorf("Markdown component %q is not registered", node.name)
 		}
-		bodySource, nested, err := expandMarkdownShortcodes(node.body, vocab, true)
-		if err != nil {
-			return err
+		var html render.HTML
+		if raw, ok := vocab.raws[node.name]; ok {
+			// Raw shortcodes take their body verbatim, before any Markdown
+			// rendering, so line structure survives.
+			html = raw(node.props, node.body)
+		} else {
+			bodySource, nested, err := expandMarkdownShortcodes(node.body, vocab, true)
+			if err != nil {
+				return err
+			}
+			body := render.HTML("")
+			if renderBody || strings.TrimSpace(bodySource) != "" {
+				body = applyShortcodes(renderDocsMarkdown(bodySource, nil), nested)
+			}
+			html = vocab.render(node, current.children, body)
 		}
-		body := render.HTML("")
-		if renderBody || strings.TrimSpace(bodySource) != "" {
-			body = applyShortcodes(renderDocsMarkdown(bodySource, nil), nested)
-		}
-		html := vocab.render(node, current.children, body)
 		// Inside a container the rendered child is handed over as its own item
 		// rather than flattened into the parent's body, so the parent can tell
 		// one child from the next.
@@ -295,4 +317,53 @@ func mergeMarkdownContainers(global, local map[string]MarkdownContainer) map[str
 		out[name] = container
 	}
 	return out
+}
+
+func cloneMarkdownRaws(in map[string]MarkdownRawComponent) map[string]MarkdownRawComponent {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]MarkdownRawComponent, len(in))
+	for name, raw := range in {
+		out[name] = raw
+	}
+	return out
+}
+
+func mergeMarkdownRaws(global, local map[string]MarkdownRawComponent) map[string]MarkdownRawComponent {
+	if len(global) == 0 && len(local) == 0 {
+		return nil
+	}
+	out := cloneMarkdownRaws(global)
+	if out == nil {
+		out = make(map[string]MarkdownRawComponent)
+	}
+	for name, raw := range local {
+		out[name] = raw
+	}
+	return out
+}
+
+// stripShortcodeFence removes an optional fenced-code wrapper. Authors keep the
+// fence so the source still reads well in a plain Markdown editor, but the
+// component wants the text inside it.
+func stripShortcodeFence(raw string) string {
+	lines := strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n")
+	start, end := 0, len(lines)
+	for start < end && strings.TrimSpace(lines[start]) == "" {
+		start++
+	}
+	for end > start && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+	if start < end && isShortcodeFence(lines[start]) && isShortcodeFence(lines[end-1]) {
+		start++
+		end--
+	}
+	return strings.Join(lines[start:end], "\n")
+}
+
+func isShortcodeFence(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~")
 }

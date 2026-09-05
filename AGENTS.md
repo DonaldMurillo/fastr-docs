@@ -155,30 +155,32 @@ The e2e fixture at `e2e/fixtures/non-cli/` still wires its assets by hand, on
 purpose: it proves the lower-level API works without the convenience wrapper,
 and it uses a non-default `/__manual` prefix.
 
-## Mermaid and KaTeX: blocked on a CSP decision
+## Diagrams (plugin/mermaid)
 
-Measured in a real browser against the live policy, not reasoned about:
-`default-src 'self'` blocks both dynamically injected `<style>` elements and
-inline `style` attributes. Chrome logged two violations, and neither the
-injected stylesheet nor the inline attribute applied.
+Resolved the CSP problem the earlier spike found, using the isolation model of
+the editor plugin in `gofastr-plugins/mermaid`, reduced to what a docs page
+needs: no save path, no capability handshake, no document store.
 
-Mermaid renders by injecting a `<style>` element and emitting SVG carrying
-inline styles, so it cannot work under the current policy. There is no way to
-ship it without one of:
+The diagram renders in a frame document loaded with `sandbox="allow-scripts"`
+and no `allow-same-origin`. Only that document is served with
+`style-src 'unsafe-inline'`; pages keep `default-src 'self'`. Tests assert both
+halves of that.
 
-1. Adding `style-src 'unsafe-inline'`, which weakens the strict CSP for every
-   generated site.
-2. Mounting it through GoFastr's `framework/pluginhost` sandboxed iframe, which
-   keeps the policy intact but is substantially more work.
+Two things are easy to get wrong here, and both fail silently:
 
-Vendoring is its own decision: mermaid.min.js is roughly 3MB, embedded into the
-binary of any project that opts in. `plugin/openapi` shows the pattern, and a
-separate package means unused ones are never linked in, so the cost only lands
-on projects that ask for it.
+- The frame's opaque origin makes its *own* stylesheet and bundle cross-origin
+  requests. Without `Cross-Origin-Resource-Policy: cross-origin` on them the
+  browser blocks with `ERR_BLOCKED_BY_RESPONSE.NotSameOrigin` and the diagram
+  never appears. The host adapter must **not** carry that header; it is an
+  ordinary page script.
+- The frame cannot read the host stylesheet, so dark mode is mirrored by asking
+  it to re-render, not by CSS.
 
-This is a product and security-posture call, so it is deliberately not made
-here. `RuntimeAssetPlugin` exists and is tested, so whichever way it goes the
-plumbing is ready.
+`assets/diagram.js` is a generated 3.3MB esbuild bundle with Mermaid inlined.
+Rebuild it with `cd plugin/mermaid/js && npm install && npm run build`. It is a
+separate Go package, so nothing links it in unless the project imports it.
+
+KaTeX is not implemented. The same frame model would work for it.
 
 ## Known GoFastr limitations worked around here
 

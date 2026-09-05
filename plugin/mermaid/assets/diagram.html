@@ -1,0 +1,31 @@
+<!doctype html>
+<!--
+  Read-only Mermaid frame document.
+
+  Served same-origin from the plugin's asset route and loaded inside
+  <iframe sandbox="allow-scripts"> with NO allow-same-origin, which gives it an
+  opaque origin: cookies, storage, and the host DOM are unreachable, and
+  window.parent.postMessage is the only channel out.
+
+  This exists because Mermaid renders by injecting a <style> element and SVG
+  carrying inline styles, both of which the docs pages' default-src 'self'
+  blocks. Confining that to a frame document with its own policy keeps the
+  pages themselves strict.
+
+  Sub-resources are relative so they resolve under the asset prefix whatever
+  cache-buster the host appends to the iframe src.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Diagram</title>
+    <link rel="stylesheet" href="./diagram.css" />
+  </head>
+  <body>
+    <div id="fastr-docs-mermaid-root" role="img" aria-label="Diagram"></div>
+    <!-- The only script. Mermaid is bundled in; nothing is fetched at runtime. -->
+    <script src="./diagram.js"></script>
+  </body>
+</html>

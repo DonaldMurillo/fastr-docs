@@ -301,6 +301,15 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
 .fastr-docs-page-hero { margin-bottom: 8px; padding-top: 24px; }
 .fastr-docs-page-hero h1 { letter-spacing: -.045em; }
 
+/* Mermaid diagrams render inside a sandboxed iframe, because Mermaid needs
+   inline styles that the pages' own policy blocks. The source stays visible as
+   preformatted text until the host adapter swaps in the frame, so a reader with
+   JavaScript disabled still gets the diagram's definition. */
+.fastr-docs-mermaid { margin: 24px 0; }
+.fastr-docs-mermaid__frame { display: block; width: 100%; height: 220px; border: 0; overflow: hidden; transition: height .12s ease-out; }
+.fastr-docs-mermaid__source { margin: 0; padding: 16px 18px; overflow-x: auto; border: 1px dashed var(--docs-line); border-radius: 7px; color: var(--docs-muted); background: var(--docs-paper); font: 12px/1.7 var(--font-mono, monospace); }
+.fastr-docs-mermaid[data-fastr-docs-mermaid-failed] .fastr-docs-mermaid__frame { height: auto; min-height: 120px; }
+
 /* Shortcode components. Steps and file trees are authored as ordinary Markdown
    lists so the source stays readable in a plain editor; the presentation is
    carried entirely by these rules. */

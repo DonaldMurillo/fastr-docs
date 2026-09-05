@@ -186,6 +186,37 @@ When a project contains localized or versioned route siblings, the header emits
 route-aware Language and Version selectors that preserve the current page
 family.
 
+## Diagrams
+
+`plugin/mermaid` renders Mermaid diagrams from Markdown:
+
+```go
+router.Use(mermaid.Plugin{})
+```
+
+```md
+{{< mermaid title="How a page renders" >}}
+```
+graph LR
+    MD[Markdown] --> R[docs.Router] --> PAGE[Page]
+```
+{{< /mermaid >}}
+```
+
+Mermaid renders by injecting a `<style>` element and emitting SVG with inline
+styles, both of which `default-src 'self'` blocks. Rather than relaxing the
+policy for every page, the diagram renders inside a same-origin frame document
+loaded in `<iframe sandbox="allow-scripts">` with no `allow-same-origin`. Only
+that document carries `style-src 'unsafe-inline'`; the pages stay strict.
+
+The frame has an opaque origin, so it cannot reach the host's DOM, cookies, or
+storage, and `connect-src 'none'` keeps it off the network. `postMessage`
+carries two things: the diagram source in, the rendered height back. Without
+JavaScript the page shows the diagram source as preformatted text.
+
+It is a separate package, so Mermaid's bundle is only linked into projects that
+import it.
+
 ## Plugin assets
 
 The docs runtime, the search index, the export manifest, and every plugin's

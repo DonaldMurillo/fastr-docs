@@ -4,6 +4,7 @@ import (
 	"os"
 
 	docs "github.com/DonaldMurillo/fastr-docs"
+	"github.com/DonaldMurillo/fastr-docs/plugin/mermaid"
 	"github.com/DonaldMurillo/fastr-docs/plugin/openapi"
 	uiapp "github.com/DonaldMurillo/gofastr/core-ui/app"
 	"github.com/DonaldMurillo/gofastr/core/render"
@@ -33,6 +34,11 @@ func NewRouter() *docs.Router {
 			Branch:  os.Getenv("DOCS_REPO_BRANCH"),
 		}),
 	)
+	// Diagrams render inside a sandboxed frame so the pages keep their strict
+	// content policy. See docs/build/diagrams.
+	if err := router.Use(mermaid.Plugin{}); err != nil {
+		panic(err)
+	}
 	if err := router.Use(docs.MarkdownComponentsPlugin{Components: map[string]docs.MarkdownComponent{
 		"callout": func(props map[string]string, body render.HTML) render.HTML {
 			return ui.Callout(ui.CalloutConfig{Title: props["title"], Variant: ui.StatusInfo}, body)
@@ -140,6 +146,14 @@ func NewRouter() *docs.Router {
 		SourcePath:  contentFile("build-themes.md"),
 		Order:       6,
 		Offline:     true,
+	})
+	build.MustPage("diagrams", docs.PageConfig{
+		Title:       "Diagrams",
+		Description: "Render Mermaid diagrams without weakening the content policy.",
+		SourcePath:  contentFile("build-diagrams.md"),
+		Order:       8,
+		Offline:     true,
+		Badge:       docs.NavBadge{Label: "New", Tone: docs.NavBadgeToneInfo},
 	})
 	build.MustPage("components", docs.PageConfig{
 		Title:       "Markdown components",

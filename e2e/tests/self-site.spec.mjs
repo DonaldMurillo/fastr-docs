@@ -184,3 +184,56 @@ test('self-hosted blog archive and RSS feed share the Router content', async ({ 
   expect(body).toContain('<rss');
   expect(body).toContain('One tree for docs and publishing');
 });
+
+// Mermaid renders inside a sandboxed frame because the pages' own policy blocks
+// the inline styles it emits. These assert the isolation actually holds, not
+// just that a picture appeared.
+test('diagrams render inside a sandboxed frame', async ({ page }) => {
+  const cspViolations = [];
+  page.on('console', (m) => { if (/Content Security Policy/i.test(m.text())) cspViolations.push(m.text()); });
+
+  await page.goto(selfPage('/docs/build/diagrams'));
+  const roots = page.locator('.fastr-docs-mermaid');
+  await expect(roots).toHaveCount(2);
+
+  const first = roots.first();
+  await first.scrollIntoViewIfNeeded();
+  const frame = first.locator('iframe');
+  await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
+
+  // Rendering happens in the frame; the host only learns the height.
+  await expect.poll(async () => (await frame.getAttribute('style')) || '', { timeout: 20_000 }).toContain('height');
+  const rendered = page.frameLocator('.fastr-docs-mermaid iframe').first().locator('svg');
+  await expect(rendered).toBeVisible({ timeout: 20_000 });
+
+  // The relaxation the frame needs must not reach the page.
+  expect(cspViolations, cspViolations.join('\n')).toHaveLength(0);
+});
+
+test('the diagram frame carries its own policy and the page does not', async ({ request }) => {
+  const frame = await request.get(selfPage('/__fastr-docs/mermaid/diagram.html'));
+  expect(frame.ok()).toBeTruthy();
+  const framePolicy = frame.headers()['content-security-policy'] || '';
+  expect(framePolicy).toContain("style-src 'self' 'unsafe-inline'");
+  expect(framePolicy).toContain("frame-ancestors 'self'");
+  // Its own bundle is cross-origin to an opaque-origin frame, so it needs this
+  // or the browser blocks it and nothing renders.
+  expect(frame.headers()['cross-origin-resource-policy']).toBe('cross-origin');
+
+  const bundle = await request.get(selfPage('/__fastr-docs/mermaid/diagram.js'));
+  expect(bundle.ok()).toBeTruthy();
+  expect(bundle.headers()['cross-origin-resource-policy']).toBe('cross-origin');
+
+  const adapter = await request.get(selfPage('/__fastr-docs/mermaid/adapter.js'));
+  expect(adapter.ok()).toBeTruthy();
+  expect(adapter.headers()['cross-origin-resource-policy']).not.toBe('cross-origin');
+});
+
+test('a diagram falls back to its source without JavaScript', async ({ browser }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  const page = await context.newPage();
+  await page.goto(selfPage('/docs/build/diagrams'));
+  await expect(page.locator('.fastr-docs-mermaid__source').first()).toContainText('graph LR');
+  await expect(page.locator('.fastr-docs-mermaid iframe')).toHaveCount(0);
+  await context.close();
+});

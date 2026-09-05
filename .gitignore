@@ -5,3 +5,5 @@ e2e/playwright-report/
 e2e/*.png
 e2e/fixtures/non-cli/*.exe
 test-results/
+.fastr-docs-dev-reload-*.go
+.fastr-docs-export-*.exe

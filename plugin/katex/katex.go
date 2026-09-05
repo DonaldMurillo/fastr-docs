@@ -35,7 +35,11 @@ const (
 	// AssetDir is the sub-directory of the docs asset prefix holding the
 	// runtime, its stylesheet, and the fonts.
 	AssetDir = "katex"
-	// ScriptPath is the page runtime, relative to the docs asset prefix.
+	// LoaderPath is the small script every page loads. It pulls ScriptPath in
+	// only on a page that has math.
+	LoaderPath = AssetDir + "/katex-loader.js"
+	// ScriptPath is the renderer, relative to the docs asset prefix. It is not
+	// a page script; the loader fetches it.
 	ScriptPath = AssetDir + "/katex.js"
 	// StylePath is the KaTeX stylesheet, relative to the docs asset prefix.
 	StylePath = AssetDir + "/katex.css"
@@ -114,10 +118,17 @@ func (Plugin) RuntimeAssets() (map[string][]byte, error) {
 	return assets, nil
 }
 
-// PageScripts keeps the stylesheet and the twenty font files out of the page's
-// <script> tags. Only the runtime belongs there; it pulls the stylesheet in
-// itself once it knows where it was mounted.
-func (Plugin) PageScripts() []string { return []string{ScriptPath} }
+// PageScripts is the loader alone, not the renderer.
+//
+// The renderer is 266KB and most documentation pages have no math on them, so
+// loading it everywhere would make it the largest thing on the page and have it
+// do nothing. The loader is under a kilobyte, checks for a placeholder, and
+// fetches the renderer and its stylesheet only when it finds one.
+//
+// The stylesheet and the twenty font files are never page scripts either; they
+// are served, and the browser fetches each font face only when a formula uses
+// it.
+func (Plugin) PageScripts() []string { return []string{LoaderPath} }
 
 // MountAssets serves the fonts with a long immutable cache. Router.
 // MountRuntimeAssets already serves them; this route takes precedence and only

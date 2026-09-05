@@ -185,12 +185,13 @@ func TestRuntimeAssetsCarryTheRuntimeStylesheetAndFonts(t *testing.T) {
 	}
 }
 
-// Only the runtime belongs in a <script> tag. Selecting page scripts by file
-// extension would put the stylesheet's neighbours there too.
-func TestOnlyTheRuntimeIsAPageScript(t *testing.T) {
+// Only the loader belongs in a <script> tag. The renderer is 266KB and most
+// pages have no math, so shipping it everywhere would make it the largest thing
+// on a page that never uses it.
+func TestOnlyTheLoaderIsAPageScript(t *testing.T) {
 	scripts := Plugin{}.PageScripts()
-	if len(scripts) != 1 || scripts[0] != "katex/katex.js" {
-		t.Fatalf("PageScripts() = %v, want [katex/katex.js]", scripts)
+	if len(scripts) != 1 || scripts[0] != LoaderPath {
+		t.Fatalf("PageScripts() = %v, want [%s]", scripts, LoaderPath)
 	}
 	r := routerWithPlugin(t, Plugin{})
 	names, err := r.RuntimeScriptNames("")
@@ -198,9 +199,39 @@ func TestOnlyTheRuntimeIsAPageScript(t *testing.T) {
 		t.Fatalf("RuntimeScriptNames() error = %v", err)
 	}
 	for _, name := range names {
+		if name == ScriptPath {
+			t.Fatal("the renderer was listed as a page script")
+		}
 		if strings.HasPrefix(name, "katex/fonts/") || strings.HasSuffix(name, ".css") {
 			t.Fatalf("RuntimeScriptNames() included %q", name)
 		}
+	}
+}
+
+// The loader has to stay small enough that carrying it on a page with no math
+// is not worth thinking about, and it must not have KaTeX bundled into it.
+func TestTheLoaderIsTinyAndCarriesNoRenderer(t *testing.T) {
+	assets, err := Plugin{}.RuntimeAssets()
+	if err != nil {
+		t.Fatalf("RuntimeAssets() error = %v", err)
+	}
+	loader := assets[LoaderPath]
+	if len(loader) == 0 {
+		t.Fatalf("RuntimeAssets() missing %q", LoaderPath)
+	}
+	if len(loader) > 4096 {
+		t.Fatalf("loader is %d bytes; it is meant to be negligible", len(loader))
+	}
+	// It fetches the renderer rather than containing it.
+	if !strings.Contains(string(loader), "katex.js") {
+		t.Fatalf("loader does not reference the renderer: %s", loader)
+	}
+	if !strings.Contains(string(loader), "katex.css") {
+		t.Fatalf("loader does not pull the stylesheet: %s", loader)
+	}
+	// A placeholder on the page is the whole trigger.
+	if !strings.Contains(string(loader), "data-fastr-docs-math") {
+		t.Fatalf("loader does not look for a placeholder: %s", loader)
 	}
 }
 

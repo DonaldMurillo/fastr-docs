@@ -208,8 +208,17 @@ escapes. Fenced blocks and inline code spans are skipped outright. Those rules
 are why `from $5 to $10` and `$HOME` stay prose, and the table in
 `site/content/build-math.md` documents them for writers.
 
-`assets/` is generated: a 266KB esbuild bundle, `katex.css` rewritten to woff2
-only, and 20 font faces. Rebuild with
+`assets/` is generated from two entry points. `katex-loader.js` is 783 bytes and
+is the only file every page carries; it looks for a placeholder and pulls
+`katex.js` (266KB) and the stylesheet in only when it finds one, re-checking on
+DOM mutation so a client-side navigation into a math page still works. Measured:
+a page without math transfers 783 bytes of KaTeX, this repo's math page about
+347KB. `PageScripts()` returns the loader, never the renderer.
+
+The stylesheet also declares 20 font faces and the browser fetches only the ones
+a formula uses, so the fonts need no lazy-loading machinery of their own.
+
+Rebuild with
 `cd plugin/katex/js && npm install && npm run build`. The placeholder CSS lives
 in `build.mjs` and is appended to the stylesheet, so the plugin owns its
 presentation and a project needs no CSS of its own.

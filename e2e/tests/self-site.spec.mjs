@@ -303,14 +303,49 @@ test('math falls back to its source without JavaScript', async ({ browser }) => 
   await context.close();
 });
 
-// A plugin bundle that belongs somewhere other than the page must not be loaded
-// by the page. The Mermaid bundle is megabytes and the frame fetches it itself.
-test('only page-side plugin runtimes are loaded as page scripts', async ({ page }) => {
-  await page.goto(selfPage('/docs/build/math'));
+// A plugin bundle that belongs somewhere other than the page must not be
+// server-rendered into it. The Mermaid bundle is megabytes and the frame
+// fetches it itself; the KaTeX renderer is fetched by its own loader.
+test('only small loaders are server-rendered as page scripts', async ({ page }) => {
+  await page.goto(selfPage('/docs/build/diagrams'));
   const scripts = await page.evaluate(() =>
     [...document.querySelectorAll('script[src]')].map((s) => s.getAttribute('src')).filter((s) => s.includes('__fastr-docs')));
-  expect(scripts).toContain('/__fastr-docs/katex/katex.js');
+  expect(scripts).toContain('/__fastr-docs/katex/katex-loader.js');
   expect(scripts).toContain('/__fastr-docs/mermaid/adapter.js');
   expect(scripts).not.toContain('/__fastr-docs/mermaid/diagram.js');
+  expect(scripts).not.toContain('/__fastr-docs/katex/katex.js');
   expect(scripts.filter((s) => s.endsWith('.css'))).toHaveLength(0);
+});
+
+// The renderer is 266KB and most pages have no math. Carrying it everywhere
+// would make it the largest thing on a page that never uses it.
+test('a page without math never downloads the renderer', async ({ page }) => {
+  const fetched = [];
+  page.on('response', (r) => { if (r.url().includes('/katex/')) fetched.push(r.url().split('/katex/')[1]); });
+
+  await page.goto(selfPage('/docs/build/diagrams'), { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1000);
+
+  expect(fetched).toContain('katex-loader.js');
+  expect(fetched).not.toContain('katex.js');
+  expect(fetched).not.toContain('katex.css');
+  expect(fetched.filter((f) => f.startsWith('fonts/'))).toHaveLength(0);
+});
+
+// The docs shell swaps pages without a reload, so a reader who arrives on a
+// page with no math and navigates to one that has it still gets the renderer.
+test('the renderer arrives when math does, including after a client-side navigation', async ({ page }) => {
+  const fetched = [];
+  page.on('response', (r) => { if (r.url().includes('/katex/')) fetched.push(r.url().split('/katex/')[1]); });
+
+  await page.goto(selfPage('/docs/build/diagrams'), { waitUntil: 'networkidle' });
+  expect(fetched).not.toContain('katex.js');
+
+  await page.goto(selfPage('/docs/build/math'));
+  await expect(page.locator('.fastr-docs-math .katex').first()).toBeVisible({ timeout: 20_000 });
+  expect(fetched).toContain('katex.js');
+  expect(fetched).toContain('katex.css');
+
+  const rendered = await page.evaluate(() => document.querySelectorAll('.fastr-docs-math .katex').length);
+  expect(rendered).toBe(6);
 });

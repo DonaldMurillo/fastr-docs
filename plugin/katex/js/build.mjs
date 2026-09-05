@@ -20,6 +20,19 @@ const PLACEHOLDER_CSS = `
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT + '/fonts', { recursive: true });
 
+// Two entry points, not one. katex-loader.js is what every page loads; it
+// pulls katex.js in only on a page that actually has math.
+await build({
+  entryPoints: ['src/loader.js'],
+  outfile: OUT + '/katex-loader.js',
+  bundle: true,
+  format: 'iife',
+  target: ['es2020'],
+  minify: true,
+  legalComments: 'none',
+  logLevel: 'info',
+});
+
 await build({
   entryPoints: ['src/page.js'],
   outfile: OUT + '/katex.js',

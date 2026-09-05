@@ -105,8 +105,20 @@ Rendering in the page rather than in a frame is also what makes inline math
 work. A frame is a rectangle; it cannot share a line box with the sentence
 around it, so $a^2 + b^2 = c^2$ inside a paragraph has to be a real element.
 
-## What ships
+## What a page actually downloads
 
-The runtime is about 266 KB and the stylesheet pulls only `woff2` faces, each
-one fetched on demand and cached for a year. Nothing is fetched from a CDN, so
-an offline export renders math the same as the live site.
+The renderer is 266 KB, and most documentation pages have no math on them. So
+the only file every page carries is a 783-byte loader. It looks for a formula,
+and fetches the renderer and stylesheet only when it finds one.
+
+| Page | KaTeX bytes |
+| --- | --- |
+| No math on it | 783 |
+| This one | ~347 KB, including 4 font faces |
+
+The loader keeps watching after the first pass, so arriving here from a page
+with no math still works: the docs shell swaps pages without a reload.
+
+Fonts are lazy in their own right. The stylesheet declares twenty faces and the
+browser fetches only the ones a formula uses, each cached for a year. Nothing
+comes from a CDN, so an offline export renders math the same as the live site.

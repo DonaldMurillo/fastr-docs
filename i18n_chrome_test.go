@@ -102,16 +102,35 @@ func TestATranslatedSectionIsNotASecondNavTab(t *testing.T) {
 	}
 }
 
-// The tab labels stay in the language their sections were registered in.
-// Translating a route title is the project's call; the framework only makes
-// sure the same section is not listed twice.
-func TestNavTabLabelsAreNotInvented(t *testing.T) {
+// Where a translation of a section exists, the tab points at it, so a reader
+// who switched language stays in it while moving around the site.
+//
+// A translated section is usually not a root: /es/docs sits under /es, so a
+// search that only walked the roots found nothing and the whole nav stayed in
+// the source language.
+func TestNavTabsFollowTheReadersLanguage(t *testing.T) {
 	r := chromeLocaleSite(t)
-	for _, path := range []string{"/guide", "/es/guide"} {
-		items := r.headerItems(path)
-		if len(items) != 1 || items[0].Label != "Guide" {
-			t.Fatalf("%s nav = %+v, want the one registered section", path, items)
-		}
+	spanish := r.headerItems("/es/guide")
+	if len(spanish) != 1 || spanish[0].Label != "Guía" || spanish[0].Href != "/es/guide" {
+		t.Fatalf("Spanish nav = %+v, want the Spanish section", spanish)
+	}
+	english := r.headerItems("/guide")
+	if len(english) != 1 || english[0].Label != "Guide" || english[0].Href != "/guide" {
+		t.Fatalf("English nav = %+v, want the English section", english)
+	}
+}
+
+// A section with no translation keeps its original label rather than
+// disappearing, which is the normal state of a partly translated site.
+func TestAnUntranslatedSectionStaysInTheNav(t *testing.T) {
+	r := chromeLocaleSite(t)
+	r.MustPage("/api", PageConfig{Title: "API", Description: "API", Source: "# API\n", Metadata: ContentMetadata{Locale: "en"}})
+	labels := make([]string, 0, 2)
+	for _, item := range r.headerItems("/es/guide") {
+		labels = append(labels, item.Label)
+	}
+	if len(labels) != 2 || labels[1] != "API" {
+		t.Fatalf("nav = %v, want the untranslated section kept", labels)
 	}
 }
 
@@ -142,4 +161,69 @@ func TestASingleLocaleSiteIsUnaffected(t *testing.T) {
 	if html := string(r.variantSelectors("/guide")); strings.Contains(html, "variant-select") {
 		t.Fatalf("a single-locale site got a selector: %s", html)
 	}
+}
+
+// A section is usually a group, and a group has no front matter, so before
+// GroupConfig.Locale existed a translated section could not be paired with its
+// original at all: variantFamily had no locale segment to strip.
+func TestAGroupCanDeclareItsLocale(t *testing.T) {
+	r := NewRouter(WithSiteName("Docs"), WithLocaleFallback("en"))
+	english := r.MustGroup("/guides", GroupConfig{Title: "Guides", Description: "en", Order: 1})
+	english.MustPage("intro", PageConfig{Title: "Intro", Description: "en", Source: "# Intro\n", Order: 1})
+	spanish := r.MustGroup("/es/guides", GroupConfig{Title: "Guías", Description: "es", Order: 2, Locale: "es"})
+	spanish.MustPage("intro", PageConfig{Title: "Intro", Description: "es", Source: "# Intro\n", Order: 1,
+		Metadata: ContentMetadata{Locale: "es"}})
+
+	var translated *Route
+	for _, root := range r.roots {
+		if root.Path == "/es/guides" {
+			translated = root
+		}
+	}
+	if translated == nil {
+		t.Fatal("the translated group was not registered")
+	}
+	if got := variantFamily(translated); got != "guides" {
+		t.Fatalf("family of the translated group = %q, want %q", got, "guides")
+	}
+	// The nav swaps the section for its translation.
+	items := r.headerItems("/es/guides/intro")
+	if len(items) != 1 || items[0].Label != "Guías" {
+		t.Fatalf("nav = %+v, want the Spanish section", items)
+	}
+}
+
+// Marking `locale: en` on every original page to get a selector is busywork,
+// and forgetting it fails silently. With a default locale named, an unmarked
+// route counts as being in it.
+func TestAnUnmarkedRoutePairsWithTheDefaultLocale(t *testing.T) {
+	r := NewRouter(WithSiteName("Docs"), WithLocaleFallback("en"),
+		WithLocaleNames(map[string]string{"en": "English", "es": "Español"}))
+	// No locale in front matter, which is how a monolingual site is written.
+	r.MustPage("/guide", PageConfig{Title: "Guide", Description: "en", Source: "# Guide\n", Order: 1})
+	r.MustPage("/es/guide", PageConfig{Title: "Guía", Description: "es", Source: "# Guia\n", Order: 2,
+		Metadata: ContentMetadata{Locale: "es"}})
+
+	if got := r.effectiveLocale(r.routeAtPath("/guide")); got != "en" {
+		t.Fatalf("unmarked route counts as %q, want the default locale", got)
+	}
+	html := string(r.variantSelectors("/guide"))
+	for _, want := range []string{"English", "Español"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("selector missing %q: %s", want, html)
+		}
+	}
+}
+
+// Pairing is not publication. An unmarked route is still served in every locale
+// build, so treating it as the default locale must not hide it.
+func TestTheDefaultLocaleRuleDoesNotChangeWhatPublishes(t *testing.T) {
+	r := NewRouter(WithSiteName("Docs"), WithLocale("es"), WithLocaleFallback("en"))
+	r.MustPage("/shared", PageConfig{Title: "Shared", Description: "no locale", Source: "# Shared\n", Order: 1})
+	for _, route := range r.PublishedRoutes() {
+		if route.Path == "/shared" {
+			return
+		}
+	}
+	t.Fatal("a route with no declared locale stopped publishing in an es build")
 }

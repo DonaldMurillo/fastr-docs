@@ -152,10 +152,30 @@ site is what every real one looks like, and it is the state worth demonstrating.
 | Page content | Yes, when a translation exists |
 | Sidebar, on-this-page, search button, dates | Yes |
 | Language selector | Yes, and it names languages rather than codes |
-| Section tabs in the header | No, they keep the titles you registered |
+| Section tabs and groups in the header and sidebar | Yes, where a translation of that section exists |
 | Command palette placeholder | No, it is mounted once for the whole site |
 | Blog archive, tags, and post chrome | No, those labels are site-wide |
 | The 404 page | No, it is built once and has no route to read a locale from |
 
-The last four are limitations, not decisions, and they are written down in
+The last three are limitations, not decisions, and they are written down in
 `AGENTS.md` rather than hidden here.
+
+## Translating a section, not just a page
+
+A page declares `locale:` in front matter. A group has no front matter, so it
+declares its language in Go:
+
+```go title="docs/router.go"
+conceptos := router.MustGroup("/es/docs/concepts", docs.GroupConfig{
+    Title:  "Conceptos",
+    Locale: "es",
+})
+```
+
+Without that, the group is in no language, pairs with nothing, and the header
+tab and sidebar group stay in the original language while the article beneath
+them is translated.
+
+Original pages need no annotation. When `WithLocaleFallback` names a default
+locale, a page with no `locale:` counts as being in it, so adding a language
+does not mean editing every existing file.

@@ -183,6 +183,26 @@ claims its family, or a translated home lands in the nav as one. Tab labels stay
 in the language they were registered in: translating a route title is the
 project's call.
 
+## Pairing a translation with its original
+
+Three things had to be true before a translated section could replace the
+original rather than sit beside it, and each was a gap rather than a decision.
+
+`GroupConfig.Locale` exists because a page reads its locale from front matter
+and **a group has no front matter to read**. Without it `variantFamily` had no
+locale segment to strip, so `/es/examples` and `/examples` were unrelated
+families: the selector had nowhere to go and the nav tab stayed English.
+
+`effectiveLocale` treats a route with no declared locale as being in
+`WithLocaleFallback`'s default. Requiring `locale: en` on thirty original pages
+to get a language selector is busywork, and omitting it fails silently. This is
+deliberately only about pairing; `localeAllows` decides publication and is
+untouched, so an unmarked route still serves in every locale build.
+
+`headerVariant` walks the whole tree, not `Routes()`. `Routes()` returns pages
+only, and a translated section is usually a group, so a `Routes()` search found
+nothing.
+
 ## Runtime assets
 
 `runtime_assets.go` collects `docs.js`, the search index, the export manifest,

@@ -135,6 +135,16 @@ type GroupConfig struct {
 	Order       int
 	Hidden      bool
 	Badge       NavBadge
+	// Locale and Version place the group in a translated or versioned slice of
+	// the site.
+	//
+	// A page takes these from its front matter, but a group is pure Go and has
+	// no front matter to read, so without them a translated section could never
+	// be paired with its original: variantFamily had no locale segment to
+	// strip, and the language selector and header nav both went looking for a
+	// counterpart that did not exist.
+	Locale  string
+	Version string
 }
 
 // Route is a node in the docs route tree. Children are always returned in
@@ -716,6 +726,10 @@ func (r *Router) Group(path string, cfg GroupConfig) (*Group, error) {
 		Order:       cfg.Order,
 		Hidden:      cfg.Hidden,
 		Badge:       badge,
+		Metadata: ContentMetadata{
+			Locale:  strings.TrimSpace(cfg.Locale),
+			Version: strings.TrimSpace(cfg.Version),
+		},
 	})
 	if err != nil {
 		return nil, err

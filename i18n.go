@@ -20,6 +20,27 @@ func WithLocaleFallback(defaultLocale string) Option {
 	}
 }
 
+// effectiveLocale is the locale a route counts as for pairing purposes.
+//
+// A page declares its locale in front matter, but a site rarely marks its
+// original pages: writing `locale: en` on thirty English files to get a
+// language selector is busywork, and forgetting it fails silently, because a
+// route in no locale pairs with nothing. So when the project has named a
+// default locale, an unmarked route is treated as being in it.
+//
+// This is deliberately only about pairing. Which routes publish is decided by
+// localeAllows, and that is left alone: a route with no declared locale is
+// still served in every locale build.
+func (r *Router) effectiveLocale(route *Route) string {
+	if route == nil {
+		return ""
+	}
+	if locale := normalizeLocale(route.Metadata.Locale); locale != "" {
+		return locale
+	}
+	return normalizeLocale(r.fallbackLocale)
+}
+
 // localeFamilyLocales maps each variant family to the locales present in it.
 // It is rebuilt whenever routes change, and deliberately ignores the locale
 // filter it exists to inform.

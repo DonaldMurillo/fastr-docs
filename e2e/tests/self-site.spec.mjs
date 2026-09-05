@@ -441,8 +441,14 @@ test('the language selector moves between translations of the same page', async 
 // The Spanish tree is the worked example for translating a fastr-docs site, so
 // it has to stay coherent: pages present, chrome translated, selector paired.
 test('the Spanish tree is a complete worked example', async ({ page }) => {
-  for (const path of ['/es', '/es/docs/getting-started', '/es/docs/concepts/router',
-    '/es/docs/concepts/content', '/es/docs/operate/i18n']) {
+  for (const path of ['/es', '/es/docs', '/es/docs/getting-started', '/es/docs/concepts/router',
+    '/es/docs/concepts/content', '/es/docs/concepts/layouts', '/es/docs/build/screens',
+    '/es/docs/build/framework-ui', '/es/docs/build/openapi', '/es/docs/build/plugins',
+    '/es/docs/build/blog', '/es/docs/build/themes', '/es/docs/build/components',
+    '/es/docs/build/diagrams', '/es/docs/build/math', '/es/docs/operate/search',
+    '/es/docs/operate/offline', '/es/docs/operate/testing', '/es/docs/operate/deploy',
+    '/es/docs/operate/i18n', '/es/docs/operate/assets', '/es/docs/operate/feature-coverage',
+    '/es/docs/collaborate/ai-authoring', '/es/examples/route-tree', '/es/examples/custom-surface']) {
     const response = await page.goto(selfPage(path));
     expect(response.status(), path).toBe(200);
     const state = await page.evaluate(() => ({
@@ -465,4 +471,44 @@ test('the translated i18n guide reads as Spanish throughout', async ({ page }) =
     [...document.querySelectorAll('.fastr-docs-toc a, [class*=toc] a')].map((a) => a.textContent.trim()));
   expect(nav.join(' ')).toContain('Familias de rutas');
   await expect(page.locator('body')).not.toContainText('On this page');
+});
+
+// Switching language should replace the site, not open a second one beside it.
+// The nav, the sidebar and the section groups all have to come across.
+test('choosing Spanish replaces the whole site, not just the article', async ({ page }) => {
+  await page.goto(selfPage('/es/docs/build/math'));
+  const es = await page.evaluate(() => ({
+    nav: [...document.querySelectorAll('.ui-site-header__links a')].map((a) => a.textContent.trim()),
+    navHrefs: [...document.querySelectorAll('.ui-site-header__links a')].map((a) => a.getAttribute('href')),
+    groups: [...document.querySelectorAll('.ui-sidebar li')].map((li) => li.firstElementChild?.textContent?.trim()),
+  }));
+  // A translated section is swapped for its translation, and points into it.
+  expect(es.nav).toContain('Documentación');
+  expect(es.nav).toContain('Ejemplos');
+  expect(es.navHrefs).toContain('/es/docs');
+  // Sections with no translation keep their original label rather than vanishing.
+  expect(es.nav).toContain('Blog');
+  // The section groups are Spanish too, which needs GroupConfig.Locale: a group
+  // has no front matter to declare one.
+  expect(es.groups.join(' ')).toContain('Conceptos');
+  expect(es.groups.join(' ')).toContain('Construir');
+  expect(es.groups.join(' ')).toContain('Operar');
+
+  await page.goto(selfPage('/docs/build/math'));
+  const en = await page.evaluate(() =>
+    [...document.querySelectorAll('.ui-site-header__links a')].map((a) => a.textContent.trim()));
+  expect(en).toContain('Documentation');
+  expect(en).toContain('Examples');
+});
+
+// English pages carry no `locale:` in front matter, as a monolingual site is
+// written. They still have to pair with their translation, or adding a language
+// would mean annotating every existing page.
+test('the selector appears without annotating the original pages', async ({ page }) => {
+  for (const path of ['/docs/build/themes', '/docs/operate/deploy', '/examples/route-tree']) {
+    await page.goto(selfPage(path));
+    const options = await page.evaluate(() =>
+      [...(document.querySelector('[data-docs-variant-select=locale]')?.options || [])].map((o) => o.textContent));
+    expect(options, path).toEqual(['English', 'Español']);
+  }
 });

@@ -262,7 +262,7 @@ func (r *Router) variantOptions(current *Route, dimension string) []docsVariantO
 		if !r.variantPublished(route) || variantFamily(route) != variantFamily(current) {
 			continue
 		}
-		value := route.Metadata.Locale
+		value := r.effectiveLocale(route)
 		if dimension == "version" {
 			value = route.Metadata.Version
 		}
@@ -298,7 +298,7 @@ func (r *Router) variantTarget(current *Route, dimension, value string) *Route {
 		if !r.variantPublished(candidate) || variantFamily(candidate) != variantFamily(current) {
 			continue
 		}
-		candidateValue := candidate.Metadata.Locale
+		candidateValue := r.effectiveLocale(candidate)
 		if dimension == "version" {
 			candidateValue = candidate.Metadata.Version
 		}
@@ -391,6 +391,10 @@ func (s *docsSidebar) render(currentPath string) render.HTML {
 // a route title is the project's call, not the framework's, and a partly
 // translated site is the normal case.
 func (r *Router) headerItems(currentPath string) []ui.SiteHeaderLink {
+	locale := ""
+	if current := r.routeAtPath(currentPath); current != nil {
+		locale = r.effectiveLocale(current)
+	}
 	items := make([]ui.SiteHeaderLink, 0, len(r.roots))
 	seen := make(map[string]bool)
 	for _, route := range r.sorted(r.roots) {
@@ -407,14 +411,52 @@ func (r *Router) headerItems(currentPath string) []ui.SiteHeaderLink {
 		if seen[family] {
 			continue
 		}
-		target := r.headerTarget(route)
+		chosen := r.headerVariant(route, locale)
+		target := r.headerTarget(chosen)
 		if target == nil {
 			continue
 		}
 		seen[family] = true
-		items = append(items, ui.SiteHeaderLink{Label: route.Title, Href: target.Path, MatchPrefix: true})
+		items = append(items, ui.SiteHeaderLink{Label: chosen.Title, Href: target.Path, MatchPrefix: true})
 	}
 	return items
+}
+
+// headerVariant swaps a section for its translation when the page being read is
+// in another language, so the tabs are in the reader's language wherever one
+// exists. A section with no translation stays as it is, which is the normal
+// state of a partly translated site.
+//
+// It searches every route rather than only the roots. A translated section is
+// usually not a root: /es/docs sits under /es, so a roots-only search finds
+// nothing and the whole nav stays in the source language.
+func (r *Router) headerVariant(route *Route, locale string) *Route {
+	if locale == "" || r.effectiveLocale(route) == locale {
+		return route
+	}
+	family := variantFamily(route)
+	// The whole tree, not Routes(): that returns pages only, and a translated
+	// section is usually a group. /es/examples is a group, so a Routes() search
+	// found nothing and the tab stayed in the source language.
+	if match := r.findVariant(r.roots, route, family, locale); match != nil {
+		return match
+	}
+	return route
+}
+
+func (r *Router) findVariant(routes []*Route, exclude *Route, family, locale string) *Route {
+	for _, candidate := range routes {
+		if candidate == exclude || !r.routeVisible(candidate) {
+			continue
+		}
+		if variantFamily(candidate) == family && r.effectiveLocale(candidate) == locale {
+			return candidate
+		}
+		if match := r.findVariant(candidate.Children, exclude, family, locale); match != nil {
+			return match
+		}
+	}
+	return nil
 }
 
 func (r *Router) headerTarget(route *Route) *Route {

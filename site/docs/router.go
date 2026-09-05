@@ -235,6 +235,22 @@ func NewRouter() *docs.Router {
 		Order:       2,
 		Offline:     true,
 	})
+	router.MustPage("/es/docs/concepts/content", docs.PageConfig{
+		Title:       "Escribir contenido",
+		Description: "Markdown con front matter, y el campo que enlaza una traducción.",
+		SourcePath:  siteFile("content", "es", "concepts-content.md"),
+		Order:       3,
+		Offline:     true,
+	})
+	// The page about translation, translated. It is the one page whose Spanish
+	// version is worth more than its English one as a demonstration.
+	router.MustPage("/es/docs/operate/i18n", docs.PageConfig{
+		Title:       "Idiomas y traducción",
+		Description: "Traduce el contenido y la interfaz, y deja usable una traducción parcial.",
+		SourcePath:  siteFile("content", "es", "operate-i18n.md"),
+		Order:       4,
+		Offline:     true,
+	})
 
 	if err := router.MarkdownBlog("/blog", siteFile("content", "blog"), docs.BlogConfig{
 		Title: "Blog", Description: "Release notes and implementation updates for fastr-docs.", Order: 5,

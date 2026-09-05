@@ -1,5 +1,6 @@
 ---
 tags: [content, markdown, front-matter]
+locale: en
 ---
 
 # Content authoring

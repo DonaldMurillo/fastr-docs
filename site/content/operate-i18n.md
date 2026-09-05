@@ -15,7 +15,9 @@ route family are linked to each other. The Router never invents a translation.
 {{< /tab >}}
 {{< tab label="Chrome" >}}
 The framework's own labels: search, on-this-page, updated, the blog's archive
-and tag views, the 404 page. `WithUIStrings` translates all of them.
+and tag views. `WithUIStrings` sets them for the whole site;
+`WithLocaleUIStrings` sets them per language, which is what a single build
+serving several languages needs.
 {{< /tab >}}
 {{< /tabs >}}
 
@@ -31,14 +33,28 @@ between them.
 content/
   getting-started.md          locale: en
   concepts-router.md          locale: en
+  operate-i18n.md             locale: en
   es/
     getting-started.md        locale: es
     concepts-router.md        locale: es
+    operate-i18n.md           locale: es
 ```
 {{< /filetree >}}
 
-Try it: this page has no Spanish version, so the selector is absent here but
-present on [Getting started](/docs/getting-started).
+The `es/` directory is a convention, not a rule. Nothing reads the directory
+name; the pairing comes from `locale:` in front matter and from the `/es` path
+segment.
+
+{{< warning title="Both sides need a locale" >}}
+A page with no `locale:` is not in any language, so it pairs with nothing. Set
+it on the original as well as the translation, or the selector silently fails to
+appear and there is no error to tell you why.
+{{< /warning >}}
+
+Try it: the selector at the top of this page moves you to
+[the Spanish version](/es/docs/operate/i18n), chrome and all. On a page with no
+translation, like [Math](/docs/build/math), the selector is absent, because
+there is nowhere to go.
 
 ## Translating the chrome
 
@@ -125,3 +141,21 @@ translated page exists, that one wins.
 
 Coverage is advisory. A partially translated site is a normal state, not a
 broken build, so nothing here fails validation.
+
+## What this site actually translates
+
+Five of about thirty pages are in Spanish. That is on purpose: a half-translated
+site is what every real one looks like, and it is the state worth demonstrating.
+
+| Surface | Follows the page's language |
+| --- | --- |
+| Page content | Yes, when a translation exists |
+| Sidebar, on-this-page, search button, dates | Yes |
+| Language selector | Yes, and it names languages rather than codes |
+| Section tabs in the header | No, they keep the titles you registered |
+| Command palette placeholder | No, it is mounted once for the whole site |
+| Blog archive, tags, and post chrome | No, those labels are site-wide |
+| The 404 page | No, it is built once and has no route to read a locale from |
+
+The last four are limitations, not decisions, and they are written down in
+`AGENTS.md` rather than hidden here.

@@ -437,3 +437,32 @@ test('the language selector moves between translations of the same page', async 
   await expect(page.locator('h1')).toContainText('Primeros pasos');
   await expect(page.locator('.ui-sidebar__title')).toContainText('Contenido');
 });
+
+// The Spanish tree is the worked example for translating a fastr-docs site, so
+// it has to stay coherent: pages present, chrome translated, selector paired.
+test('the Spanish tree is a complete worked example', async ({ page }) => {
+  for (const path of ['/es', '/es/docs/getting-started', '/es/docs/concepts/router',
+    '/es/docs/concepts/content', '/es/docs/operate/i18n']) {
+    const response = await page.goto(selfPage(path));
+    expect(response.status(), path).toBe(200);
+    const state = await page.evaluate(() => ({
+      sidebar: document.querySelector('.ui-sidebar__title')?.textContent?.trim(),
+      selector: [...(document.querySelector('[data-docs-variant-select=locale]')?.options || [])].map((o) => o.textContent),
+    }));
+    expect(state.sidebar, path).toBe('Contenido');
+    // Every Spanish page has an English counterpart, so every one offers the
+    // selector. A page whose original omits `locale:` silently loses it.
+    expect(state.selector, path).toEqual(['English', 'Español']);
+  }
+});
+
+// The page about translation, translated, is the demonstration that matters.
+test('the translated i18n guide reads as Spanish throughout', async ({ page }) => {
+  await page.goto(selfPage('/es/docs/operate/i18n'));
+  await expect(page.locator('h1')).toHaveText('Idiomas y traducción');
+  await expect(page.locator('.tabs-summary').first()).toHaveText('El contenido');
+  const nav = await page.evaluate(() =>
+    [...document.querySelectorAll('.fastr-docs-toc a, [class*=toc] a')].map((a) => a.textContent.trim()));
+  expect(nav.join(' ')).toContain('Familias de rutas');
+  await expect(page.locator('body')).not.toContainText('On this page');
+});

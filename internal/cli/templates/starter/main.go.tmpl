@@ -7,16 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"testing/fstest"
 
 	docsite "{{.Module}}/docs"
 	fastrdocs "github.com/DonaldMurillo/fastr-docs"
 	uiapp "github.com/DonaldMurillo/gofastr/core-ui/app"
 	"github.com/DonaldMurillo/gofastr/core/middleware"
-	"github.com/DonaldMurillo/gofastr/core/static"
 	"github.com/DonaldMurillo/gofastr/framework"
 	"github.com/DonaldMurillo/gofastr/framework/uihost"
-	"github.com/DonaldMurillo/fastr-docs/plugin/openapi"
 )
 
 func main() {
@@ -36,7 +33,7 @@ func main() {
 		if err := fastrdocs.WriteStaticNotFound(dir, base, built.notFound, built.notFoundCSS); err != nil {
 			panic(err)
 		}
-		if err := writeRuntimeAssets(dir, built.openAPIRuntime, built.searchIndex, built.manifest); err != nil {
+		if err := built.router.WriteRuntimeAssets(dir, built.router.AssetPrefix(), normalizeBase(exportBase(os.Args[1:]))); err != nil {
 			panic(err)
 		}
 		if err := copyPublicAssets(dir); err != nil {
@@ -83,9 +80,7 @@ func listenURL(addr string) string {
 
 type generatedSite struct {
 	server         *framework.App
-	openAPIRuntime []byte
-	searchIndex    []byte
-	manifest       []byte
+	router         *fastrdocs.Router
 	rss            []byte
 	serverConnectOrigins []string
 	notFound       fastrdocs.NotFoundScreen
@@ -99,7 +94,14 @@ func buildSite() (*generatedSite, error) {
 	if err := router.Mount(site, router.Layout()); err != nil {
 		return nil, err
 	}
-	precache := []string{"/__fastr-docs/docs.js", "/__fastr-docs/openapi.js", "/__fastr-docs/search.json", "/__fastr-docs/manifest.json"}
+	assetNames, err := router.RuntimeAssetNames(normalizeBase(exportBase(os.Args[1:])))
+	if err != nil {
+		return nil, err
+	}
+	precache := make([]string, 0, len(assetNames)+1)
+	for _, name := range assetNames {
+		precache = append(precache, router.AssetPrefix()+"/"+name)
+	}
 	if router.SearchBackend() == fastrdocs.SearchBackendPagefind {
 		precache = append(precache, "/pagefind/pagefind.js")
 	}
@@ -127,7 +129,7 @@ func buildSite() (*generatedSite, error) {
 		uihost.WithThemeColor(router.ThemeColor()),
 		uihost.WithSitemap(uihost.SitemapConfig{BaseURL: publicSiteURL(), ExcludePaths: append([]string{"/__fastr-docs/"}, router.SitemapExcludePaths()...)}),
 		uihost.WithRobots(uihost.RobotsConfig{Disallow: []string{"/__fastr-docs/"}}),
-		uihost.WithExtraScripts("/__fastr-docs/docs.js", "/__fastr-docs/openapi.js"),
+		uihost.WithExtraScripts(scriptAssets(router, assetNames)...),
 		uihost.WithAppIcon(docsite.DefaultIconPNG()),
 		uihost.WithPWA(uihost.PWAConfig{Name: {{goString .SiteName}}, ShortName: {{goString .SiteName}}, Precache: precache}),
 	)
@@ -162,49 +164,19 @@ func buildSite() (*generatedSite, error) {
 	if err != nil {
 		return nil, err
 	}
-	openAPIRuntime, err := fs.ReadFile(openapi.Assets(), "openapi.js")
-	if err != nil {
+	// One call serves the docs runtime, the search index, the export manifest,
+	// and every plugin's assets. Adding a plugin needs no change here.
+	if err := router.MountRuntimeAssets(server.Router(), router.AssetPrefix(), normalizeBase(exportBase(os.Args[1:]))); err != nil {
 		return nil, err
 	}
-	searchIndex, err := router.SearchIndexJSON()
-	if err != nil {
-		return nil, err
-	}
-	manifest, err := router.ExportManifestJSON(exportBase(os.Args[1:]))
-	if err != nil {
-		return nil, err
-	}
-	assets := fstest.MapFS{
-		"docs.js":    &fstest.MapFile{Data: []byte(fastrdocs.RuntimeJS())},
-		"openapi.js": &fstest.MapFile{Data: openAPIRuntime},
-		"search.json": &fstest.MapFile{Data: searchIndex},
-		"manifest.json": &fstest.MapFile{Data: manifest},
-	}
-	server.Router().Get("/__fastr-docs/{path...}", static.Handler(static.Config{FS: assets, Prefix: "/__fastr-docs"}))
 	if _, err := os.Stat("public"); err == nil {
 		if err := router.MountAssets(server.Router(), fastrdocs.AssetConfig{FS: os.DirFS("public"), Prefix: "/assets", MaxAge: 365 * 24 * 60 * 60 * 1e9}); err != nil {
 			return nil, err
 		}
 	}
-	return &generatedSite{server: server, openAPIRuntime: openAPIRuntime, searchIndex: searchIndex, manifest: manifest, rss: rss, serverConnectOrigins: router.ConnectOrigins(), notFound: notFound, notFoundCSS: router.CSS() + "\n" + router.BrandCSS()}, nil
+	return &generatedSite{server: server, router: router, rss: rss, serverConnectOrigins: router.ConnectOrigins(), notFound: notFound, notFoundCSS: router.CSS() + "\n" + router.BrandCSS()}, nil
 }
 
-func writeRuntimeAssets(dir string, openAPIRuntime, searchIndex, manifest []byte) error {
-	assetDir := filepath.Join(dir, "__fastr-docs")
-	if err := os.MkdirAll(assetDir, 0o755); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(assetDir, "docs.js"), []byte(fastrdocs.RuntimeJS()), 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(assetDir, "openapi.js"), openAPIRuntime, 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(assetDir, "search.json"), searchIndex, 0o644); err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(assetDir, "manifest.json"), manifest, 0o644)
-}
 
 func copyPublicAssets(dir string) error {
 	if _, err := os.Stat("public"); err != nil {
@@ -305,4 +277,16 @@ func exportBase(args []string) string {
 		}
 	}
 	return ""
+}
+
+// scriptAssets returns the JavaScript files the host should load, derived from
+// the collected runtime assets rather than a list repeated by hand.
+func scriptAssets(router *fastrdocs.Router, names []string) []string {
+	scripts := make([]string, 0, len(names))
+	for _, name := range names {
+		if strings.HasSuffix(name, ".js") {
+			scripts = append(scripts, router.AssetPrefix()+"/"+name)
+		}
+	}
+	return scripts
 }

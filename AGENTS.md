@@ -136,6 +136,25 @@ invalidated in `rebuildTree`. Coverage reporting is advisory on purpose:
 wiring it into `ContentIssues` made `Validate` fail on any partially
 translated site, which a test caught immediately.
 
+## Runtime assets
+
+`runtime_assets.go` collects `docs.js`, the search index, the export manifest,
+and every `RuntimeAssetPlugin`'s files. `MountRuntimeAssets` serves them,
+`WriteRuntimeAssets` exports them, `RuntimeAssetNames` feeds the precache list
+and the host's script tags.
+
+Before it, the generated `main.go` hand-wrote each file twice, once for serving
+and once for export, so any new asset-bearing plugin meant editing every
+project. `internal/cli/cli.go`'s `main.go` marker list asserts both calls are
+present, which is what keeps a generated project on this path.
+
+Plugin file names are validated. They come from a plugin rather than the
+project, so a collision with `docs.js` or a `../` escape is an error.
+
+The e2e fixture at `e2e/fixtures/non-cli/` still wires its assets by hand, on
+purpose: it proves the lower-level API works without the convenience wrapper,
+and it uses a non-default `/__manual` prefix.
+
 ## Known GoFastr limitations worked around here
 
 Ticket these rather than re-discovering them:

@@ -186,6 +186,32 @@ When a project contains localized or versioned route siblings, the header emits
 route-aware Language and Version selectors that preserve the current page
 family.
 
+## Plugin assets
+
+The docs runtime, the search index, the export manifest, and every plugin's
+browser assets are collected by one call, for serving and for export:
+
+```go
+router.MountRuntimeAssets(server.Router(), router.AssetPrefix(), exportBase)
+router.WriteRuntimeAssets(dist, router.AssetPrefix(), exportBase)
+```
+
+`RuntimeAssetNames` returns the same list, so the PWA precache list and the
+host's script tags are derived rather than repeated by hand.
+
+A plugin joins in by implementing `RuntimeAssetPlugin`:
+
+```go
+func (Plugin) RuntimeAssets() (map[string][]byte, error) {
+    body, err := fs.ReadFile(runtimeFS, "openapi.js")
+    return map[string][]byte{"openapi.js": body}, err
+}
+```
+
+Names are validated: a plugin cannot overwrite `docs.js` or escape the asset
+directory. `AssetPrefix` follows `WithSearchIndexPath`, so the prefix and the
+index URL cannot disagree.
+
 ## Translating the chrome
 
 `WithUIStrings` translates every framework-owned label. The struct is grouped,

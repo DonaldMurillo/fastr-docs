@@ -25,6 +25,17 @@ var runtimeFS embed.FS
 // gofastr/core/static at a project-owned URL.
 func Assets() fs.FS { return runtimeFS }
 
+// RuntimeAssets lets the Router collect this plugin's browser runtime, so a
+// project does not have to wire openapi.js into its own main.go for serving
+// and again for export. It satisfies docs.RuntimeAssetPlugin.
+func (Plugin) RuntimeAssets() (map[string][]byte, error) {
+	body, err := fs.ReadFile(runtimeFS, "openapi.js")
+	if err != nil {
+		return nil, err
+	}
+	return map[string][]byte{"openapi.js": body}, nil
+}
+
 // Plugin is a small forwarding adapter with a stable extension-package API.
 type Plugin struct {
 	SpecPath    string

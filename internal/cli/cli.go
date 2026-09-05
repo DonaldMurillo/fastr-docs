@@ -188,7 +188,7 @@ func runCheck(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("read main.go: %w", err)
 	}
-	for _, marker := range []string{"buildSite", "MountNavigation", "MountCommandPalette", "MountRSS", "WriteStaticRSS", "WithPWA", "WithAppIcon", "WithSitemap", "WithRobots", "WithNotFoundScreen", "WithAgentReady", "WithMCP()", "WithMCPIntrospection()", "MountAssets", "__fastr-docs/search.json"} {
+	for _, marker := range []string{"buildSite", "MountNavigation", "MountCommandPalette", "MountRSS", "WriteStaticRSS", "WithPWA", "WithAppIcon", "WithSitemap", "WithRobots", "WithNotFoundScreen", "WithAgentReady", "WithMCP()", "WithMCPIntrospection()", "MountAssets", "MountRuntimeAssets", "WriteRuntimeAssets"} {
 		if !strings.Contains(string(mainSource), marker) {
 			return fmt.Errorf("project check failed; main.go does not contain %q", marker)
 		}

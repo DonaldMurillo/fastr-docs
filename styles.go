@@ -284,6 +284,12 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
 .layout-docs .ui-markdown a.ui-card, .layout-docs .ui-markdown a.ui-tag { text-decoration: none; }
 .ui-markdown .ui-markdown > :last-child { margin-bottom: 0; }
 
+/* A highlighted fence line. CodeBlock owns the .ui-code-block__line wrapper and
+   offers no hook to mark one, so the emphasis sits inside the line and bleeds
+   back out through the body's padding. */
+.fastr-docs-code-hl { display: block; margin-inline: calc(var(--spacing-lg, 16px) * -1); padding-inline: var(--spacing-lg, 16px); background: color-mix(in srgb, var(--docs-orange, #d2703a) 22%, transparent); box-shadow: inset 2px 0 0 var(--docs-orange, #d2703a); }
+.ui-code-block--numbered .fastr-docs-code-hl { margin-inline-start: -52px; padding-inline-start: 52px; }
+
 /* Shortcode components. Steps and file trees are authored as ordinary Markdown
    lists so the source stays readable in a plain editor; the presentation is
    carried entirely by these rules. */

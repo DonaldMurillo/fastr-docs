@@ -91,6 +91,37 @@ Shortcode bodies are themselves `.ui-markdown` blocks nested inside the page's.
 rules otherwise add a max width and 75px of bottom padding inside every
 callout and card.
 
+## Code fences
+
+`codefence.go` lifts option-carrying fences out of the source before GoFastr's
+Markdown parser sees them, and renders them through `ui.CodeBlock`. Supported
+after the language: `title="..."`, `{1,3-5}`, `showLineNumbers`, `scroll`.
+
+A fence with no options is passed through completely untouched, and a test
+asserts the source is byte-identical, so the interception stays provably
+opt-in.
+
+This exists because `core/markdown`'s `renderFence` takes the whole remainder
+of the fence line as the language. Writing ` ```go title="x" ` there does not
+merely ignore the option, it emits `class="language-go title=&quot;x&quot;"`
+and then fails to match `go`, silently costing you syntax highlighting.
+
+Line highlighting wraps the line's own HTML, because `CodeBlock` owns the
+`.ui-code-block__line` wrapper and offers no hook to mark one.
+
+## Known GoFastr limitations worked around here
+
+Ticket these rather than re-discovering them:
+
+- `core/markdown` does not parse fence info strings beyond the language.
+- It has no nested-list support, and flattens one into a single `<li>` joined
+  by `<br>`. This is why `filetree` parses raw indentation.
+- It does not support four-backtick fences, so a fenced example cannot be shown
+  inside another fence. Do not write ` ````md ` blocks in content.
+- `CodeBlock` has no line-highlight, diff, word-highlight, or wrap option.
+- There is no `FileTree`, content `Steps`, `CardGrid`, `LinkCard`, or generic
+  `ui.Tabs`; `core-ui/patterns/tabs` is the only generic tabset.
+
 ## Skill drift
 
 The same skills live in four places: the template source, a generated

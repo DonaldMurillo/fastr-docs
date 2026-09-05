@@ -17,10 +17,16 @@ import (
 var docsCopyButton = regexp.MustCompile(`(?s)<button\b[^>]*\bclass="[^"]*\bui-copy-btn\b[^"]*"[^>]*>.*?</button>`)
 
 func renderDocsMarkdown(source string, attrs map[string]string) render.HTML {
+	// Fences carrying options are lifted out first. GoFastr's parser would read
+	// the whole info string as the language and lose highlighting entirely.
+	source, fences := extractRichCodeFences(source)
 	htmlBody := string(ui.Markdown(ui.MarkdownConfig{
 		Source:     source,
 		ExtraAttrs: html.Attrs(attrs),
 	}))
+	// Substituted before the copy-button pass so lifted blocks get the same
+	// icon-only affordance as the ones GoFastr rendered.
+	htmlBody = string(applyShortcodes(render.HTML(htmlBody), fences))
 	return render.HTML(docsCopyButton.ReplaceAllStringFunc(htmlBody, iconOnlyCopyButton))
 }
 

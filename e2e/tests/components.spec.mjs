@@ -52,7 +52,7 @@ test('steps are numbered and the file tree nests', async ({ page }) => {
   await expect(page.locator('.fastr-docs-filetree__dir').first()).toContainText('my-docs/');
   await expect(page.locator('.fastr-docs-filetree__file').first()).toContainText('index.md');
   // Code-block chrome must not leak into a raw shortcode's body.
-  await expect(page.locator('.fastr-docs-filetree')).not.toContainText('lines');
+  await expect(page.locator('.fastr-docs-filetree').first()).not.toContainText('lines');
 });
 
 test('the diff renders real added and removed lines', async ({ page }) => {
@@ -76,4 +76,30 @@ test('component bodies do not inherit the page prose layout', async ({ page }) =
   if (await card.count()) {
     await expect(card).toHaveCSS('text-decoration-line', 'none');
   }
+});
+
+test('fenced code blocks take titles, line numbers and highlights', async ({ page }) => {
+  const titled = page.locator('.ui-code-block__file', { hasText: 'docs/router.go' });
+  await expect(titled).toHaveCount(1);
+
+  await expect(page.locator('.ui-code-block--numbered')).toHaveCount(1);
+  await expect(page.locator('.fastr-docs-code-hl')).toHaveCount(2);
+
+  // The highlight has to be visible, not just present in the markup.
+  const tint = await page.locator('.fastr-docs-code-hl').first().evaluate((el) => {
+    const style = getComputedStyle(el);
+    return { display: style.display, background: style.backgroundColor };
+  });
+  expect(tint.display).toBe('block');
+  expect(tint.background).not.toBe('rgba(0, 0, 0, 0)');
+
+  // The whole point of M2: options must not cost syntax highlighting, and must
+  // never survive into the language class.
+  const block = page.locator('.ui-code-block--numbered').first();
+  await expect(block.locator('[class^="tk-"]').first()).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('language-go title');
+  await expect(page.locator('body')).not.toContainText('FASTRDOCSFENCESLOT');
+
+  // A fence can carry a title with no language at all.
+  await expect(page.locator('.ui-code-block__file', { hasText: 'notes.txt' })).toHaveCount(1);
 });

@@ -112,6 +112,36 @@ Icons come from the GoFastr registry: {{< icon name="check" label="Supported" />
 ```
 {{< /diff >}}
 
+## Code block options
+
+Fenced blocks take options after the language. A fence with no options renders
+exactly as it always did.
+
+{{< filetree >}}
+```
+title="path/to/file"   a filename header
+{1,4-6}                highlight those lines
+showLineNumbers        number the gutter
+scroll                 cap the height and scroll inside
+```
+{{< /filetree >}}
+
+Opening a fence with `go title="docs/router.go" {3,4} showLineNumbers` gives:
+
+```go title="docs/router.go" {3,4} showLineNumbers
+router := docs.NewRouter(
+    docs.WithSiteName("Acme Docs"),
+    docs.WithTemplate(docs.TemplateBlueprint),
+    docs.WithSearchIndexPath("/assets/search.json"),
+)
+```
+
+A title with no language works too:
+
+```title="notes.txt"
+Plain text, with a filename header and nothing tokenized.
+```
+
 ## Replacing a default
 
 Registering a name replaces whatever held it:

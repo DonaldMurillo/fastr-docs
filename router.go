@@ -102,6 +102,10 @@ type PageConfig struct {
 	// {{< name key="value" >}} shortcode syntax. Components are rendered
 	// server-side and may contain nested Markdown content.
 	Components map[string]MarkdownComponent
+	// Containers are shortcodes that receive their nested shortcodes as
+	// separate children rather than one merged body, which is what tabs,
+	// card grids, and steps need.
+	Containers map[string]MarkdownContainer
 }
 
 // ScreenConfig registers an arbitrary typed GoFastr component in the same
@@ -414,6 +418,7 @@ type Router struct {
 	pagefindPath          string
 	searchIndexPath       string
 	markdownComponents    map[string]MarkdownComponent
+	markdownContainers    map[string]MarkdownContainer
 	brand                 BrandConfig
 	themeConfig           ThemeConfig
 	ui                    UIStrings
@@ -436,6 +441,7 @@ func NewRouter(options ...Option) *Router {
 		pagefindPath:       "/pagefind/",
 		searchIndexPath:    defaultSearchIndexPath,
 		markdownComponents: make(map[string]MarkdownComponent),
+		markdownContainers: make(map[string]MarkdownContainer),
 		blogs:              make(map[string]blogCollection),
 		blogViews:          make(map[string]blogView),
 		themeConfig:        ThemeConfig{Template: TemplateEditorial},
@@ -523,12 +529,52 @@ func (r *Router) RegisterMarkdownComponent(name string, component MarkdownCompon
 	if r.markdownComponents == nil {
 		r.markdownComponents = make(map[string]MarkdownComponent)
 	}
+	delete(r.markdownContainers, name)
 	r.markdownComponents[name] = component
 	return nil
 }
 
 // MarkdownComponents returns a copy of the globally registered Markdown
 // component registry for adapters, tooling, and plugin validation.
+// RegisterMarkdownContainer registers a shortcode that receives its nested
+// shortcodes as separate children. A name may resolve to a component or a
+// container, so registering one clears the other.
+func (r *Router) RegisterMarkdownContainer(name string, container MarkdownContainer) error {
+	if r == nil {
+		return errors.New("docs: RegisterMarkdownContainer requires a Router")
+	}
+	name = strings.TrimSpace(name)
+	if !markdownShortcodeName.MatchString(name) {
+		return fmt.Errorf("docs: invalid Markdown container name %q", name)
+	}
+	if container == nil {
+		return fmt.Errorf("docs: Markdown container %q is nil", name)
+	}
+	if r.markdownContainers == nil {
+		r.markdownContainers = make(map[string]MarkdownContainer)
+	}
+	delete(r.markdownComponents, name)
+	r.markdownContainers[name] = container
+	return nil
+}
+
+// MarkdownContainers returns the registered container vocabulary.
+func (r *Router) MarkdownContainers() map[string]MarkdownContainer {
+	if r == nil || len(r.markdownContainers) == 0 {
+		return nil
+	}
+	return cloneMarkdownContainers(r.markdownContainers)
+}
+
+// vocabulary merges the Router's shortcode namespace with a page's local
+// additions. Page-local entries win.
+func (r *Router) vocabulary(components map[string]MarkdownComponent, containers map[string]MarkdownContainer) markdownVocabulary {
+	return markdownVocabulary{
+		components: mergeMarkdownComponents(r.markdownComponents, components),
+		containers: mergeMarkdownContainers(r.markdownContainers, containers),
+	}
+}
+
 func (r *Router) MarkdownComponents() map[string]MarkdownComponent {
 	if r == nil || len(r.markdownComponents) == 0 {
 		return nil
@@ -655,12 +701,10 @@ func (r *Router) Page(path string, cfg PageConfig) error {
 	if err != nil {
 		return fmt.Errorf("docs: page %q: %w", path, err)
 	}
-	components := mergeMarkdownComponents(r.markdownComponents, cfg.Components)
-	if err := validateMarkdownComponents(source, components); err != nil {
+	if err := validateMarkdownComponents(source, r.vocabulary(cfg.Components, cfg.Containers)); err != nil {
 		return fmt.Errorf("docs: page %q: %w", path, err)
 	}
 	cfg.Metadata = metadata
-	cfg.Components = components
 	if source != "" {
 		cfg.Source = source
 	}
@@ -1048,7 +1092,7 @@ func (r *Router) Validate() error {
 				}
 			}
 			if node.page != nil && node.page.Body == nil {
-				if err := validateMarkdownComponents(pageSource(node.page), mergeMarkdownComponents(r.markdownComponents, node.page.Components)); err != nil {
+				if err := validateMarkdownComponents(pageSource(node.page), r.vocabulary(node.page.Components, node.page.Containers)); err != nil {
 					problems = append(problems, fmt.Sprintf("page %q: %v", node.Path, err))
 				}
 			}
@@ -1416,10 +1460,10 @@ func (p *pageComponent) render(ctx context.Context) render.HTML {
 		"data-docs-route": p.route.Path,
 		"data-offline":    fmt.Sprintf("%t", p.route.Offline),
 	})
-	components := mergeMarkdownComponents(p.router.markdownComponents, p.route.page.Components)
-	if len(components) > 0 {
+	vocab := p.router.vocabulary(p.route.page.Components, p.route.page.Containers)
+	if !vocab.empty() {
 		var err error
-		markdown, err = renderMarkdownWithComponents(source, components, map[string]string{
+		markdown, err = renderMarkdownWithComponents(source, vocab, map[string]string{
 			"data-docs-route": p.route.Path,
 			"data-offline":    fmt.Sprintf("%t", p.route.Offline),
 		})

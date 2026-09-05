@@ -72,6 +72,7 @@ func (r *Reference) requestConsole() render.HTML {
 	if len(options) > 0 {
 		children = append(children,
 			render.Tag("label", nil, render.Text("Operation"), render.Tag("select", map[string]string{"data-openapi-operation-select": "true"}, options...)),
+			r.requestInputs(),
 			render.Tag("button", map[string]string{"type": "button", "data-openapi-try": "true"}, render.Text("Send request")),
 			render.Tag("pre", map[string]string{"class": "fastr-openapi-reference__response", "data-openapi-response": "true"}, render.Text("Select an operation and send a request.")),
 		)
@@ -80,6 +81,62 @@ func (r *Reference) requestConsole() render.HTML {
 	}
 	children = append(children, render.Tag("p", map[string]string{"class": "fastr-openapi-reference__note"}, render.Text("Requests run from the browser and require the API server to allow CORS.")))
 	return render.Tag("aside", map[string]string{"class": "fastr-openapi-reference__console"}, children...)
+}
+
+func (r *Reference) requestInputs() render.HTML {
+	groups := make([]render.HTML, 0, len(r.Operations))
+	for index, op := range r.Operations {
+		operation := operationID(index)
+		attrs := map[string]string{
+			"class":                   "fastr-openapi-reference__inputs",
+			"data-openapi-inputs-for": operation,
+		}
+		if index > 0 {
+			attrs["hidden"] = "hidden"
+		}
+		fields := make([]render.HTML, 0, len(op.ParameterSpecs)+1)
+		for _, parameter := range op.ParameterSpecs {
+			fieldAttrs := map[string]string{
+				"type":                        inputType(parameter.Type),
+				"data-openapi-param-name":     parameter.Name,
+				"data-openapi-param-in":       strings.ToLower(parameter.In),
+				"data-openapi-param-required": boolText(parameter.Required),
+				"value":                       firstNonEmpty(parameter.Example, parameter.Default),
+				"placeholder":                 firstNonEmpty(parameter.Example, parameter.Type, "Value"),
+			}
+			label := parameter.Name + " · " + firstNonEmpty(parameter.In, "parameter")
+			if parameter.Type != "" {
+				label += " · " + parameter.Type
+			}
+			if parameter.Required {
+				label += " · required"
+			}
+			if parameter.Description != "" {
+				label += " — " + parameter.Description
+			}
+			fields = append(fields, render.Tag("label", map[string]string{"class": "fastr-openapi-reference__field"}, render.Text(label), render.Tag("input", fieldAttrs)))
+		}
+		if op.RequestBody {
+			bodyAttrs := map[string]string{
+				"data-openapi-body":          "true",
+				"data-openapi-content-type":  firstNonEmpty(op.RequestBodyContentType, "application/json"),
+				"data-openapi-body-required": boolText(op.RequestBodyRequired),
+				"rows":                       "7",
+				"placeholder":                firstNonEmpty(op.RequestBodyExample, "{\n  \"key\": \"value\"\n}"),
+			}
+			body := render.Tag("textarea", bodyAttrs, render.Text(op.RequestBodyExample))
+			label := "Request body · " + firstNonEmpty(op.RequestBodyContentType, "application/json")
+			if op.RequestBodyRequired {
+				label += " · required"
+			}
+			fields = append(fields, render.Tag("label", map[string]string{"class": "fastr-openapi-reference__field"}, render.Text(label), body))
+		}
+		if len(fields) == 0 {
+			fields = append(fields, render.Tag("p", map[string]string{"class": "fastr-openapi-reference__no-inputs"}, render.Text("This operation has no request inputs.")))
+		}
+		groups = append(groups, render.Tag("div", attrs, fields...))
+	}
+	return render.Tag("div", map[string]string{"class": "fastr-openapi-reference__input-groups"}, groups...)
 }
 
 func (r *Reference) operationIndex() render.HTML {
@@ -156,6 +213,24 @@ func (r *Reference) operationCards() []render.HTML {
 	return items
 }
 
+func inputType(parameterType string) string {
+	switch strings.ToLower(parameterType) {
+	case "integer", "number":
+		return "number"
+	case "email":
+		return "email"
+	default:
+		return "text"
+	}
+}
+
+func boolText(value bool) string {
+	if value {
+		return "true"
+	}
+	return "false"
+}
+
 func metaTag(value string) render.HTML {
 	return ui.StatusBadge(ui.StatusBadgeConfig{Label: value, Variant: ui.StatusNeutral, Class: "fastr-openapi-reference__tag"})
 }
@@ -229,7 +304,8 @@ func CSS() string {
 		".fastr-openapi-operation__details h3 { margin: 0 0 7px; font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; }",
 		".fastr-openapi-operation__details ul, .fastr-openapi-schema ul { margin: 0; padding-left: 18px; }",
 		".fastr-openapi-schema h2 { margin: 0 0 6px; } .fastr-openapi-schema p { color: var(--color-text-muted, #52525b); }",
-		".fastr-openapi-reference__console { display: grid; gap: 10px; } .fastr-openapi-reference__console label { display: grid; gap: 5px; color: var(--color-text-muted, #71717a); font-size: .75rem; } .fastr-openapi-reference__console select { width: 100%; padding: 8px; border: 1px solid var(--color-border, #e4e4e7); border-radius: 6px; background: var(--color-surface, #fff); color: inherit; } .fastr-openapi-reference__console button { padding: 9px 11px; border: 0; border-radius: 6px; background: var(--color-primary, #4f46e5); color: var(--color-primary-fg, #fff); cursor: pointer; }",
+		".fastr-openapi-reference__console { display: grid; gap: 10px; } .fastr-openapi-reference__console label { display: grid; gap: 5px; color: var(--color-text-muted, #71717a); font-size: .75rem; } .fastr-openapi-reference__console select, .fastr-openapi-reference__console input, .fastr-openapi-reference__console textarea { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--color-border, #e4e4e7); border-radius: 6px; background: var(--color-surface, #fff); color: inherit; font: inherit; } .fastr-openapi-reference__console textarea { min-height: 120px; resize: vertical; font-family: ui-monospace, monospace; font-size: .75rem; line-height: 1.5; } .fastr-openapi-reference__console button { padding: 9px 11px; border: 0; border-radius: 6px; background: var(--color-primary, #4f46e5); color: var(--color-primary-fg, #fff); cursor: pointer; }",
+		".fastr-openapi-reference__input-groups { display: grid; gap: 9px; } .fastr-openapi-reference__inputs { display: grid; gap: 9px; } .fastr-openapi-reference__no-inputs { margin: 0; color: var(--color-text-muted, #71717a); font-size: .8rem; }",
 		".fastr-openapi-reference__console p { margin: 0; color: var(--color-text-muted, #71717a); font-size: .8rem; line-height: 1.6; } .fastr-openapi-reference__server { overflow-wrap: anywhere; font-family: ui-monospace, monospace; } .fastr-openapi-reference__response { max-height: 220px; overflow: auto; padding: 10px; border: 1px solid var(--color-border, #e4e4e7); border-radius: 6px; background: var(--color-surface-soft, #f4f4f5); color: var(--color-text, #18181b); font-size: .72rem; white-space: pre-wrap; }",
 		"@media (max-width: 1050px) { .fastr-openapi-reference__layout { grid-template-columns: 190px minmax(0, 1fr); }.fastr-openapi-reference__layout > .scrollspy { position: static; }.fastr-openapi-reference__console { grid-column: 1 / -1; position: static; } }",
 		"@media (max-width: 680px) { .fastr-openapi-reference__layout { display: block; }.fastr-openapi-reference__index { margin-bottom: 12px; }.fastr-openapi-reference__index a:nth-child(n+7) { display: none; } }",

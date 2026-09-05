@@ -12,7 +12,11 @@ import (
 func TestPluginRegistersRichReferenceScreen(t *testing.T) {
 	spec := []byte(`{"openapi":"3.1.0","info":{"title":"Public API","description":"The contract."},"servers":[{"url":"https://api.example.com/{version}","variables":{"version":{"default":"v1"}}}],"paths":{"/projects":{"get":{"summary":"List projects","operationId":"listProjects","responses":{"200":{"description":"ok"}}}}},"components":{"schemas":{"Project":{"type":"object","description":"A project","properties":{"id":{"type":"string"}}}}}}`)
 	router := docs.NewRouter()
-	if err := router.Use(Plugin{Spec: spec, Order: 1}); err != nil {
+	if err := router.Use(Plugin{
+		Spec:  spec,
+		Order: 1,
+		Badge: docs.NavBadge{Label: "Demo", Tone: docs.NavBadgeToneNeutral},
+	}); err != nil {
 		t.Fatalf("Use() error = %v", err)
 	}
 	if got := router.ConnectOrigins(); len(got) != 1 || got[0] != "https://api.example.com" {
@@ -23,6 +27,9 @@ func TestPluginRegistersRichReferenceScreen(t *testing.T) {
 	}
 	if routes := router.Routes(); len(routes) != 1 || routes[0].Plugin != "openapi" {
 		t.Fatalf("plugin provenance = %#v", router.Routes())
+	}
+	if route := router.Routes()[0]; route.Badge.Label != "Demo" || route.Badge.Tone != docs.NavBadgeToneNeutral {
+		t.Fatalf("plugin badge = %#v, want Demo/neutral", route.Badge)
 	}
 	entries := router.SearchIndex()
 	if len(entries) != 1 || !strings.Contains(entries[0].Text, "listProjects") {
@@ -36,7 +43,7 @@ func TestPluginRegistersRichReferenceScreen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderPage() error = %v", err)
 	}
-	for _, marker := range []string{"data-openapi-reference", "data-openapi-server-url=\"https://api.example.com/v1\"", "data-fui-scrollspy", "ui-anchored-rail", "data-openapi-try", "#fastr-openapi-operation-1", "GET", "/projects", "Project"} {
+	for _, marker := range []string{"data-openapi-reference", "data-openapi-server-url=\"https://api.example.com/v1\"", "data-fui-scrollspy", "ui-anchored-rail", "data-openapi-try", "data-openapi-inputs-for=\"fastr-openapi-operation-1\"", "#fastr-openapi-operation-1", "GET", "/projects", "Project"} {
 		if !strings.Contains(string(html), marker) {
 			t.Fatalf("rendered reference missing %q: %s", marker, html)
 		}
@@ -88,7 +95,7 @@ func TestPluginRejectsInvalidSpec(t *testing.T) {
 	}
 }
 
-func TestPluginIgnoresPathItemMetadata(t *testing.T) {
+func TestPluginMergesPathItemParameters(t *testing.T) {
 	spec := []byte(`{"openapi":"3.1.0","info":{"title":"API"},"paths":{"/v1/projects":{"parameters":[{"name":"trace","in":"header"}],"get":{"operationId":"listProjects"}}}}`)
 	router := docs.NewRouter()
 	if err := router.Use(Plugin{Spec: spec, Order: 1}); err != nil {
@@ -102,7 +109,35 @@ func TestPluginIgnoresPathItemMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderPage() error = %v", err)
 	}
-	if !strings.Contains(string(html), "listProjects") || strings.Contains(string(html), "PARAMETERS") {
-		t.Fatalf("rendered operations contain path metadata: %s", html)
+	if !strings.Contains(string(html), "listProjects") || !strings.Contains(string(html), "data-openapi-param-name=\"trace\"") {
+		t.Fatalf("rendered operations omitted path-level parameter: %s", html)
+	}
+}
+
+func TestPluginAcceptsYAMLSpec(t *testing.T) {
+	spec := []byte(`openapi: 3.1.0
+info:
+  title: YAML API
+  description: A YAML contract.
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /projects:
+    get:
+      operationId: listProjects
+      responses:
+        '200':
+          description: ok
+`)
+	router := docs.NewRouter()
+	if err := router.Use(Plugin{Spec: spec, Order: 1}); err != nil {
+		t.Fatalf("Use(YAML) error = %v", err)
+	}
+	if err := router.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	routes := router.Routes()
+	if len(routes) != 1 || routes[0].Title != "YAML API" {
+		t.Fatalf("YAML route = %#v", routes)
 	}
 }

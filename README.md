@@ -40,7 +40,16 @@ fastr-docs build .
 fastr-docs dev .
 fastr-docs upgrade .
 fastr-docs export . --out dist
+fastr-docs sync-skills .
 ```
+
+Generated projects carry a set of agent skills, authored under
+`.agents/skills/` and mirrored to `.claude/skills/` where Claude Code loads
+them. `fastr-docs check` fails when the two copies disagree, naming each file
+that is stale, missing, or orphaned, so an edit cannot land in one and leave
+the other agent following older rules. `fastr-docs sync-skills` copies the
+authored version across; add `--prune` to also delete files that exist only
+under `.claude/skills`.
 
 `fastr-docs dev` delegates to GoFastr's development loop. It watches Go,
 Markdown, HTML, CSS, JavaScript, and JSON/YAML contract files, rebuilds the
@@ -65,8 +74,9 @@ tabs use the updated docs. Use `fastr-docs upgrade .` to review and apply
 GoFastr framework and CLI migrations when updating a generated project.
 
 The generated project includes two top-level pages, a nested getting-started
-page, the in-project OpenAPI plugin, `agents/claude.md`, and a docs-authoring
-skill reference. It also emits an installable PWA/static export with the
+page, the in-project OpenAPI plugin, `agents/claude.md`, and skills covering
+authoring, blogging, theming, OpenAPI, and publishing. It also emits an
+installable PWA/static export with the
 OpenAPI and docs runtimes plus the router search index precached. The live
 host publishes GoFastr's agent-ready `/llms.txt`, agent card, and `/mcp`
 discovery surfaces alongside the page-level Markdown references. Static

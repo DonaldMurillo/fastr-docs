@@ -3,3 +3,7 @@
 /site-dist/
 .fastr-docs-dev-reload-*.go
 .fastr-docs-export-*.exe
+/site.exe
+*.exe
+s.log
+s.err

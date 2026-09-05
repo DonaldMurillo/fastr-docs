@@ -38,6 +38,17 @@ Do not hand-maintain `last_updated` or `edit_url`. `WithGitMetadata` in
 when you want to override what history says. Set `DOCS_REPO_URL` to turn on
 edit links.
 
+## Landing pages
+
+`template: splash` in front matter swaps the reference shell for a landing one:
+a hero built from a `hero:` block, no table of contents, no breadcrumbs, and a
+wider column. The body below it is ordinary Markdown, so `cards`, `steps`, and
+the rest compose into it.
+
+`content/index-splash.md` is the generated example. When front matter is not
+enough, `PageConfig.Body` takes a typed component instead; see
+`/examples/typed-landing`.
+
 ## Components in Markdown
 
 A shortcode vocabulary is registered by default. Nothing to import, nothing to

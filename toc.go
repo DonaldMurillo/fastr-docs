@@ -33,6 +33,12 @@ func (r *Router) wrapDocPage(route *Route, body render.HTML, headings []Heading)
 		Pager:  r.docPager(route),
 		Class:  "fastr-docs-doc-layout",
 	}
+	if route.Metadata.PageTemplate == PageTemplateSplash {
+		// A landing page drops the breadcrumb trail and widens its column. The
+		// table of contents is already suppressed before this is called.
+		cfg.Crumbs = nil
+		cfg.Class += " fastr-docs-splash"
+	}
 	if len(headings) > 0 {
 		items := make([]ui.RailItem, 0, len(headings))
 		for _, heading := range headings {

@@ -1517,8 +1517,11 @@ func (p *pageComponent) render(ctx context.Context) render.HTML {
 	if blogPost {
 		return p.router.wrapBlogPost(p.route, markdown, source)
 	}
+	if hero := renderPageHero(p.route.Metadata.Hero); hero != "" {
+		markdown = render.Join(hero, markdown)
+	}
 	var headings []Heading
-	if !p.route.page.DisableTOC {
+	if !p.route.page.DisableTOC && p.route.Metadata.PageTemplate != PageTemplateSplash {
 		headings = markdownHeadings(source)
 	}
 	return p.router.wrapDocPage(p.route, markdown, headings)

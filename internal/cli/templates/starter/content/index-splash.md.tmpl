@@ -1,0 +1,36 @@
+---
+template: splash
+hero:
+  eyebrow: Documentation built on GoFastr
+  title: {{.SiteName}}
+  tagline: One explicit route tree drives navigation, search, offline delivery, and the API reference.
+  actions:
+    - text: Get started
+      link: /docs/getting-started
+      variant: primary
+    - text: Browse the docs
+      link: /docs
+      variant: secondary
+---
+
+## Start here
+
+{{`{{< cards >}}`}}
+{{`{{< card title="Concepts" description="The route model and how content, layouts, and navigation compose." href="/docs/concepts/router" >}}`}}
+{{`{{< /card >}}`}}
+{{`{{< card title="Build" description="Screens, OpenAPI, plugins, blogging, and Markdown components." href="/docs/build/screens" >}}`}}
+{{`{{< /card >}}`}}
+{{`{{< card title="Operate" description="Search, offline delivery, testing, and deployment." href="/docs/operate/search" >}}`}}
+{{`{{< /card >}}`}}
+{{`{{< /cards >}}`}}
+
+## Three steps to your first page
+
+{{`{{< steps >}}`}}
+1. Add a Markdown file under `content/`.
+2. Register it in `docs/router.go` with a title, description, and explicit `Order`.
+3. Run `fastr-docs check .` to validate links, anchors, and ordering.
+{{`{{< /steps >}}`}}
+
+This page is Markdown front matter, not Go. The typed alternative lives at
+[the typed landing example](/examples/typed-landing).

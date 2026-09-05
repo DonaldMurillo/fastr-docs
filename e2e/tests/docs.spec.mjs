@@ -20,8 +20,8 @@ const openSectionNav = async (page, testInfo) => {
   return nav;
 };
 
-test('landing surface exposes the route-first product and navigates into docs', async ({ page }) => {
-  await page.goto('/');
+test('the typed landing surface reflects the live route tree', async ({ page }) => {
+  await page.goto('/examples/typed-landing');
   await expect(page.getByRole('heading', { name: 'A docs framework that starts as a router.' })).toBeVisible();
 	await expect.poll(() => page.locator('.fastr-docs-home__route-row').count()).toBeGreaterThan(0);
 	await expect(page.getByText(/^\d+ routes$/, { exact: true })).toBeVisible();
@@ -91,12 +91,12 @@ test('missing routes return a branded 404 recovery surface', async ({ request })
 
 test('landing actions expose both primary paths into the handbook', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('link', { name: 'Read the guide' }).click();
+  await page.getByRole('link', { name: 'Get started' }).click();
   await expect(page).toHaveURL(/\/docs\/getting-started\/?$/);
   await expect(page.getByRole('heading', { name: 'Getting started', exact: true })).toBeVisible();
 
   await page.goto('/');
-  await page.getByRole('link', { name: 'Open the docs' }).click();
+  await page.getByRole('link', { name: 'Browse the docs' }).click();
   await expect(page).toHaveURL(/\/docs\/?$/);
   await expect(page.getByRole('heading', { name: 'E2E Docs', exact: true })).toBeVisible();
 });

@@ -37,10 +37,13 @@ func NewRouter() *docs.Router {
 	}}); err != nil {
 		panic(err)
 	}
+	// The landing page is front matter now, which is what a splash template is
+	// for. HomeBody is kept in docs/home.go and mounted at /examples/home as the
+	// worked example of the typed-screen route.
 	router.MustPage("/", docs.PageConfig{
 		Title:       "fastr-docs",
 		Description: "A white-label documentation site.",
-		Body:        func() render.HTML { return HomeBody(router) },
+		SourcePath:  contentFile("index-splash.md"),
 		Order:       1,
 		Offline:     true,
 	})
@@ -232,6 +235,16 @@ func NewRouter() *docs.Router {
 		SourcePath:  contentFile("examples-custom-surface.md"),
 		Order:       3,
 		Offline:     true,
+	})
+	// The hand-built landing surface, kept as the worked example of the typed
+	// route for anyone who outgrows the front-matter splash template.
+	examples.MustPage("typed-landing", docs.PageConfig{
+		Title:       "Typed landing page",
+		Description: "A landing surface built as Go rather than front matter.",
+		Body:        func() render.HTML { return HomeBody(router) },
+		Order:       4,
+		Offline:     true,
+		DisableTOC:  true,
 	})
 	if err := router.Use(openapi.Plugin{
 		SpecPath:    contractFile(),

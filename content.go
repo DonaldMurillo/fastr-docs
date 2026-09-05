@@ -35,6 +35,30 @@ type ContentMetadata struct {
 	Tags          []string          `json:"tags,omitempty" yaml:"tags,omitempty"`
 	Redirects     []string          `json:"redirects,omitempty" yaml:"redirects,omitempty"`
 	Order         int               `json:"order,omitempty" yaml:"order,omitempty"`
+	// PageTemplate selects the page shell. Empty is the standard
+	// documentation page; PageTemplateSplash is the landing-page shell.
+	PageTemplate string    `json:"template,omitempty" yaml:"template,omitempty"`
+	Hero         *PageHero `json:"hero,omitempty" yaml:"hero,omitempty"`
+}
+
+// PageTemplateSplash renders a landing page: a hero from front matter, no
+// table of contents, no breadcrumbs, and a wider content column.
+const PageTemplateSplash = "splash"
+
+// PageHero is the front-matter-driven hero of a splash page, so a landing page
+// does not require writing a typed screen.
+type PageHero struct {
+	Eyebrow string           `json:"eyebrow,omitempty" yaml:"eyebrow,omitempty"`
+	Title   string           `json:"title,omitempty" yaml:"title,omitempty"`
+	Tagline string           `json:"tagline,omitempty" yaml:"tagline,omitempty"`
+	Actions []PageHeroAction `json:"actions,omitempty" yaml:"actions,omitempty"`
+}
+
+// PageHeroAction is one call-to-action button in a hero.
+type PageHeroAction struct {
+	Text    string `json:"text,omitempty" yaml:"text,omitempty"`
+	Link    string `json:"link,omitempty" yaml:"link,omitempty"`
+	Variant string `json:"variant,omitempty" yaml:"variant,omitempty"`
 }
 
 // MarkdownDocument is a parsed Markdown file with its front matter removed
@@ -416,6 +440,32 @@ type frontMatter struct {
 	Tags          stringList        `yaml:"tags"`
 	Redirects     stringList        `yaml:"redirects"`
 	Order         int               `yaml:"order"`
+	Template      string            `yaml:"template"`
+	Hero          *frontMatterHero  `yaml:"hero"`
+}
+
+type frontMatterHero struct {
+	Eyebrow string                  `yaml:"eyebrow"`
+	Title   string                  `yaml:"title"`
+	Tagline string                  `yaml:"tagline"`
+	Actions []frontMatterHeroAction `yaml:"actions"`
+}
+
+type frontMatterHeroAction struct {
+	Text    string `yaml:"text"`
+	Link    string `yaml:"link"`
+	Variant string `yaml:"variant"`
+}
+
+func (h *frontMatterHero) metadata() *PageHero {
+	if h == nil {
+		return nil
+	}
+	hero := &PageHero{Eyebrow: h.Eyebrow, Title: h.Title, Tagline: h.Tagline}
+	for _, action := range h.Actions {
+		hero.Actions = append(hero.Actions, PageHeroAction{Text: action.Text, Link: action.Link, Variant: action.Variant})
+	}
+	return hero
 }
 
 func (f frontMatter) metadata() ContentMetadata {
@@ -430,6 +480,7 @@ func (f frontMatter) metadata() ContentMetadata {
 		DatePublished: f.DatePublished, DateModified: f.DateModified,
 		Locale: f.Locale, Version: f.Version, Alternates: cloneStringMap(f.Alternates), Tags: append([]string(nil), f.Tags...),
 		Redirects: append([]string(nil), f.Redirects...), Order: f.Order,
+		PageTemplate: strings.ToLower(strings.TrimSpace(f.Template)), Hero: f.Hero.metadata(),
 	}
 }
 

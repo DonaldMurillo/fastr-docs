@@ -290,6 +290,17 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
 .fastr-docs-code-hl { display: block; margin-inline: calc(var(--spacing-lg, 16px) * -1); padding-inline: var(--spacing-lg, 16px); background: color-mix(in srgb, var(--docs-orange, #d2703a) 22%, transparent); box-shadow: inset 2px 0 0 var(--docs-orange, #d2703a); }
 .ui-code-block--numbered .fastr-docs-code-hl { margin-inline-start: -52px; padding-inline-start: 52px; }
 
+/* Splash pages: a landing shell with no table of contents, no breadcrumbs, and
+   a wider column than a reference page wants. */
+/* A splash page has no table of contents, so it reclaims the column the doc
+   layout reserves for one. The doubled class outranks the responsive width
+   rules further down, which are all single-class. */
+.ui-doc-layout.fastr-docs-doc-layout.fastr-docs-splash { grid-template-columns: minmax(0, 1fr); }
+.fastr-docs-doc-layout.fastr-docs-splash .ui-markdown { width: min(1080px, calc(100% - 88px)); }
+.fastr-docs-splash .fastr-docs-toc, .fastr-docs-splash .ui-doc-layout__toc { display: none; }
+.fastr-docs-page-hero { margin-bottom: 8px; padding-top: 24px; }
+.fastr-docs-page-hero h1 { letter-spacing: -.045em; }
+
 /* Shortcode components. Steps and file trees are authored as ordinary Markdown
    lists so the source stays readable in a plain editor; the presentation is
    carried entirely by these rules. */

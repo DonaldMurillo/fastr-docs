@@ -385,7 +385,11 @@ func boolProp(props map[string]string, name string) bool {
 // safeLinkProp keeps javascript: and other script-bearing URLs out of hrefs
 // that a content author supplied.
 func safeLinkProp(props map[string]string, name string) string {
-	value := prop(props, name)
+	return safeContentLink(prop(props, name))
+}
+
+func safeContentLink(value string) string {
+	value = strings.TrimSpace(value)
 	if value == "" {
 		return ""
 	}
@@ -463,4 +467,35 @@ func gridGap(value string) ui.Gap {
 		return ui.Gap2XL
 	}
 	return ui.GapMD
+}
+
+// renderPageHero draws the hero of a splash page from its front matter, so a
+// landing page needs no typed screen.
+func renderPageHero(hero *PageHero) render.HTML {
+	if hero == nil {
+		return ""
+	}
+	if hero.Title == "" && hero.Tagline == "" && hero.Eyebrow == "" && len(hero.Actions) == 0 {
+		return ""
+	}
+	actions := make([]render.HTML, 0, len(hero.Actions))
+	for _, action := range hero.Actions {
+		link := safeContentLink(action.Link)
+		if action.Text == "" || link == "" {
+			continue
+		}
+		actions = append(actions, ui.LinkButton(ui.LinkButtonConfig{
+			Label:    action.Text,
+			Href:     link,
+			Variant:  buttonVariant(action.Variant),
+			External: strings.HasPrefix(link, "http"),
+		}))
+	}
+	return ui.Hero(ui.HeroConfig{
+		Eyebrow:  hero.Eyebrow,
+		Title:    hero.Title,
+		Subtitle: hero.Tagline,
+		Actions:  actions,
+		Class:    "fastr-docs-page-hero",
+	})
 }

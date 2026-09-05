@@ -40,10 +40,12 @@ func NewRouter() *docs.Router {
 	}}); err != nil {
 		panic(err)
 	}
+	// The landing page is front matter: see content/index-splash.md. Nothing
+	// here has to change to restyle it.
 	router.MustPage("/", docs.PageConfig{
 		Title: {{goString .SiteName}},
 		Description: "A white-label documentation site.",
-		Body: func() render.HTML { return HomeBody(router) },
+		SourcePath: "content/index-splash.md",
 		Order: 1,
 		Offline: true,
 	})
@@ -222,6 +224,16 @@ func NewRouter() *docs.Router {
 		SourcePath: "content/examples-route-tree.md",
 		Order: 2,
 		Offline: true,
+	})
+	// The typed alternative to the splash template, for a landing page that
+	// outgrows front matter.
+	examples.MustPage("typed-landing", docs.PageConfig{
+		Title: "Typed landing page",
+		Description: "A landing surface built as Go rather than front matter.",
+		Body: func() render.HTML { return HomeBody(router) },
+		Order: 4,
+		Offline: true,
+		DisableTOC: true,
 	})
 	examples.MustPage("custom-surface", docs.PageConfig{
 		Title: "Custom surfaces",

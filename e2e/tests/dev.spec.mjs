@@ -3,6 +3,33 @@ import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { runtime } from '../support/runtime.mjs';
 
+// GoFastr's dev loop restarts the child server on every rebuild, including the
+// one triggered when a test restores its fixture file in `finally`. The next
+// test then starts against a server that is still coming back, and its very
+// first navigation fails. Both helpers below exist for that, not for any
+// product behaviour.
+const waitForDevServer = async (request, url) => {
+  await expect.poll(async () => {
+    try {
+      return (await request.get(url)).ok();
+    } catch {
+      return false;
+    }
+  }, { timeout: 30_000, intervals: [250] }).toBe(true);
+};
+
+const reloadThroughDevLoop = async (page, url) => {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      await page.goto(url, { waitUntil: 'load' });
+      return;
+    } catch (error) {
+      if (attempt === 19) throw error;
+      await page.waitForTimeout(500);
+    }
+  }
+};
+
 test('fastr-docs dev reloads OpenAPI contract changes through GoFastr', async ({ page, request }) => {
   const { devURL, target } = runtime();
   const contractPath = path.join(target, 'openapi.json');
@@ -16,8 +43,10 @@ test('fastr-docs dev reloads OpenAPI contract changes through GoFastr', async ({
     },
   };
 
+  await waitForDevServer(request, `${devURL}/api-reference`);
+
   try {
-    await page.goto(`${devURL}/api-reference`);
+    await reloadThroughDevLoop(page, `${devURL}/api-reference`);
     await expect(page.locator('[data-openapi-reference]')).toBeVisible();
     await expect(page.locator('[data-openapi-operation]').filter({ hasText: 'devReloadCheck' })).toHaveCount(0);
 
@@ -32,8 +61,8 @@ test('fastr-docs dev reloads OpenAPI contract changes through GoFastr', async ({
       }
     }, { timeout: 20_000 }).toBe(true);
 
-    await page.reload();
-    await expect(page.locator('[data-openapi-operation]').filter({ hasText: 'devReloadCheck' })).toBeVisible();
+    await reloadThroughDevLoop(page, `${devURL}/api-reference`);
+    await expect(page.locator('[data-openapi-operation]').filter({ hasText: 'devReloadCheck' })).toBeVisible({ timeout: 20_000 });
   } finally {
     await fs.writeFile(contractPath, original);
   }
@@ -45,8 +74,10 @@ test('fastr-docs dev reloads Markdown collection files through GoFastr', async (
   const original = await fs.readFile(contentPath, 'utf8');
   const marker = 'Markdown reload check';
 
+  await waitForDevServer(request, `${devURL}/docs/getting-started`);
+
   try {
-    await page.goto(`${devURL}/docs/getting-started`);
+    await reloadThroughDevLoop(page, `${devURL}/docs/getting-started`);
     await expect(page.getByRole('heading', { name: 'Getting started', exact: true })).toBeVisible();
 
     await fs.writeFile(contentPath, `${original}\n\n## Reload check\n\n${marker}.`);
@@ -59,7 +90,7 @@ test('fastr-docs dev reloads Markdown collection files through GoFastr', async (
       }
     }, { timeout: 20_000 }).toBe(true);
 
-    await page.reload();
+    await reloadThroughDevLoop(page, `${devURL}/docs/getting-started`);
     await expect(page.getByRole('heading', { name: 'Reload check', exact: true })).toBeVisible({ timeout: 20_000 });
   } finally {
     await fs.writeFile(contentPath, original);

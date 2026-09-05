@@ -4,7 +4,8 @@ import { runtime } from '../support/runtime.mjs';
 test('static export keeps the navigable docs and PWA surfaces', async ({ request }) => {
   const { staticURL } = runtime();
   const pages = [
-    ['/', 'fastr-docs-home__hero'],
+    ['/', 'fastr-docs-page-hero'],
+    ['/examples/typed-landing/', 'fastr-docs-home__hero'],
     ['/docs/', 'Documentation'],
     ['/docs/getting-started/', 'Getting started'],
     ['/docs/build/framework-ui/', 'Framework UI'],
@@ -132,7 +133,8 @@ test('static content remains navigable after the network is unavailable', async 
 test('static export renders every generated route family in a real browser', async ({ page }) => {
   const { staticURL } = runtime();
   const routes = [
-    ['/', 'A docs framework that starts as a router.'],
+    ['/', 'E2E Docs'],
+    ['/examples/typed-landing/', 'A docs framework that starts as a router.'],
     ['/docs/', 'E2E Docs'],
     ['/docs/build/framework-ui/', 'Framework UI'],
     ['/docs/operate/feature-coverage/', 'Feature coverage'],

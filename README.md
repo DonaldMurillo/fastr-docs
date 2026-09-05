@@ -186,6 +186,41 @@ When a project contains localized or versioned route siblings, the header emits
 route-aware Language and Version selectors that preserve the current page
 family.
 
+## Landing pages
+
+A page can opt into the splash shell from front matter, so a landing page needs
+no Go:
+
+```md
+---
+template: splash
+hero:
+  eyebrow: Documentation built on GoFastr
+  title: Acme Docs
+  tagline: One explicit route tree drives everything.
+  actions:
+    - text: Get started
+      link: /docs/getting-started
+      variant: primary
+    - text: Browse the docs
+      link: /docs
+      variant: secondary
+---
+
+{{< cards >}}
+{{< card title="Concepts" href="/docs/concepts/router" >}}{{< /card >}}
+{{< /cards >}}
+```
+
+Splash pages drop the table of contents and breadcrumbs, and reclaim the column
+the layout reserves for a table of contents, so the landing page is wider than
+a reference page. The body below the hero is ordinary Markdown, so the whole
+shortcode vocabulary composes into it.
+
+For a landing page that outgrows front matter, `PageConfig.Body` still takes a
+typed GoFastr component. Both generated projects ship one of each: the home page
+is a splash page and `/examples/typed-landing` is the Go equivalent.
+
 ## Dates and edit links from git
 
 `edit_url` and `last_updated` can both be derived from history instead of being

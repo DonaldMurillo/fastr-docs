@@ -13,7 +13,43 @@ const apiPort = 4176;
 const staticPort = 4177;
 const manualPort = 4178;
 const manualStaticPort = 4179;
+const selfSitePort = 4180;
+const devPort = 4181;
 const docsLocale = 'pt-BR';
+let goCommand = 'go';
+
+const resolveGoCommand = async () => {
+  const candidates = [
+    process.env.GO_BINARY,
+    process.platform === 'win32' && process.env.GOROOT
+      ? path.join(process.env.GOROOT, 'bin', 'go.exe')
+      : null,
+    process.platform === 'win32' && process.env.ProgramFiles
+      ? path.join(process.env.ProgramFiles, 'Go', 'bin', 'go.exe')
+      : null,
+    process.platform === 'win32' && process.env.LOCALAPPDATA
+      ? path.join(process.env.LOCALAPPDATA, 'Programs', 'Go', 'bin', 'go.exe')
+      : null,
+    process.platform === 'win32' && process.env.USERPROFILE
+      ? path.join(process.env.USERPROFILE, 'sdk', 'go', 'bin', 'go.exe')
+      : null,
+    'go',
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    if (candidate !== 'go') {
+      try {
+        const stat = await fs.stat(candidate);
+        if (stat.isFile()) return candidate;
+      } catch {}
+      continue;
+    }
+    try {
+      execFileSync(candidate, ['version'], { stdio: 'ignore', windowsHide: true });
+      return candidate;
+    } catch {}
+  }
+  return 'go';
+};
 
 const run = (command, args, cwd, env = {}) => execFileSync(command, args, {
   cwd,
@@ -23,10 +59,10 @@ const run = (command, args, cwd, env = {}) => execFileSync(command, args, {
   windowsHide: true,
 });
 
-const start = (command, args, cwd, env = {}) => spawn(command, args, {
+const start = (command, args, cwd, env = {}, stdio = 'ignore') => spawn(command, args, {
   cwd,
   env: { ...process.env, ...env },
-  stdio: 'ignore',
+  stdio,
   windowsHide: true,
 });
 
@@ -44,7 +80,7 @@ const waitFor = async (url, timeout = 60_000) => {
   while (Date.now() - started < timeout) {
     try {
       const response = await fetch(url);
-      if (response.status < 500) return;
+      if (response.status >= 200 && response.status < 400) return;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
@@ -52,21 +88,24 @@ const waitFor = async (url, timeout = 60_000) => {
 };
 
 export default async function globalSetup() {
+  goCommand = await resolveGoCommand();
   const target = await fs.mkdtemp(path.join(os.tmpdir(), 'fastr-docs-e2e-'));
   let api;
   let staticSite;
   let app;
   let manual;
   let manualStatic;
+  let selfSite;
+  let dev;
   try {
-    run('go', ['run', './cmd/fastr-docs', 'init', target, '--name', 'E2E Docs', '--module', 'example.com/e2e-docs'], repoRoot);
-    run('go', ['mod', 'tidy'], target);
+    run(goCommand, ['run', './cmd/fastr-docs', 'init', target, '--name', 'E2E Docs', '--module', 'example.com/e2e-docs'], repoRoot);
+    run(goCommand, ['mod', 'tidy'], target);
 
     api = start(process.execPath, [path.join(here, 'mock-api.mjs')], e2eRoot, { PORT: String(apiPort) });
     await waitFor(`http://127.0.0.1:${apiPort}/v1/projects`);
 
     const dist = path.join(target, 'dist-e2e');
-    run('go', ['run', '.', '--export', dist], target, {
+    run(goCommand, ['run', '.', '--export', dist], target, {
       API_SERVER_URL: `http://127.0.0.1:${apiPort}/v1`,
       DOCS_LOCALE: docsLocale,
       DOCS_SEARCH_BACKEND: 'pagefind',
@@ -83,7 +122,7 @@ export default async function globalSetup() {
     await waitFor(`http://127.0.0.1:${staticPort}/`);
 
     const appBinary = path.join(target, 'e2e-docs.exe');
-    run('go', ['build', '-o', appBinary, '.'], target);
+    run(goCommand, ['build', '-o', appBinary, '.'], target);
     app = start(appBinary, [], target, {
       PORT: String(appPort),
       API_SERVER_URL: `http://127.0.0.1:${apiPort}/v1`,
@@ -91,9 +130,14 @@ export default async function globalSetup() {
     });
     await waitFor(`http://127.0.0.1:${appPort}/`);
 
+    dev = start(goCommand, ['run', './cmd/fastr-docs', 'dev', target, '--addr', `127.0.0.1:${devPort}`, '--no-a11y'], repoRoot, {
+      PORT: String(devPort),
+    }, 'inherit');
+    await waitFor(`http://127.0.0.1:${devPort}/`);
+
     const manualRoot = path.join(e2eRoot, 'fixtures', 'non-cli');
     const manualBinary = path.join(target, 'non-cli-fixture.exe');
-    run('go', ['build', '-o', manualBinary, '.'], manualRoot);
+    run(goCommand, ['build', '-o', manualBinary, '.'], manualRoot);
     const manualDist = path.join(target, 'manual-dist');
     run(manualBinary, ['--export', manualDist], manualRoot, {
       API_SERVER_URL: `http://127.0.0.1:${apiPort}/v1`,
@@ -109,26 +153,42 @@ export default async function globalSetup() {
     });
     await waitFor(`http://127.0.0.1:${manualPort}/`);
 
+    const selfRoot = path.join(repoRoot, 'site');
+    const selfBinary = path.join(target, 'fastr-docs-self.exe');
+    run(goCommand, ['build', '-o', selfBinary, '.'], selfRoot);
+    selfSite = start(selfBinary, [], selfRoot, {
+      PORT: String(selfSitePort),
+      API_SERVER_URL: `http://127.0.0.1:${apiPort}/v1`,
+      PUBLIC_SITE_URL: `http://127.0.0.1:${selfSitePort}`,
+    });
+    await waitFor(`http://127.0.0.1:${selfSitePort}/`);
+
     await fs.writeFile(runtimePath, JSON.stringify({
       target,
       dist,
       appPid: app.pid,
+      devPid: dev.pid,
       apiPid: api.pid,
       staticPid: staticSite.pid,
       appURL: `http://127.0.0.1:${appPort}`,
+      devURL: `http://127.0.0.1:${devPort}`,
       apiURL: `http://127.0.0.1:${apiPort}`,
       staticURL: `http://127.0.0.1:${staticPort}`,
       manualURL: `http://127.0.0.1:${manualPort}`,
       manualStaticURL: `http://127.0.0.1:${manualStaticPort}`,
+      selfURL: `http://127.0.0.1:${selfSitePort}`,
       manualPid: manual.pid,
       manualStaticPid: manualStatic.pid,
+      selfPid: selfSite.pid,
     }, null, 2));
   } catch (error) {
     stop(app);
+    stop(dev);
     stop(staticSite);
     stop(api);
     stop(manual);
     stop(manualStatic);
+    stop(selfSite);
     await fs.rm(target, { recursive: true, force: true });
     throw error;
   }

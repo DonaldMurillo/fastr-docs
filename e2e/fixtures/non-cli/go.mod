@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/DonaldMurillo/fastr-docs v0.1.0
-	github.com/DonaldMurillo/gofastr v0.73.0
+	github.com/DonaldMurillo/gofastr v0.76.0
 )
 
 require (

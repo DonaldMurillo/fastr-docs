@@ -18,7 +18,11 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } } },
+    {
+      name: 'chromium',
+      testIgnore: '**/mobile.spec.mjs',
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 900 } },
+    },
     {
       name: 'mobile-chromium',
       use: {

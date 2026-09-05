@@ -27,7 +27,7 @@ import (
 // CLI or reuse the starter template; it exercises the public Router and
 // GoFastr component APIs exactly as an adopters' project would.
 //
-//go:embed openapi.json
+//go:embed openapi.json content/blog/*
 var contractFS embed.FS
 
 func main() {
@@ -39,6 +39,9 @@ func main() {
 		if err := built.server.ExportStatic(context.Background(), dir, normalizeBase(exportBase(os.Args[1:]))); err != nil {
 			panic(err)
 		}
+		if err := docs.WriteStaticRSS(dir, normalizeBase(exportBase(os.Args[1:])), "/blog/feed.xml", built.rss); err != nil {
+			panic(err)
+		}
 		if err := writeRuntimeAssets(dir, built.openAPIRuntime, built.searchIndex, built.manifest); err != nil {
 			panic(err)
 		}
@@ -48,7 +51,7 @@ func main() {
 		if err := docs.WriteAgentAssets(dir, normalizeBase(exportBase(os.Args[1:])), built.server.Router()); err != nil {
 			panic(err)
 		}
-		if err := rewriteStaticCSP(dir, docs.ContentSecurityPolicy(built.connectOrigins...)); err != nil {
+		if err := docs.RewriteStaticCSP(dir, docs.ContentSecurityPolicy(built.connectOrigins...)); err != nil {
 			panic(err)
 		}
 		fmt.Println("static site exported to " + dir)
@@ -57,12 +60,29 @@ func main() {
 
 	addr := ":3078"
 	if port := os.Getenv("PORT"); port != "" {
-		addr = ":" + port
+		addr = listenAddress(port, addr)
 	}
-	fmt.Println("Manual fixture listening on http://localhost" + addr)
+	fmt.Println("Manual fixture listening on " + listenURL(addr))
 	if err := built.server.Start(addr); err != nil {
 		panic(err)
 	}
+}
+
+func listenAddress(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	if strings.Contains(value, ":") {
+		return value
+	}
+	return ":" + value
+}
+
+func listenURL(addr string) string {
+	if strings.HasPrefix(addr, ":") {
+		return "http://localhost" + addr
+	}
+	return "http://" + addr
 }
 
 type builtSite struct {
@@ -70,6 +90,7 @@ type builtSite struct {
 	openAPIRuntime []byte
 	searchIndex    []byte
 	manifest       []byte
+	rss            []byte
 	connectOrigins []string
 }
 
@@ -79,7 +100,14 @@ func buildSite() (*builtSite, error) {
 		return nil, err
 	}
 
-	router := docs.NewRouter(docs.WithSiteName("Manual Docs"), docs.WithLanguage(os.Getenv("DOCS_LOCALE")))
+	router := docs.NewRouter(
+		docs.WithSiteName("Manual Docs"),
+		docs.WithLanguage(os.Getenv("DOCS_LOCALE")),
+		docs.WithTemplate(docs.ParseTemplate(os.Getenv("DOCS_TEMPLATE"))),
+		// This fixture serves the docs assets from /__manual, not the starter's
+		// /__fastr-docs prefix, so the palette needs the matching index URL.
+		docs.WithSearchIndexPath("/__manual/search.json"),
+	)
 	if err := router.Use(docs.MarkdownComponentsPlugin{Components: map[string]docs.MarkdownComponent{
 		"note": func(props map[string]string, body render.HTML) render.HTML {
 			return ui.Callout(ui.CalloutConfig{Title: props["title"], Variant: ui.StatusInfo}, body)
@@ -140,11 +168,16 @@ func buildSite() (*builtSite, error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := router.MarkdownBlogFS("/blog", contractFS, "content/blog", docs.BlogConfig{
+		Title: "Manual updates", Description: "Updates from the hand-authored fixture.", Order: 5, Offline: true,
+	}); err != nil {
+		return nil, err
+	}
 	if err := router.Validate(); err != nil {
 		return nil, err
 	}
 
-	application := uiapp.NewApp("Manual Docs").WithTheme(docs.DefaultTheme()).WithLang(router.Language())
+	application := uiapp.NewApp("Manual Docs").WithTheme(router.Theme()).WithLang(router.Language())
 	layout := router.Layout()
 	if err := router.Mount(application, layout); err != nil {
 		return nil, err
@@ -153,11 +186,17 @@ func buildSite() (*builtSite, error) {
 	host := uihost.New(application,
 		uihost.WithDescription("A hand-authored GoFastr documentation project."),
 		uihost.WithCustomCSS(router.CSS()+"\n"+openapi.CSS()+"\n"+frameworkLabCSS),
+		uihost.WithNotFoundScreen(docs.NotFoundScreen{SiteName: router.SiteName()}),
 		uihost.WithPublicLLMMD(),
 		uihost.WithAgentReady(uihost.AgentReadyConfig{
 			Title:     "Manual Docs",
 			Summary:   "Hand-authored documentation with a typed framework lab.",
 			WhenToUse: "Use this site to read the guides, exercise the framework lab, and inspect the API reference.",
+			AgentCard: &uihost.AgentCardConfig{
+				Name:        "Manual Docs",
+				Description: "Hand-authored documentation with a typed framework lab.",
+				MCPEndpoint: "/mcp",
+			},
 		}),
 		uihost.WithSitemap(uihost.SitemapConfig{BaseURL: manualSiteURL(), ExcludePaths: append([]string{"/__manual/"}, router.SitemapExcludePaths()...)}),
 		uihost.WithRobots(uihost.RobotsConfig{Disallow: []string{"/__manual/"}}),
@@ -170,16 +209,27 @@ func buildSite() (*builtSite, error) {
 			Precache:    []string{"/__manual/docs.js", "/__manual/openapi.js", "/__manual/search.json", "/__manual/manifest.json"},
 		}),
 	)
-	server := framework.NewUIHostApp(host, framework.WithConfig(framework.AppConfig{
-		Name: "Manual Docs",
-		SecurityHeaders: middleware.SecurityHeadersConfig{
-			ContentSecurityPolicy: docs.ContentSecurityPolicy(router.ConnectOrigins()...),
-		},
-	}))
+	server := framework.NewUIHostApp(host,
+		framework.WithConfig(framework.AppConfig{
+			Name: "Manual Docs",
+			SecurityHeaders: middleware.SecurityHeadersConfig{
+				ContentSecurityPolicy: docs.ContentSecurityPolicy(router.ConnectOrigins()...),
+			},
+		}),
+		framework.WithMCP(),
+		framework.WithMCPIntrospection(),
+	)
 	if err := router.MountNavigation(server.Router()); err != nil {
 		return nil, err
 	}
 	if err := router.MountCommandPalette(server.Router()); err != nil {
+		return nil, err
+	}
+	feedConfig := docs.RSSConfig{
+		Prefix: "/blog", Title: "Manual updates", Description: "Updates from the hand-authored fixture.",
+		SiteURL: manualSiteURL(), Limit: 20,
+	}
+	if err := router.MountRSS(server.Router(), "/blog/feed.xml", feedConfig); err != nil {
 		return nil, err
 	}
 	server.Router().PostFunc("/manual-lab/save", savePreferences)
@@ -196,6 +246,10 @@ func buildSite() (*builtSite, error) {
 	if err != nil {
 		return nil, err
 	}
+	rss, err := router.RSSXML(feedConfig)
+	if err != nil {
+		return nil, err
+	}
 	assets := fstest.MapFS{
 		"docs.js":       &fstest.MapFile{Data: []byte(docs.RuntimeJS())},
 		"openapi.js":    &fstest.MapFile{Data: openAPIRuntime},
@@ -206,7 +260,7 @@ func buildSite() (*builtSite, error) {
 	if err := router.MountAssets(server.Router(), docs.AssetConfig{FS: fstest.MapFS{"fixture.txt": &fstest.MapFile{Data: []byte("manual asset")}}, Prefix: "/assets"}); err != nil {
 		return nil, err
 	}
-	return &builtSite{server: server, openAPIRuntime: openAPIRuntime, searchIndex: searchIndex, manifest: manifest, connectOrigins: router.ConnectOrigins()}, nil
+	return &builtSite{server: server, openAPIRuntime: openAPIRuntime, searchIndex: searchIndex, manifest: manifest, rss: rss, connectOrigins: router.ConnectOrigins()}, nil
 }
 
 func manualAppIconPNG() []byte {
@@ -376,18 +430,7 @@ func manualSiteURL() string {
 }
 
 func rewriteStaticCSP(dir, policy string) error {
-	oldContent := `content="default-src 'self'; img-src 'self' data:; object-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'"`
-	newContent := `content="` + policy + `"`
-	return filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || entry.IsDir() || filepath.Ext(path) != ".html" {
-			return err
-		}
-		body, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(path, []byte(strings.ReplaceAll(string(body), oldContent, newContent)), 0o644)
-	})
+	return docs.RewriteStaticCSP(dir, policy)
 }
 
 func exportDir(args []string) string {

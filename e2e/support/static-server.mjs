@@ -12,11 +12,17 @@ const mime = {
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
+  '.xml': 'application/rss+xml; charset=utf-8',
   '.webmanifest': 'application/manifest+json; charset=utf-8',
 };
 
 const safePath = (urlPath) => {
-  const decoded = decodeURIComponent(urlPath.split('?')[0]);
+  let decoded;
+  try {
+    decoded = decodeURIComponent(urlPath.split('?')[0]);
+  } catch {
+    return null;
+  }
   const relative = decoded.replace(/^\/+/, '');
   const candidate = path.resolve(root, relative);
   return candidate.startsWith(root + path.sep) || candidate === root ? candidate : null;
@@ -32,7 +38,6 @@ const server = http.createServer((request, response) => {
   const candidates = [
     candidate,
     path.join(candidate, 'index.html'),
-    path.join(root, 'index.html'),
   ];
   const file = candidates.find((item) => fs.existsSync(item) && fs.statSync(item).isFile());
   if (!file) {

@@ -20,10 +20,12 @@ export default async function globalTeardown() {
   let runtime;
   try { runtime = JSON.parse(await fs.readFile(runtimePath, 'utf8')); } catch { return; }
   stop(runtime.appPid);
+  stop(runtime.devPid);
   stop(runtime.staticPid);
   stop(runtime.apiPid);
   stop(runtime.manualPid);
   stop(runtime.manualStaticPid);
+  stop(runtime.selfPid);
   await fs.rm(runtime.target, { recursive: true, force: true });
   await fs.rm(runtimePath, { force: true });
 }

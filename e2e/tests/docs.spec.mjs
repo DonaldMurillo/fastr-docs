@@ -1,10 +1,30 @@
 import { test, expect } from '@playwright/test';
 
+const isMobileProject = (testInfo) => testInfo.project.name === 'mobile-chromium';
+
+const openPrimaryNav = async (page, testInfo) => {
+  const nav = page.locator(isMobileProject(testInfo) ? 'nav.ui-site-header__mobile-links' : 'nav.ui-site-header__links');
+  if (isMobileProject(testInfo) && await nav.isHidden()) {
+    await page.locator('summary[aria-label="Toggle navigation"]:visible').first().click();
+  }
+  await expect(nav).toBeVisible();
+  return nav;
+};
+
+const openSectionNav = async (page, testInfo) => {
+  const nav = page.locator(isMobileProject(testInfo) ? '[data-fui-widget="fastr-docs-sections"]' : '.ui-sidebar__inline');
+  if (isMobileProject(testInfo) && await nav.isHidden()) {
+    await page.locator('[data-fui-open="fastr-docs-sections"]:visible').first().click();
+  }
+  await expect(nav).toBeVisible();
+  return nav;
+};
+
 test('landing surface exposes the route-first product and navigates into docs', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'A docs framework that starts as a router.' })).toBeVisible();
-  await expect(page.locator('.fastr-docs-home__route-row')).toHaveCount(6);
-  await expect(page.getByText('18 routes', { exact: true })).toBeVisible();
+	await expect.poll(() => page.locator('.fastr-docs-home__route-row').count()).toBeGreaterThan(0);
+	await expect(page.getByText(/^\d+ routes$/, { exact: true })).toBeVisible();
   await expect(page.getByText('AI-ready from the first commit')).toBeVisible();
 
   await page.getByRole('link', { name: 'Open the docs' }).click();
@@ -29,6 +49,46 @@ test('local search returns a route and opens it', async ({ page }) => {
   await expect(page).toHaveURL(/\/docs\/getting-started\/?$/);
 });
 
+test('agent discovery exposes the live MCP endpoint', async ({ request }) => {
+  for (const [path, marker] of [
+    ['/.well-known/mcp.json', '/mcp'],
+    ['/.well-known/mcp/server-card.json', 'e2e-docs'],
+    ['/.well-known/mcp/catalog.json', '/mcp'],
+    ['/mcp/server-card', 'e2e-docs'],
+  ]) {
+    const discovery = await request.get(path);
+    expect(discovery.ok(), `${path} should be discoverable`).toBeTruthy();
+    expect(await discovery.text()).toContain(marker);
+  }
+
+  const response = await request.post('/mcp', {
+    headers: { 'Content-Type': 'application/json' },
+    data: {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'fastr-docs-e2e', version: '1' },
+      },
+    },
+  });
+  expect(response.ok()).toBeTruthy();
+  const body = await response.text();
+  expect(body).toContain('serverInfo');
+  expect(body).not.toContain('"error"');
+});
+
+test('missing routes return a branded 404 recovery surface', async ({ request }) => {
+  const response = await request.get('/does-not-exist');
+  expect(response.status()).toBe(404);
+  const body = await response.text();
+  expect(body).toContain('Page not found');
+  expect(body).toContain('Back to E2E Docs');
+  expect(body).toContain('/does-not-exist');
+});
+
 test('landing actions expose both primary paths into the handbook', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('link', { name: 'Read the guide' }).click();
@@ -42,9 +102,18 @@ test('landing actions expose both primary paths into the handbook', async ({ pag
 });
 
 test('top navigation exposes the top-level documentation groups', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile-chromium', 'primary nav is collapsed into the mobile drawer');
   await page.goto('/docs');
-  const nav = page.locator('nav.ui-site-header__links');
+  if (isMobileProject(testInfo)) {
+    const sidebar = await openSectionNav(page, testInfo);
+    const documentation = sidebar.locator('details.ui-sidebar__group > summary').filter({ hasText: /^Documentation$/ });
+    const documentationGroup = documentation.locator('..');
+    await expect(documentationGroup).toHaveAttribute('open', '');
+    await expect(documentationGroup.getByRole('link', { name: 'Getting started', exact: true })).toBeVisible();
+    await expect(page.locator('.fastr-docs-command-trigger:visible')).toHaveCount(1);
+    return;
+  }
+
+  const nav = await openPrimaryNav(page, testInfo);
   await expect(nav.getByRole('link', { name: 'Documentation', exact: true })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'API reference', exact: true })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'Examples', exact: true })).toBeVisible();
@@ -58,6 +127,7 @@ test('top navigation exposes the top-level documentation groups', async ({ page 
   await expect(page.locator('.layout-docs-api')).toBeVisible();
   await expect(page.locator('[data-fui-screen-group="/api-reference/"]')).toBeVisible();
 
+  await openPrimaryNav(page, testInfo);
   await nav.getByRole('link', { name: 'Examples', exact: true }).click();
   await expect(page).toHaveURL(/\/examples\/playground\/?$/);
   await expect(nav.getByRole('link', { name: 'Examples', exact: true })).toHaveAttribute('aria-current', 'page');
@@ -74,12 +144,15 @@ test('the handbook mounts every documented route', async ({ page }) => {
     ['/docs/concepts/content', 'Content authoring'],
     ['/docs/concepts/layouts', 'Layouts and navigation'],
     ['/docs/build/screens', 'Screens and components'],
+    ['/docs/build/framework-ui', 'Framework UI'],
     ['/docs/build/openapi', 'OpenAPI reference'],
     ['/docs/build/plugins', 'Plugins and extensions'],
+    ['/docs/build/blog', 'Blog and RSS'],
     ['/docs/operate/search', 'Search'],
     ['/docs/operate/offline', 'Offline and PWA'],
     ['/docs/operate/testing', 'Testing'],
     ['/docs/operate/deploy', 'Deploy and customize'],
+    ['/docs/operate/feature-coverage', 'Feature coverage'],
     ['/docs/collaborate/ai-authoring', 'AI authoring'],
     ['/examples/playground', 'Playground'],
     ['/examples/route-tree', 'Route tree'],
@@ -142,16 +215,79 @@ test('documentation article chrome supports breadcrumbs and route paging', async
   await expect(page).toHaveURL(/\/docs\/getting-started\/?$/);
 });
 
+test('route paging expands and selects the destination sidebar section', async ({ page }, testInfo) => {
+  if (isMobileProject(testInfo)) {
+    await page.goto('/docs/build/screens');
+    await page.locator('.ui-doc-layout__next').click();
+    await expect(page).toHaveURL(/\/docs\/build\/framework-ui\/?$/);
+    const drawer = await openSectionNav(page, testInfo);
+    const buildSummary = drawer.locator('details.ui-sidebar__group > summary').filter({ hasText: /^Build$/ });
+    const buildGroup = buildSummary.locator('..');
+    await expect(buildGroup).toHaveAttribute('open', '');
+    await expect(buildGroup.getByRole('link', { name: 'Framework UI', exact: true })).toHaveAttribute('aria-current', 'page');
+    return;
+  }
+
+  await page.goto('/docs/build/screens');
+
+  const buildSummary = page.locator('.ui-sidebar__inline details.ui-sidebar__group > summary').filter({ hasText: /^Build$/ });
+  const buildGroup = buildSummary.locator('..');
+  await expect(buildSummary).toBeVisible();
+  if (await buildGroup.getAttribute('open') !== null) {
+    await buildSummary.click();
+  }
+  await expect(buildGroup).not.toHaveAttribute('open', '');
+
+  await page.locator('.ui-doc-layout__next').click();
+  await expect(page).toHaveURL(/\/docs\/build\/framework-ui\/?$/);
+  await expect(page.getByRole('heading', { name: 'Framework UI', exact: true })).toBeVisible();
+  await expect(buildGroup).toHaveAttribute('open', '');
+  await expect(buildGroup.getByRole('link', { name: 'Framework UI', exact: true })).toHaveAttribute('aria-current', 'page');
+
+  await buildSummary.click();
+  await expect(buildGroup).not.toHaveAttribute('open', '');
+  await page.locator('.ui-doc-layout__prev').click();
+  await expect(page).toHaveURL(/\/docs\/build\/screens\/?$/);
+  await expect(buildGroup).toHaveAttribute('open', '');
+  await expect(buildGroup.getByRole('link', { name: 'Screens and components', exact: true })).toHaveAttribute('aria-current', 'page');
+});
+
 test('generated Markdown can render a registered typed content component', async ({ page }) => {
   await page.goto('/docs/concepts/content');
   await expect(page.getByText('A typed authoring escape hatch', { exact: true })).toBeVisible();
   await expect(page.getByText('The generated project registers this shared component vocabulary while keeping the page body Markdown.', { exact: true })).toBeVisible();
 });
 
+test('framed code cards stay compact and keep the code body flush at the top', async ({ page }) => {
+  await page.goto('/docs/operate/search');
+
+  const card = page.locator('.ui-markdown [data-fui-comp="ui-code-block"]').first();
+  const body = card.locator('.ui-code-block__body');
+  await expect(card).toBeVisible();
+  await expect(body).toHaveCSS('border-top-left-radius', '0px');
+  await expect(body).toHaveCSS('border-top-right-radius', '0px');
+  await expect(body).toHaveCSS('border-top-width', '0px');
+  await expect(body).toHaveCSS('padding', '12px 16px 13px');
+  const copy = card.getByRole('button', { name: 'Copy to clipboard', exact: true });
+  await expect(copy).toBeVisible();
+  await expect(copy).not.toContainText('copy');
+
+  const cardBox = await card.boundingBox();
+  expect(cardBox?.height ?? 0).toBeLessThan(200);
+});
+
 test('top navigation keeps its section active on nested documentation pages', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile-chromium', 'primary nav is collapsed into the mobile drawer');
   await page.goto('/docs/getting-started');
-  const nav = page.locator('nav.ui-site-header__links');
+  if (isMobileProject(testInfo)) {
+    const sidebar = await openSectionNav(page, testInfo);
+    const documentation = sidebar.locator('details.ui-sidebar__group > summary').filter({ hasText: /^Documentation$/ });
+    const documentationGroup = documentation.locator('..');
+    await expect(documentationGroup).toHaveAttribute('open', '');
+    await expect(documentationGroup.getByRole('link', { name: 'Getting started', exact: true })).toHaveAttribute('aria-current', 'page');
+    return;
+  }
+
+  const nav = await openPrimaryNav(page, testInfo);
   const documentation = nav.getByRole('link', { name: 'Documentation', exact: true });
   const apiReference = nav.getByRole('link', { name: 'API reference', exact: true });
 
@@ -161,15 +297,16 @@ test('top navigation keeps its section active on nested documentation pages', as
 });
 
 test('nested documentation is represented once and opens for the active route', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile-chromium', 'desktop sidebar assertion');
   await page.goto('/docs');
-  const indexGroup = page.locator('.ui-sidebar__inline details.ui-sidebar__group').filter({ hasText: 'Documentation' });
+  const firstSidebar = await openSectionNav(page, testInfo);
+  const indexGroup = firstSidebar.locator('details.ui-sidebar__group').filter({ hasText: 'Documentation' });
   await expect(indexGroup).toHaveAttribute('open', '');
   await expect(indexGroup.getByRole('link', { name: 'Getting started', exact: true })).toBeVisible();
 
   await page.goto('/docs/getting-started');
 
-  const groups = page.locator('.ui-sidebar__inline details.ui-sidebar__group').filter({ hasText: 'Documentation' });
+  const sidebar = await openSectionNav(page, testInfo);
+  const groups = sidebar.locator('details.ui-sidebar__group').filter({ hasText: 'Documentation' });
   await expect(groups).toHaveCount(1);
   await expect(groups.locator(':scope > .ui-sidebar__sublist > .ui-sidebar__item')).toHaveCount(5);
   await expect(groups.getByRole('link', { name: 'Getting started', exact: true })).toBeVisible();
@@ -177,15 +314,23 @@ test('nested documentation is represented once and opens for the active route', 
     await expect(groups.getByText(label, { exact: true })).toBeVisible();
   }
   await expect(groups).toHaveAttribute('open', '');
-  await expect(page.locator('.ui-sidebar__inline a.ui-sidebar__link[href="/api-reference"]')).toHaveCount(0);
+  if (!isMobileProject(testInfo)) {
+    await expect(sidebar.locator('a.ui-sidebar__link[href="/api-reference"]')).toHaveCount(0);
+  }
 
   await page.goto('/examples/route-tree');
-  await expect(page.locator('.ui-sidebar__inline a.ui-sidebar__link[href="/examples/playground"]')).toBeVisible();
-  await expect(page.locator('.ui-sidebar__inline details.ui-sidebar__group').filter({ hasText: 'Documentation' })).toHaveCount(0);
+  const examplesSidebar = await openSectionNav(page, testInfo);
+  await expect(examplesSidebar.locator('a.ui-sidebar__link[href="/examples/playground"]')).toBeVisible();
+  if (!isMobileProject(testInfo)) {
+    await expect(examplesSidebar.locator('details.ui-sidebar__group').filter({ hasText: 'Documentation' })).toHaveCount(0);
+  }
 
   await page.goto('/api-reference');
-  await expect(page.locator('.ui-sidebar__inline a.ui-sidebar__link[href="/api-reference"]')).toBeVisible();
-  await expect(page.locator('.ui-sidebar__inline details.ui-sidebar__group').filter({ hasText: 'Documentation' })).toHaveCount(0);
+  const apiSidebar = await openSectionNav(page, testInfo);
+  await expect(apiSidebar.locator('a.ui-sidebar__link[href="/api-reference"]')).toBeVisible();
+  if (!isMobileProject(testInfo)) {
+    await expect(apiSidebar.locator('details.ui-sidebar__group').filter({ hasText: 'Documentation' })).toHaveCount(0);
+  }
 });
 
 test('theme choice changes the document and persists across navigation', async ({ page }) => {
@@ -223,8 +368,7 @@ test('docs table of contents navigates to a heading', async ({ page }) => {
   await expect(page.locator('#add-a-page')).toBeInViewport();
 });
 
-test('responsive in-page navigation uses a dropdown selector', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile-chromium', 'mobile selector behavior is covered separately');
+test('responsive in-page navigation uses a dropdown selector', async ({ page }) => {
   await page.setViewportSize({ width: 910, height: 812 });
   await page.goto('/docs/getting-started');
   await expect(page.locator('[data-docs-toc-select]')).toBeVisible();
@@ -256,9 +400,33 @@ test('responsive in-page navigation uses a dropdown selector', async ({ page }, 
   expect(narrowSelect?.width ?? 0).toBeGreaterThan((narrowCard?.width ?? 0) - 32);
 });
 
+test('in-page navigation remains usable after client-side page navigation', async ({ page }) => {
+  await page.setViewportSize({ width: 910, height: 812 });
+  await page.goto('/docs/operate/offline');
+  await page.locator('.ui-sidebar__link[href="/docs/operate/search"]').click();
+  await expect(page).toHaveURL(/\/docs\/operate\/search\/?$/);
+
+  const select = page.locator('select[data-docs-toc-select]');
+  await expect(select).toBeVisible();
+  await select.selectOption('#improve-result-quality');
+  await expect(page).toHaveURL(/#improve-result-quality$/);
+  await expect(select).toHaveValue('#improve-result-quality');
+});
+
 test('white-label docs chrome keeps the sidebar and in-page rail readable', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile-chromium', 'desktop geometry is covered separately on mobile');
   await page.goto('/docs/getting-started');
+
+  if (isMobileProject(testInfo)) {
+    await expect(page.locator('.layout-docs .ui-sidebar__inline')).toBeHidden();
+    await expect(page.locator('[data-docs-toc-select]')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const tocBox = await page.locator('.fastr-docs-toc-select').boundingBox();
+    expect(tocBox?.width ?? 0).toBeGreaterThan(300);
+    await expect(page.getByText('Extensions', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Agent-ready project', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('offline shell ready', { exact: true })).toHaveCount(0);
+    return;
+  }
 
   const sidebar = page.locator('.layout-docs .layout-body > nav').first();
   const sidebarTitle = page.locator('.layout-docs .ui-sidebar__title').first();

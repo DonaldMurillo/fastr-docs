@@ -2,6 +2,25 @@ import { test, expect } from '@playwright/test';
 import { runtime } from '../support/runtime.mjs';
 
 const manualPage = (path = '/') => `${runtime().manualURL}${path}`;
+const isMobileProject = (testInfo) => testInfo.project.name === 'mobile-chromium';
+
+const openPrimaryNav = async (page, testInfo) => {
+  const nav = page.locator(isMobileProject(testInfo) ? 'nav.ui-site-header__mobile-links' : 'nav.ui-site-header__links');
+  if (isMobileProject(testInfo) && await nav.isHidden()) {
+    await page.locator('summary[aria-label="Toggle navigation"]:visible').first().click();
+  }
+  await expect(nav).toBeVisible();
+  return nav;
+};
+
+const openSectionNav = async (page, testInfo) => {
+  const nav = page.locator(isMobileProject(testInfo) ? '[data-fui-widget="fastr-docs-sections"]' : '.ui-sidebar__inline');
+  if (isMobileProject(testInfo) && await nav.isHidden()) {
+    await page.locator('[data-fui-open="fastr-docs-sections"]:visible').first().click();
+  }
+  await expect(nav).toBeVisible();
+  return nav;
+};
 
 test('hand-authored Router preserves nested navigation and typed screens', async ({ page }, testInfo) => {
   await page.goto(manualPage('/'));
@@ -62,24 +81,31 @@ test('hand-authored command palette reopens after filtering', async ({ page }) =
   await page.keyboard.press('Control+K');
   const firstInput = page.locator('#fastr-docs-command-palette-input:visible').first();
   await expect(firstInput).toBeVisible();
+  // Searching swaps the static route list for ranked index results, which
+  // drops data-fui-static-options, so this matches the listbox itself.
+  const options = page.locator('#fastr-docs-command-palette-input-listbox [role="option"]:visible');
+
   await firstInput.fill('framework');
-  await expect(page.locator('[data-fui-static-options] [role="option"]:visible')).toHaveCount(1);
+  await expect(options.filter({ hasText: 'Framework lab' })).toHaveCount(1);
+  const filteredCount = await options.count();
+
+  await firstInput.fill('');
+  const optionCount = await options.count();
+  expect(optionCount).toBeGreaterThan(filteredCount);
   await firstInput.press('Escape');
   await expect(page.locator('[data-fui-widget="fastr-docs-command-palette"]:visible')).toHaveCount(0);
 
   await page.keyboard.press('Control+K');
   const secondInput = page.locator('#fastr-docs-command-palette-input:visible').first();
   await expect(secondInput).toBeVisible();
-  await expect(page.locator('[data-fui-static-options] [role="option"]:visible')).toHaveCount(9);
+  await expect(options).toHaveCount(optionCount);
 });
 
-test('hand-authored mobile navigation expands and selects the current nested page', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'mobile-chromium', 'mobile drawer assertion');
+test('hand-authored navigation expands and selects the current nested page', async ({ page }, testInfo) => {
   await page.goto(manualPage('/guides/patterns'));
 
-  await page.locator('[data-fui-open="fastr-docs-sections"]:visible').first().click();
-  const drawer = page.locator('[data-fui-widget="fastr-docs-sections"]');
-  const guides = drawer.locator('summary.ui-sidebar__link').filter({ hasText: /^Guides$/ }).locator('xpath=..');
+  const sidebar = await openSectionNav(page, testInfo);
+  const guides = sidebar.locator('summary.ui-sidebar__link').filter({ hasText: /^Guides$/ }).locator('xpath=..');
 
   await expect(guides).toHaveAttribute('open', '');
   const patterns = guides.getByRole('link', { name: 'Patterns', exact: true });
@@ -159,11 +185,19 @@ test('hand-authored localized routes switch locale and version without losing th
 });
 
 test('hand-authored localized route family keeps its top navigation active', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile-chromium', 'mobile uses the section drawer instead of the desktop header nav');
   await page.goto(manualPage('/locales/fr/v2/guide'));
-  const localizedDesktop = page.locator('nav.ui-site-header__links').getByRole('link', { name: 'Localized guides', exact: true });
-  await expect(localizedDesktop).toHaveAttribute('aria-current', 'page');
-  await expect(localizedDesktop).toHaveClass(/active/);
+  if (isMobileProject(testInfo)) {
+    const sidebar = await openSectionNav(page, testInfo);
+    const localized = sidebar.locator('summary.ui-sidebar__link').filter({ hasText: /^Localized guides$/ }).locator('xpath=..');
+    await expect(localized).toHaveAttribute('open', '');
+    await expect(localized.locator('a.ui-sidebar__link[href="/locales/fr/v2/guide"]')).toHaveAttribute('aria-current', 'page');
+    return;
+  }
+
+  const primaryNav = await openPrimaryNav(page, testInfo);
+  const localized = primaryNav.getByRole('link', { name: 'Localized guides', exact: true });
+  await expect(localized).toHaveAttribute('aria-current', 'page');
+  await expect(localized).toHaveClass(/active/);
 });
 
 test('hand-authored form posts through the server and re-renders context', async ({ page }) => {
@@ -266,6 +300,35 @@ test('hand-authored OpenAPI, local PWA, and static export surfaces work', async 
   const agentCard = await request.get(manualPage('/.well-known/agent-card.json'));
   expect(agentCard.ok()).toBeTruthy();
   expect(await agentCard.text()).toContain('Manual Docs');
+  const mcpManifest = await request.get(manualPage('/.well-known/mcp.json'));
+  expect(mcpManifest.ok()).toBeTruthy();
+  expect(await mcpManifest.text()).toContain('/mcp');
+  const mcpServerCard = await request.get(manualPage('/.well-known/mcp/server-card.json'));
+  expect(mcpServerCard.ok()).toBeTruthy();
+  expect(await mcpServerCard.text()).toContain('Manual Docs');
+  const mcpCatalog = await request.get(manualPage('/.well-known/mcp/catalog.json'));
+  expect(mcpCatalog.ok()).toBeTruthy();
+  expect(await mcpCatalog.text()).toContain('/mcp');
+  const mcpReservedCard = await request.get(manualPage('/mcp/server-card'));
+  expect(mcpReservedCard.ok()).toBeTruthy();
+  expect(await mcpReservedCard.text()).toContain('Manual Docs');
+  const mcpInit = await request.post(manualPage('/mcp'), {
+    headers: { 'Content-Type': 'application/json' },
+    data: {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'fastr-docs-non-cli-e2e', version: '1' },
+      },
+    },
+  });
+  expect(mcpInit.ok()).toBeTruthy();
+  const mcpBody = await mcpInit.text();
+  expect(mcpBody).toContain('serverInfo');
+  expect(mcpBody).not.toContain('"error"');
   const sitemap = await request.get(manualPage('/sitemap.xml'));
   expect(sitemap.ok()).toBeTruthy();
   expect(await sitemap.text()).toContain('/guides/getting-started');
@@ -273,6 +336,14 @@ test('hand-authored OpenAPI, local PWA, and static export surfaces work', async 
   const robots = await request.get(manualPage('/robots.txt'));
   expect(robots.ok()).toBeTruthy();
   expect(await robots.text()).toContain('Disallow: /__manual/');
+
+  const blog = await request.get(manualPage('/blog'));
+  expect(blog.ok()).toBeTruthy();
+  expect(await blog.text()).toContain('Fixture release');
+  const feed = await request.get(manualPage('/blog/feed.xml'));
+  expect(feed.ok()).toBeTruthy();
+  expect(feed.headers()['content-type']).toContain('application/rss+xml');
+  expect(await feed.text()).toContain('Fixture release');
 
   const filter = page.locator('[data-openapi-filter]');
   const operation = page.locator('[data-openapi-operation]').first();
@@ -288,12 +359,19 @@ test('hand-authored OpenAPI, local PWA, and static export surfaces work', async 
     ['/guides/getting-started/', 'Getting started'],
     ['/framework-lab/', 'Framework lab'],
     ['/api-reference/', 'data-openapi-try'],
+    ['/blog/', 'Fixture release'],
+    ['/blog/fixture-release/', 'Fixture release'],
     ['/assets/fixture.txt', 'manual asset'],
   ]) {
     const response = await request.get(manualStaticURL + path);
     expect(response.ok(), `${path} should be served by the manual export`).toBeTruthy();
     expect(await response.text()).toContain(marker);
   }
+
+  const staticFeed = await request.get(manualStaticURL + '/blog/feed.xml');
+  expect(staticFeed.ok()).toBeTruthy();
+  expect(staticFeed.headers()['content-type']).toContain('application/rss+xml');
+  expect(await staticFeed.text()).toContain('Fixture release');
 
   const staticSitemap = await request.get(manualStaticURL + '/sitemap.xml');
   expect(staticSitemap.ok()).toBeTruthy();
@@ -303,6 +381,12 @@ test('hand-authored OpenAPI, local PWA, and static export surfaces work', async 
   const manifest = await request.get(manualStaticURL + '/manifest.webmanifest');
   expect(manifest.ok()).toBeTruthy();
   expect(await manifest.text()).toContain('icon-192.png');
+  const registration = await request.get(manualStaticURL + '/__gofastr/pwa/register.js');
+  expect(registration.ok()).toBeTruthy();
+  expect(await registration.text()).toContain('gofastr:pwa-update');
+  const offlineScreen = await request.get(manualStaticURL + '/__gofastr/pwa/offline/');
+  expect(offlineScreen.ok()).toBeTruthy();
+  expect((await offlineScreen.text()).toLowerCase()).toContain('offline');
   const serviceWorker = await request.get(manualStaticURL + '/service-worker.js');
   expect(serviceWorker.ok()).toBeTruthy();
   expect(await serviceWorker.text()).toContain('__manual/search.json');

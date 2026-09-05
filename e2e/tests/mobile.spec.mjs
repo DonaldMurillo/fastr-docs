@@ -17,6 +17,19 @@ test('mobile navigation opens the full route drawer and closes after navigation'
   await expect(drawer).toBeHidden();
 });
 
+test('mobile route paging opens the active nested section when the drawer opens', async ({ page }) => {
+  await page.goto('/docs/getting-started');
+  await page.locator('.ui-doc-layout__next').click();
+  await expect(page).toHaveURL(/\/docs\/concepts\/router\/?$/);
+
+  await page.locator('[data-fui-open="fastr-docs-sections"]:visible').first().click();
+  const drawer = page.locator('[data-fui-widget="fastr-docs-sections"]');
+  const conceptsSummary = drawer.locator('details.ui-sidebar__group > summary').filter({ hasText: /^Concepts$/ });
+  const conceptsGroup = conceptsSummary.locator('..');
+  await expect(conceptsGroup).toHaveAttribute('open', '');
+  await expect(conceptsGroup.getByRole('link', { name: 'The router', exact: true })).toHaveAttribute('aria-current', 'page');
+});
+
 test('mobile keeps the in-page navigation available', async ({ page }) => {
   await page.goto('/docs/getting-started');
   const toc = page.locator('[data-docs-toc-select]');
@@ -25,6 +38,35 @@ test('mobile keeps the in-page navigation available', async ({ page }) => {
   await expect(toc).toHaveValue('#add-a-page');
   await expect(page).toHaveURL(/#add-a-page$/);
   await expect(page.locator('#add-a-page')).toBeInViewport();
+});
+
+test('mobile command palette exposes a visible close control without overflowing', async ({ page }) => {
+  await page.goto('/docs/build/plugins');
+  await page.locator('.fastr-docs-command-trigger:visible').first().click();
+
+  const palette = page.locator('[data-fui-widget="fastr-docs-command-palette"]:visible');
+  await expect(palette).toBeVisible();
+  const close = palette.getByRole('button', { name: 'Close search', exact: true });
+  await expect(close).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+  await close.click();
+  await expect(palette).toBeHidden();
+});
+
+test('mobile rebinds the in-page navigation after drawer navigation', async ({ page }) => {
+  await page.goto('/docs/operate/offline');
+  await page.locator('[data-fui-open="fastr-docs-sections"]:visible').first().click();
+  const drawer = page.locator('[data-fui-widget="fastr-docs-sections"]');
+  await expect(drawer).toBeVisible();
+  await drawer.getByRole('link', { name: 'Search', exact: true }).click();
+  await expect(page).toHaveURL(/\/docs\/operate\/search\/?$/);
+
+  const toc = page.locator('select[data-docs-toc-select]:visible');
+  await expect(toc).toBeVisible();
+  await toc.selectOption('#improve-result-quality');
+  await expect(page).toHaveURL(/#improve-result-quality$/);
+  await expect(toc).toHaveValue('#improve-result-quality');
 });
 
 test('mobile keeps white-label chrome free of implementation metadata', async ({ page }) => {

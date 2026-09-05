@@ -209,6 +209,20 @@ func mergeUIStrings(base, override UIStrings) UIStrings {
 	return merged
 }
 
+// overlayUIStrings copies the non-empty fields of override onto base and
+// nothing else.
+//
+// mergeUIStrings cannot be used for a locale. It substitutes the English
+// defaults whenever its base looks uninitialized, which is right for a Router
+// built without options and wrong here: it would fill every field of a partial
+// translation with English and then overwrite the project's own Router-wide
+// labels with them.
+func overlayUIStrings(base, override UIStrings) UIStrings {
+	merged := base
+	overlayStrings(reflect.ValueOf(&merged).Elem(), reflect.ValueOf(override))
+	return merged
+}
+
 func overlayStrings(target, override reflect.Value) {
 	for i := range override.NumField() {
 		switch field := override.Field(i); field.Kind() {
@@ -238,4 +252,108 @@ func (u UIStrings) formatDate(value time.Time) string {
 		layout = defaultUIStrings.DateFormat
 	}
 	return value.Format(layout)
+}
+
+// WithLocaleUIStrings translates the chrome for one locale.
+//
+// WithUIStrings sets labels for the whole Router, which is all a site needs
+// when one build serves one language. A site that serves several locales from a
+// single build needs a set per locale, or its Spanish pages come wrapped in
+// English furniture: "Contents", "On this page", "Search".
+//
+// Fields left empty fall back to WithUIStrings, and then to the English
+// defaults, so a locale can be translated a label at a time.
+func WithLocaleUIStrings(locale string, strings UIStrings) Option {
+	return func(r *Router) {
+		locale = normalizeLocale(locale)
+		if locale == "" {
+			return
+		}
+		if r.localeUI == nil {
+			r.localeUI = make(map[string]UIStrings)
+		}
+		r.localeUI[locale] = overlayUIStrings(r.localeUI[locale], strings)
+	}
+}
+
+// WithLocaleNames gives locales the names a reader should see in the language
+// selector. Without it the selector shows raw codes, and "es" is a worse label
+// than "Español" for exactly the person who needs it.
+//
+// Go's standard library carries no locale display names, so a project supplies
+// them rather than the framework pretending to know.
+func WithLocaleNames(names map[string]string) Option {
+	return func(r *Router) {
+		if r.localeNames == nil {
+			r.localeNames = make(map[string]string)
+		}
+		for locale, name := range names {
+			if locale = normalizeLocale(locale); locale != "" {
+				r.localeNames[locale] = strings.TrimSpace(name)
+			}
+		}
+	}
+}
+
+// UIStringsForLocale returns the labels for one locale, merged over the
+// Router-wide strings and the English defaults.
+func (r *Router) UIStringsForLocale(locale string) UIStrings {
+	if r == nil {
+		return defaultUIStrings
+	}
+	locale = normalizeLocale(locale)
+	if locale == "" {
+		return r.ui
+	}
+	overrides, ok := r.localeUI[locale]
+	if !ok {
+		return r.ui
+	}
+	return overlayUIStrings(r.ui, overrides)
+}
+
+// LocaleName returns the display name for a locale, falling back to the code
+// itself so a selector is never empty.
+func (r *Router) LocaleName(locale string) string {
+	locale = normalizeLocale(locale)
+	if r == nil || locale == "" {
+		return locale
+	}
+	if name := strings.TrimSpace(r.localeNames[locale]); name != "" {
+		return name
+	}
+	return locale
+}
+
+// uiForRoute resolves the labels for a route that is already in hand, which is
+// the common case inside page rendering.
+func (r *Router) uiForRoute(route *Route) UIStrings {
+	if r == nil {
+		return defaultUIStrings
+	}
+	if route == nil || len(r.localeUI) == 0 {
+		return r.ui
+	}
+	return r.UIStringsForLocale(route.Metadata.Locale)
+}
+
+// uiAt resolves the labels for the page being rendered. Chrome is rendered per
+// route, so the route's own locale decides, which is what lets one build serve
+// several languages with the right furniture around each.
+func (r *Router) uiAt(currentPath string) UIStrings {
+	if r == nil {
+		return defaultUIStrings
+	}
+	if len(r.localeUI) == 0 {
+		return r.ui
+	}
+	route := r.routeAtPath(currentPath)
+	if route == nil {
+		return r.ui
+	}
+	return r.UIStringsForLocale(route.Metadata.Locale)
+}
+
+func normalizeLocale(locale string) string {
+	return strings.ToLower(strings.TrimSpace(locale))
 }

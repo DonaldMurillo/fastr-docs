@@ -66,6 +66,39 @@ than printing Go's `%!(EXTRA ...)` into the page.
 data, so deriving a date format from the locale would mean inventing one.
 {{< /note >}}
 
+### When one build serves several languages
+
+`WithUIStrings` sets labels for the whole Router, which is right when a build
+serves one language. This site serves English and Spanish from a single build,
+so it needs a set per locale instead. Without that, a Spanish page arrives
+wrapped in English furniture: "Contents", "On this page", "Search".
+
+```go title="docs/router.go"
+docs.WithLocaleNames(map[string]string{"en": "English", "es": "Español"}),
+docs.WithLocaleUIStrings("es", docs.UIStrings{
+    Contents:   "Contenido",
+    OnThisPage: "En esta página",
+    Search:     "Buscar",
+    Language:   "Idioma",
+}),
+```
+
+Resolution follows the page, not the build, so `/es/docs/getting-started` gets
+Spanish chrome and `/docs/getting-started` gets English from the same binary.
+Anything a locale leaves out falls back to `WithUIStrings`, then to English.
+
+`WithLocaleNames` is what puts "Español" in the selector instead of "es". Go
+ships no locale display names, so you supply them rather than the framework
+guessing.
+
+One piece cannot follow the page: the command palette modal is mounted once for
+the whole site, so its placeholder stays in the default language. The search
+button in the header does follow the page.
+
+A translated section is the same section, so it sits behind the language
+selector rather than beside the original as its own nav tab. Route titles stay
+in the language you registered them in.
+
 ## Building one locale at a time
 
 `WithLocale` slices the site to a single content locale. On its own that

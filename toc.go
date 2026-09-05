@@ -22,7 +22,7 @@ func (r *Router) wrapDocPage(route *Route, body render.HTML, headings []Heading)
 		body = render.Join(body, render.Tag("p", map[string]string{"class": "fastr-docs-edit-link"},
 			render.Tag("a", map[string]string{
 				"href": editURL, "rel": "nofollow noopener", "target": "_blank",
-			}, render.Text(r.UIStrings().EditPage)),
+			}, render.Text(r.uiForRoute(route).EditPage)),
 		))
 	}
 	if metadata := r.docMetadata(route); metadata != "" {
@@ -46,19 +46,19 @@ func (r *Router) wrapDocPage(route *Route, body render.HTML, headings []Heading)
 		}
 		if len(items) > 0 {
 			rail := ui.AnchoredRail(ui.AnchoredRailConfig{
-				Label:           r.UIStrings().OnThisPage,
+				Label:           r.uiForRoute(route).OnThisPage,
 				Items:           items,
 				ObserveSelector: ".ui-doc-layout__content",
 				TargetSelector:  "h2[id], h3[id]",
 				Class:           "fastr-docs-toc fastr-docs-toc--rail",
 			})
-			cfg.Toc = render.Join(rail, r.docsTocSelect(headings))
+			cfg.Toc = render.Join(rail, r.docsTocSelect(headings, r.uiForRoute(route).OnThisPage))
 		}
 	}
 	return ui.DocLayout(cfg, body)
 }
 
-func (r *Router) docsTocSelect(headings []Heading) render.HTML {
+func (r *Router) docsTocSelect(headings []Heading, label string) render.HTML {
 	options := make([]ui.SelectOption, 0, len(headings))
 	for i, heading := range headings {
 		options = append(options, ui.SelectOption{
@@ -70,7 +70,7 @@ func (r *Router) docsTocSelect(headings []Heading) render.HTML {
 	return ui.Select(ui.SelectConfig{
 		Name:    "docs-toc",
 		ID:      "fastr-docs-toc-select",
-		Label:   r.UIStrings().OnThisPage,
+		Label:   label,
 		Options: options,
 		Class:   "fastr-docs-toc-select",
 		ExtraAttrs: html.Attrs{
@@ -87,7 +87,7 @@ func (r *Router) docMetadata(route *Route) render.HTML {
 	if meta.DateModified == "" && meta.DatePublished == "" && len(meta.Authors) == 0 {
 		return ""
 	}
-	labels := r.UIStrings()
+	labels := r.uiForRoute(route)
 	parts := make([]render.HTML, 0, 3)
 	if meta.DateModified != "" {
 		parts = append(parts, render.Join(

@@ -25,6 +25,34 @@ func NewRouter() *docs.Router {
 		// Keeps a build for one locale usable while most pages are still
 		// untranslated, which is the normal state of a real site.
 		docs.WithLocaleFallback("en"),
+		// The chrome is translated per locale, so a Spanish page is not wrapped
+		// in English furniture. Only the labels a reader of the translated
+		// pages will actually meet are set here; the rest fall back to English,
+		// which is what a partly translated site looks like.
+		docs.WithLocaleNames(map[string]string{"en": "English", "es": "Español"}),
+		docs.WithLocaleUIStrings("es", docs.UIStrings{
+			Contents:          "Contenido",
+			Home:              "Inicio",
+			OnThisPage:        "En esta página",
+			Search:            "Buscar",
+			SearchPlaceholder: "Buscar en la documentación",
+			OpenSearch:        "Abrir la búsqueda",
+			CloseSearch:       "Cerrar la búsqueda",
+			OpenNavigation:    "Abrir la navegación",
+			EditPage:          "Editar esta página",
+			LastUpdated:       "Actualizado",
+			Published:         "Publicado",
+			By:                "por",
+			Language:          "Idioma",
+			Version:           "Versión",
+			NotFound: docs.NotFoundStrings{
+				Heading:       "Página no encontrada",
+				Message:       "Esta página no existe.",
+				MessageForURL: "Ninguna página coincide con %s.",
+				BackTo:        "Volver a %s",
+				SiteFallback:  "la documentación",
+			},
+		}),
 		docs.WithVersion(os.Getenv("DOCS_CONTENT_VERSION")),
 		docs.WithTemplate(docs.ParseTemplate(os.Getenv("DOCS_TEMPLATE"))),
 		docs.WithSearchBackend(os.Getenv("DOCS_SEARCH_BACKEND")),

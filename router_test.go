@@ -688,7 +688,7 @@ func TestHeaderItemsRepresentTopLevelGroups(t *testing.T) {
 	guides := r.MustGroup("/guides", GroupConfig{Title: "Guides", Description: "Guides", Order: 1})
 	guides.MustPage("getting-started", PageConfig{Title: "Getting started", Description: "Start here", Source: "# Start", Order: 1})
 	r.MustPage("/api-reference", PageConfig{Title: "API reference", Description: "API", Source: "# API", Order: 2})
-	items := r.headerItems()
+	items := r.headerItems("")
 	if len(items) != 2 || items[0].Label != "Guides" || items[0].Href != "/guides/getting-started" || items[1].Label != "API reference" {
 		t.Fatalf("headerItems() = %#v, want top-level group and route", items)
 	}

@@ -31,8 +31,8 @@ func (h *docsHeader) RenderCtx(ctx context.Context) render.HTML {
 }
 
 func (h *docsHeader) render(currentPath string) render.HTML {
-	searchTrigger, _ := h.router.ensureCommandPalette()
-	labels := h.router.UIStrings()
+	searchTrigger := h.router.searchTrigger(currentPath)
+	labels := h.router.uiAt(currentPath)
 	drawerName := "fastr-docs-sections"
 	if root := h.router.rootForPath(currentPath); root != nil && h.router.isBlogPrefix(root.Path) {
 		drawerName = blogDrawerName(root.Path)
@@ -77,7 +77,7 @@ func (h *docsHeader) render(currentPath string) render.HTML {
 				h.brandMark(),
 			),
 		),
-		NavItems:     h.router.headerItems(),
+		NavItems:     h.router.headerItems(currentPath),
 		Actions:      actions,
 		Class:        "fastr-docs-site-header",
 		Drawer:       ui.SiteHeaderDrawerPopover,
@@ -204,6 +204,10 @@ func (r *Router) headerVariantActiveConfig() render.HTML {
 
 type docsVariantOption struct {
 	value string
+	// label is what the reader sees. For a locale it is the language's own
+	// name, because "es" is a worse label than "Espanol" for the one person who
+	// needs the selector most.
+	label string
 	href  string
 }
 
@@ -218,10 +222,10 @@ func (r *Router) variantSelectors(currentPath string) render.HTML {
 	}
 	var selectors []render.HTML
 	if options := r.variantOptions(current, "locale"); len(options) > 1 {
-		selectors = append(selectors, r.variantSelect(r.UIStrings().Language, "locale", options, currentPath))
+		selectors = append(selectors, r.variantSelect(r.uiAt(currentPath).Language, "locale", options, currentPath))
 	}
 	if options := r.variantOptions(current, "version"); len(options) > 1 {
-		selectors = append(selectors, r.variantSelect(r.UIStrings().Version, "version", options, currentPath))
+		selectors = append(selectors, r.variantSelect(r.uiAt(currentPath).Version, "version", options, currentPath))
 	}
 	if len(selectors) == 0 {
 		return render.Text("")
@@ -236,7 +240,11 @@ func (r *Router) variantSelect(label, dimension string, options []docsVariantOpt
 		if normalizePath(option.href) == currentPath {
 			attrs["selected"] = ""
 		}
-		items = append(items, render.Tag("option", attrs, render.Text(option.value)))
+		text := option.label
+		if text == "" {
+			text = option.value
+		}
+		items = append(items, render.Tag("option", attrs, render.Text(text)))
 	}
 	return render.Tag("label", map[string]string{"class": "fastr-docs-variant-select"},
 		render.Tag("span", map[string]string{"class": "fastr-docs-variant-select__label"}, render.Text(label)),
@@ -273,7 +281,11 @@ func (r *Router) variantOptions(current *Route, dimension string) []docsVariantO
 	options := make([]docsVariantOption, 0, len(ordered))
 	for _, value := range ordered {
 		if target := r.variantTarget(current, dimension, value); target != nil {
-			options = append(options, docsVariantOption{value: value, href: target.Path})
+			label := value
+			if dimension == "locale" {
+				label = r.LocaleName(value)
+			}
+			options = append(options, docsVariantOption{value: value, label: label, href: target.Path})
 		}
 	}
 	return options
@@ -368,16 +380,38 @@ func (s *docsSidebar) render(currentPath string) render.HTML {
 	return ui.Sidebar(cfg).Render()
 }
 
-func (r *Router) headerItems() []ui.SiteHeaderLink {
+// headerItems builds the primary nav for the page being read.
+//
+// Sections are keyed by variantFamily so a translated section does not appear
+// beside the original as a tab of its own. Without that, a site with one
+// Spanish subtree grows an "Espanol" tab that reads as a topic rather than a
+// language; the language selector is the affordance for that.
+//
+// The labels stay in the language the sections were registered in. Translating
+// a route title is the project's call, not the framework's, and a partly
+// translated site is the normal case.
+func (r *Router) headerItems(currentPath string) []ui.SiteHeaderLink {
 	items := make([]ui.SiteHeaderLink, 0, len(r.roots))
+	seen := make(map[string]bool)
 	for _, route := range r.sorted(r.roots) {
-		if !r.routeVisible(route) || route.Path == "/" {
+		if !r.routeVisible(route) {
+			continue
+		}
+		family := variantFamily(route)
+		// The home route is not a tab, but its family still has to be claimed
+		// here, or a translated home lands in the nav as one.
+		if route.Path == "/" {
+			seen[family] = true
+			continue
+		}
+		if seen[family] {
 			continue
 		}
 		target := r.headerTarget(route)
 		if target == nil {
 			continue
 		}
+		seen[family] = true
 		items = append(items, ui.SiteHeaderLink{Label: route.Title, Href: target.Path, MatchPrefix: true})
 	}
 	return items
@@ -440,7 +474,19 @@ func (r *Router) ensureCommandPalette() (render.HTML, *widget.Builder) {
 	// first focus target when the modal reopens. CSS positions this control at
 	// the palette's top-right edge on both desktop and mobile.
 	palette.Slot("footer", docsCommandPaletteClose{label: r.UIStrings().CloseSearch})
-	visible := render.Tag("button", map[string]string{
+	r.commandPaletteVisible = r.searchTrigger("")
+	r.commandPalette = palette
+	return r.commandPaletteVisible, palette
+}
+
+// searchTrigger builds the header's search button for one page.
+//
+// It is deliberately not memoized with the palette. The palette modal is
+// mounted once for the whole site, so its placeholder is fixed, but the trigger
+// is rendered into every page and can carry that page's language.
+func (r *Router) searchTrigger(currentPath string) render.HTML {
+	labels := r.uiAt(currentPath)
+	return render.Tag("button", map[string]string{
 		"type":                          "button",
 		"class":                         "fastr-docs-command-trigger",
 		"data-fui-open":                 "fastr-docs-command-palette",
@@ -448,15 +494,12 @@ func (r *Router) ensureCommandPalette() (render.HTML, *widget.Builder) {
 		"data-fastr-docs-backend":       string(r.SearchBackend()),
 		"data-fastr-docs-pagefind-path": r.PagefindPath(),
 		"data-fastr-docs-index-path":    r.SearchIndexPath(),
-		"aria-label":                    r.UIStrings().OpenSearch,
+		"aria-label":                    labels.OpenSearch,
 	},
 		render.Raw(`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4.6 4.6"/></svg>`),
-		render.Tag("span", map[string]string{"class": "fastr-docs-command-trigger__label"}, render.Text(r.UIStrings().Search)),
-		ui.ShortcutHint(ui.ShortcutHintConfig{Chord: "Mod+K", SROnlyLabel: r.UIStrings().OpenSearch, Class: "fastr-docs-command-trigger__hint"}),
+		render.Tag("span", map[string]string{"class": "fastr-docs-command-trigger__label"}, render.Text(labels.Search)),
+		ui.ShortcutHint(ui.ShortcutHintConfig{Chord: "Mod+K", SROnlyLabel: labels.OpenSearch, Class: "fastr-docs-command-trigger__hint"}),
 	)
-	r.commandPaletteVisible = visible
-	r.commandPalette = palette
-	return visible, palette
 }
 
 type docsCommandPaletteClose struct{ label string }
@@ -477,7 +520,7 @@ func (c docsCommandPaletteClose) Render() render.HTML {
 
 func (r *Router) sidebarConfig(currentPath string) ui.SidebarConfig {
 	return ui.SidebarConfig{
-		Title:                 r.UIStrings().Contents,
+		Title:                 r.uiAt(currentPath).Contents,
 		Items:                 r.sidebarItems(r.sidebarRoots(currentPath), currentPath),
 		DrawerName:            "fastr-docs-sections",
 		SuppressDrawerTrigger: true,
@@ -529,7 +572,7 @@ func (r *Router) sidebarItems(routes []*Route, currentPath string) []ui.SidebarI
 		children := r.sidebarItems(route.Children, currentPath)
 		label := route.Title
 		if route.Path == "/" {
-			label = r.UIStrings().Home
+			label = r.uiAt(currentPath).Home
 		}
 		item := ui.SidebarItem{
 			Label:    label,

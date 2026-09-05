@@ -109,6 +109,19 @@ and then fails to match `go`, silently costing you syntax highlighting.
 Line highlighting wraps the line's own HTML, because `CodeBlock` owns the
 `.ui-code-block__line` wrapper and offers no hook to mark one.
 
+### Fences longer than three characters
+
+GoFastr's parser reads exactly three fence characters. It takes ````md as ```
+with a language of "`md", and then the first inner ``` closes the block, so a
+Markdown example showing a fenced block inside a shortcode came out as three
+broken pieces with the closing tag stranded in its own code block. That is how
+the components page is written, so it was visibly wrong.
+
+`extractRichCodeFences` therefore lifts any fence whose marker is longer than
+three characters, even with no options, and renders it whole. A plain three
+character fence still passes through untouched, so existing output is
+unchanged.
+
 ## Translation
 
 `labels.go` holds every framework-owned string. There are no hardcoded UI
@@ -135,6 +148,40 @@ locale filter in `routePublished`, and the family index it consults is
 invalidated in `rebuildTree`. Coverage reporting is advisory on purpose:
 wiring it into `ContentIssues` made `Validate` fail on any partially
 translated site, which a test caught immediately.
+
+## Chrome in more than one language
+
+`WithUIStrings` sets labels for the whole Router, which is all a site needs when
+one build serves one language. A build serving several needs
+`WithLocaleUIStrings(locale, UIStrings{...})`, because otherwise a Spanish page
+arrives wrapped in English furniture: "Contents", "On this page", "Search".
+
+Resolution is per route, not per Router: `uiAt(path)` and `uiForRoute(route)`
+read the route's own locale. Chrome renderers that have a path or a route use
+those; anything built once for the whole site cannot.
+
+Two traps here:
+
+- `mergeUIStrings` substitutes the English defaults whenever its base looks
+  uninitialized. That is right for a Router built with no options and wrong for
+  accumulating a locale: it fills every field of a partial translation with
+  English, which then overwrites the project's own Router-wide labels.
+  `overlayUIStrings` is the one to use for a locale.
+- The command palette modal is mounted once for the whole site, so its
+  placeholder cannot vary by locale. The header's search trigger is rendered
+  into every page, so `searchTrigger(path)` is deliberately not memoized with
+  the palette and does follow the page.
+
+`WithLocaleNames` gives the selector real language names. Go's standard library
+has no locale display names, so the project supplies them rather than the
+framework guessing; without it the selector shows "es", which is the worst
+possible label for the reader who needs it.
+
+`headerItems` keys sections by `variantFamily` so a translated section does not
+appear beside the original as its own tab. The home route is not a tab but still
+claims its family, or a translated home lands in the nav as one. Tab labels stay
+in the language they were registered in: translating a route title is the
+project's call.
 
 ## Runtime assets
 
@@ -282,8 +329,10 @@ Ticket these rather than re-discovering them:
 - `core/markdown` does not parse fence info strings beyond the language.
 - It has no nested-list support, and flattens one into a single `<li>` joined
   by `<br>`. This is why `filetree` parses raw indentation.
-- It does not support four-backtick fences, so a fenced example cannot be shown
-  inside another fence. Do not write ` ````md ` blocks in content.
+- It reads exactly three fence characters, so ` ````md ` becomes ``` with a
+  language of "`md" and the first inner ``` closes the block. Worked around in
+  `extractRichCodeFences`, which lifts any longer fence and renders it whole,
+  so ` ````md ` blocks are safe to write now.
 - `CodeBlock` has no line-highlight, diff, word-highlight, or wrap option.
 - There is no `FileTree`, content `Steps`, `CardGrid`, `LinkCard`, or generic
   `ui.Tabs`; `core-ui/patterns/tabs` is the only generic tabset.

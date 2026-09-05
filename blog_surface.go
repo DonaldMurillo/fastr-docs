@@ -749,7 +749,7 @@ func (r *Router) wrapBlogPost(route *Route, body render.HTML, source string) ren
 			TargetSelector:  "h2[id], h3[id]",
 			Class:           "fastr-docs-toc fastr-docs-toc--rail",
 		})
-		children = append(children, render.Tag("div", map[string]string{"class": "fastr-docs-blog-post__grid"}, article, corehtml.Aside(corehtml.AsideConfig{Label: r.UIStrings().OnThisPage, Class: "fastr-docs-blog-post__toc"}, rail, r.docsTocSelect(headings))))
+		children = append(children, render.Tag("div", map[string]string{"class": "fastr-docs-blog-post__grid"}, article, corehtml.Aside(corehtml.AsideConfig{Label: r.UIStrings().OnThisPage, Class: "fastr-docs-blog-post__toc"}, rail, r.docsTocSelect(headings, r.UIStrings().OnThisPage))))
 	} else {
 		children = append(children, article)
 	}

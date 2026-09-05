@@ -153,22 +153,34 @@ func TestMalformedFenceOptionsDoNotBreakTheDocument(t *testing.T) {
 	}
 }
 
-// A fence shown inside a longer fence is example content. Lifting it out would
-// replace the example with the thing it is documenting.
-func TestFenceInsideALongerFenceIsLeftAlone(t *testing.T) {
+// A fence shown inside a longer fence is example content. Its options belong to
+// the example being documented, not to this document, so they must not apply
+// here.
+//
+// The whole block is lifted as one unit because GoFastr's parser reads only
+// three fence characters: left to it, ````md is ``` with a language of "`md",
+// and the first inner ``` closes the block, scattering the example across three
+// pieces of output.
+func TestFenceInsideALongerFenceIsContentNotAFence(t *testing.T) {
 	source := "````md\n```go title=\"main.go\" {1}\na := 1\n```\n````\n"
-	stripped, replacements := extractRichCodeFences(source)
-	if len(replacements) != 0 {
-		t.Fatalf("a fence inside a ```` block was lifted out: %v", replacements)
+	_, replacements := extractRichCodeFences(source)
+	if len(replacements) != 1 {
+		t.Fatalf("want the example lifted as one block, got %d", len(replacements))
 	}
-	if stripped != source[:len(source)-1] && stripped != source {
-		t.Fatalf("example block was rewritten:\nwant %q\ngot  %q", source, stripped)
+	html := string(replacements[0].html)
+	for _, want := range []string{"title=&quot;main.go&quot; {1}", "a := 1"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("example lost %q: %s", want, html)
+		}
 	}
-
-	// Only the extractor is asserted here. GoFastr's Markdown parser has no
-	// support for four-backtick fences at all: it closes the block on the first
-	// ``` inside and renders the rest as prose. Showing a fenced example inside
-	// another fence is not possible on this engine, whatever this code does.
+	if blocks := strings.Count(html, "ui-code-block__body"); blocks != 1 {
+		t.Fatalf("the inner fence became %d blocks of its own: %s", blocks, html)
+	}
+	// The example's own title must stay text. A filename header here would mean
+	// the document adopted the options it is trying to show.
+	if strings.Contains(html, "ui-code-block__filename") {
+		t.Fatalf("the example's options were applied to this document: %s", html)
+	}
 }
 
 // A plain fence following another must still be scanned.
@@ -177,5 +189,37 @@ func TestFencesAfterAPlainFenceAreStillProcessed(t *testing.T) {
 	_, replacements := extractRichCodeFences(source)
 	if len(replacements) != 1 {
 		t.Fatalf("expected the second fence to be lifted, got %d", len(replacements))
+	}
+}
+
+// GoFastr's parser only ever reads three fence characters, so it takes ````md
+// as ``` with a language of "`md" and then lets the first inner ``` close the
+// block. A Markdown example showing a fenced block inside a shortcode came out
+// as three broken pieces, which is exactly how the components page is written.
+func TestLongerFenceKeepsANestedExampleWhole(t *testing.T) {
+	source := "````md\n{{< filetree >}}\n```\nmy-docs/\n```\n{{< /filetree >}}\n````\n"
+	out := string(renderDocsMarkdown(source, nil))
+
+	if blocks := strings.Count(out, "ui-code-block__body"); blocks != 1 {
+		t.Fatalf("rendered %d code blocks, want 1: %s", blocks, out)
+	}
+	for _, want := range []string{"{{&lt; filetree &gt;}}", "my-docs/", "{{&lt; /filetree &gt;}}"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output lost %q: %s", want, out)
+		}
+	}
+	// The language is "md", not "`md": the fourth backtick belongs to the
+	// marker.
+	if !strings.Contains(out, `aria-label="md source"`) {
+		t.Fatalf("the fence marker leaked into the language: %s", out)
+	}
+}
+
+// A plain three-character fence must still pass through to GoFastr untouched,
+// so existing output does not change.
+func TestOrdinaryFenceIsStillNotLifted(t *testing.T) {
+	source := "```go\nx := 1\n```\n"
+	if out, replacements := extractRichCodeFences(source); len(replacements) != 0 || out != source {
+		t.Fatalf("a plain fence was lifted: %q -> %q (%d replacements)", source, out, len(replacements))
 	}
 }

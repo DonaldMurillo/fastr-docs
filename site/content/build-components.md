@@ -10,6 +10,16 @@ replace any of them.
 
 ## Admonitions
 
+Five names, one component. Each is a callout with its tone fixed.
+
+```md
+{{< note title="Heads up" >}}
+`note` and `info` are the same callout.
+{{< /note >}}
+```
+
+Which renders as:
+
 {{< note title="Heads up" >}}
 `note` and `info` are the same callout. Use whichever reads better.
 {{< /note >}}
@@ -37,6 +47,17 @@ Body text.
 
 ## Tabs
 
+```md
+{{< tabs >}}
+{{< tab label="Go" >}}
+Tabs are native `<details>` elements.
+{{< /tab >}}
+{{< tab label="Shell" >}}
+Each set gets its own group name.
+{{< /tab >}}
+{{< /tabs >}}
+```
+
 {{< tabs >}}
 {{< tab label="Go" >}}
 Tabs are native `<details>` elements. No JavaScript runs to switch them.
@@ -51,6 +72,13 @@ The first tab opens by default.
 
 ## Cards
 
+```md
+{{< cards >}}
+{{< card title="Routing" description="One tree owns navigation and search." href="/docs/concepts/router" >}}
+{{< /card >}}
+{{< /cards >}}
+```
+
 {{< cards >}}
 {{< card title="Routing" description="One tree owns navigation and search." href="/docs/concepts/router" >}}
 {{< /card >}}
@@ -61,6 +89,16 @@ The first tab opens by default.
 {{< /cards >}}
 
 ## Steps
+
+An ordinary numbered list inside the shortcode. The numbers come from the list,
+so reordering the steps renumbers them.
+
+```md
+{{< steps >}}
+1. Run `fastr-docs init my-docs` to scaffold a project.
+2. Edit `content/` and register routes in `docs/router.go`.
+{{< /steps >}}
+```
 
 {{< steps >}}
 1. Run `fastr-docs init my-docs` to scaffold a project.
@@ -73,6 +111,17 @@ The first tab opens by default.
 Write the tree as a fenced block and indent it. `filetree` reads its body
 unrendered, so the indentation survives; nesting comes from it, and a trailing
 `/` marks a directory.
+
+````md
+{{< filetree >}}
+```
+my-docs/
+  content/
+    index.md
+  main.go
+```
+{{< /filetree >}}
+````
 
 {{< filetree >}}
 ```
@@ -89,7 +138,17 @@ my-docs/
 
 ## Smaller pieces
 
-Collapsible sections:
+Collapsible sections, badges, tags, and icons are all one-liners:
+
+```md
+{{< details summary="What does strict validation check?" >}}
+Broken internal links and missing heading anchors.
+{{< /details >}}
+
+{{< badge label="New" variant="success" />}}
+{{< tag label="routing" href="/docs/concepts/router" />}}
+{{< icon name="check" label="Supported" />}}
+```
 
 {{< details summary="What does strict validation check?" >}}
 Broken internal links, missing heading anchors, duplicate sibling order, and
@@ -101,6 +160,19 @@ Badges and tags: {{< badge label="New" variant="success" />}} {{< badge label="B
 Icons come from the GoFastr registry: {{< icon name="check" label="Supported" />}} {{< icon name="info" />}}
 
 ## Diffs
+
+The body is a patch, read unrendered so its line structure survives.
+
+````md
+{{< diff left="Before" right="After" >}}
+```
+ router := docs.NewRouter(
+-    docs.WithSiteName("Docs"),
++    docs.WithSiteName("Acme Docs"),
+ )
+```
+{{< /diff >}}
+````
 
 {{< diff left="Before" right="After" >}}
 ```

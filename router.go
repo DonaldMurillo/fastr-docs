@@ -421,6 +421,8 @@ type Router struct {
 	markdownContainers    map[string]MarkdownContainer
 	markdownRaws          map[string]MarkdownRawComponent
 	markdownTransforms    []namedSourceTransform
+	localeUI              map[string]UIStrings
+	localeNames           map[string]string
 	gitMeta               *GitMetadataConfig
 	gitMetaResolved       bool
 	localeFallback        bool

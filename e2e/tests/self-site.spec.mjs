@@ -374,3 +374,66 @@ test('the renderer arrives when math does, including after a client-side navigat
   const rendered = await page.evaluate(() => document.querySelectorAll('.fastr-docs-math .katex').length);
   expect(rendered).toBe(6);
 });
+
+// A components reference that shows only rendered output teaches nothing: a
+// reader cannot see how to write the thing they are looking at.
+test('every Markdown component is shown with its source', async ({ page }) => {
+  await page.goto(selfPage('/docs/build/components'));
+  const state = await page.evaluate(() => {
+    const blocks = [...document.querySelectorAll('pre.ui-code-block__body')].map((p) => p.textContent);
+    return {
+      withSource: blocks.filter((b) => b.includes('{{<')).length,
+      // GoFastr's parser reads only three fence characters, so an example that
+      // shows a fenced block inside a shortcode used to break into three
+      // pieces, the closing tag stranded in its own block.
+      filetreeWhole: blocks.filter((b) => b.includes('{{< filetree >}}') && b.includes('{{< /filetree >}}')).length,
+      diffWhole: blocks.filter((b) => b.includes('{{< diff') && b.includes('{{< /diff >}}')).length,
+      orphans: blocks.filter((b) => b.trim() === '{{< /filetree >}}' || b.trim() === '{{< /diff >}}').length,
+    };
+  });
+  // Admonitions, callout, tabs, cards, steps, filetree, details, diff.
+  expect(state.withSource).toBeGreaterThanOrEqual(8);
+  expect(state.filetreeWhole).toBe(1);
+  expect(state.diffWhole).toBe(1);
+  expect(state.orphans).toBe(0);
+  await expect(page.locator('body')).not.toContainText('FASTRDOCS');
+});
+
+// One build serves both languages, so the chrome has to follow the page. A
+// Spanish page wrapped in English furniture is the bug this guards.
+test('the chrome is translated on a translated page', async ({ page }) => {
+  await page.goto(selfPage('/es/docs/getting-started'));
+  const es = await page.evaluate(() => ({
+    contents: document.querySelector('.ui-sidebar__title')?.textContent?.trim(),
+    search: document.querySelector('.fastr-docs-command-trigger__label')?.textContent?.trim(),
+    switcherLabel: document.querySelector('.fastr-docs-variant-select__label')?.textContent?.trim(),
+    switcher: [...(document.querySelector('[data-docs-variant-select=locale]')?.options || [])].map((o) => o.textContent),
+    navTabs: [...document.querySelectorAll('.ui-site-header__links a')].map((a) => a.textContent.trim()),
+  }));
+  expect(es.contents).toBe('Contenido');
+  expect(es.search).toBe('Buscar');
+  expect(es.switcherLabel).toBe('Idioma');
+  // The selector names languages. "es" is a worse label than "Español" for
+  // exactly the reader who needs it.
+  expect(es.switcher).toEqual(['English', 'Español']);
+  // A translated section belongs behind that selector, not beside the original
+  // as a tab of its own.
+  expect(es.navTabs).not.toContain('Español');
+  await expect(page.locator('body')).not.toContainText('On this page');
+
+  await page.goto(selfPage('/docs/getting-started'));
+  const en = await page.evaluate(() => ({
+    contents: document.querySelector('.ui-sidebar__title')?.textContent?.trim(),
+    switcherLabel: document.querySelector('.fastr-docs-variant-select__label')?.textContent?.trim(),
+  }));
+  expect(en.contents).toBe('Contents');
+  expect(en.switcherLabel).toBe('Language');
+});
+
+test('the language selector moves between translations of the same page', async ({ page }) => {
+  await page.goto(selfPage('/docs/getting-started'));
+  await page.selectOption('[data-docs-variant-select=locale]', { label: 'Español' });
+  await page.waitForURL('**/es/docs/getting-started');
+  await expect(page.locator('h1')).toContainText('Primeros pasos');
+  await expect(page.locator('.ui-sidebar__title')).toContainText('Contenido');
+});

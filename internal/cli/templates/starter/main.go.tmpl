@@ -30,6 +30,12 @@ func main() {
 		if err := server.ExportStatic(context.Background(), dir, base); err != nil {
 			panic(err)
 		}
+		if err := fastrdocs.WriteStaticRSS(dir, base, "/blog/feed.xml", built.rss); err != nil {
+			panic(err)
+		}
+		if err := fastrdocs.WriteStaticNotFound(dir, base, built.notFound, built.notFoundCSS); err != nil {
+			panic(err)
+		}
 		if err := writeRuntimeAssets(dir, built.openAPIRuntime, built.searchIndex, built.manifest); err != nil {
 			panic(err)
 		}
@@ -42,7 +48,7 @@ func main() {
 		if err := rewriteRuntimeURLs(dir, base); err != nil {
 			panic(err)
 		}
-		if err := rewriteStaticCSP(dir, fastrdocs.ContentSecurityPolicy(built.serverConnectOrigins...)); err != nil {
+		if err := fastrdocs.RewriteStaticCSP(dir, fastrdocs.ContentSecurityPolicy(built.serverConnectOrigins...)); err != nil {
 			panic(err)
 		}
 		fmt.Println("static site exported to " + dir)
@@ -50,12 +56,29 @@ func main() {
 	}
 	addr := ":3070"
 	if port := os.Getenv("PORT"); port != "" {
-		addr = ":" + port
+		addr = listenAddress(port, addr)
 	}
-	fmt.Println({{goString .SiteName}} + " listening on http://localhost" + addr)
+	fmt.Println({{goString .SiteName}} + " listening on " + listenURL(addr))
 	if err := server.Start(addr); err != nil {
 		panic(err)
 	}
+}
+
+func listenAddress(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	if strings.Contains(value, ":") {
+		return value
+	}
+	return ":" + value
+}
+
+func listenURL(addr string) string {
+	if strings.HasPrefix(addr, ":") {
+		return "http://localhost" + addr
+	}
+	return "http://" + addr
 }
 
 type generatedSite struct {
@@ -63,12 +86,16 @@ type generatedSite struct {
 	openAPIRuntime []byte
 	searchIndex    []byte
 	manifest       []byte
+	rss            []byte
 	serverConnectOrigins []string
+	notFound       fastrdocs.NotFoundScreen
+	notFoundCSS    string
 }
 
 func buildSite() (*generatedSite, error) {
 	router := docsite.NewRouter()
-	site := uiapp.NewApp({{goString .SiteName}}).WithTheme(fastrdocs.DefaultTheme()).WithLang(router.Language())
+	notFound := fastrdocs.NotFoundScreen{SiteName: router.SiteName()}
+	site := uiapp.NewApp({{goString .SiteName}}).WithTheme(router.Theme()).WithLang(router.Language())
 	if err := router.Mount(site, router.Layout()); err != nil {
 		return nil, err
 	}
@@ -79,30 +106,41 @@ func buildSite() (*generatedSite, error) {
 	host := uihost.New(site,
 		uihost.WithDescription({{goString .SiteName}} + " — reusable documentation built with GoFastr."),
 		uihost.WithCustomCSS(router.CSS()+"\n"+router.BrandCSS()+"\n"+docsite.ExamplesCSS()+"\n"+docsite.OpenAPICSS()),
+		uihost.WithNotFoundScreen(notFound),
 		uihost.WithPublicLLMMD(),
 		uihost.WithAgentReady(uihost.AgentReadyConfig{
 			Title:    {{goString .SiteName}},
 			Summary:  "Searchable documentation with a router-owned content tree.",
 			WhenToUse: "Use this site to find the project's guides, API reference, and implementation examples.",
+			AgentCard: &uihost.AgentCardConfig{
+				Name:        {{goString .SiteName}},
+				Description: "Searchable documentation with a router-owned content tree.",
+				MCPEndpoint: "/mcp",
+			},
 			CLI: &uihost.CLIToolConfig{
 				Name:    "fastr-docs",
 				Install: "go install github.com/DonaldMurillo/fastr-docs/cmd/fastr-docs@latest",
 				Docs:    "/docs/getting-started",
 			},
 		}),
-		uihost.WithHeadHTML(`<link rel="icon" href="/assets/favicon.svg"><meta name="theme-color" content="#f7f5ef">`),
+		uihost.WithHeadHTML(`<link rel="icon" href="/assets/favicon.svg">`),
+		uihost.WithThemeColor(router.ThemeColor()),
 		uihost.WithSitemap(uihost.SitemapConfig{BaseURL: publicSiteURL(), ExcludePaths: append([]string{"/__fastr-docs/"}, router.SitemapExcludePaths()...)}),
 		uihost.WithRobots(uihost.RobotsConfig{Disallow: []string{"/__fastr-docs/"}}),
 		uihost.WithExtraScripts("/__fastr-docs/docs.js", "/__fastr-docs/openapi.js"),
 		uihost.WithAppIcon(docsite.DefaultIconPNG()),
 		uihost.WithPWA(uihost.PWAConfig{Name: {{goString .SiteName}}, ShortName: {{goString .SiteName}}, Precache: precache}),
 	)
-	server := framework.NewUIHostApp(host, framework.WithConfig(framework.AppConfig{
-		Name: {{goString .SiteName}},
-		SecurityHeaders: middleware.SecurityHeadersConfig{
-			ContentSecurityPolicy: fastrdocs.ContentSecurityPolicy(router.ConnectOrigins()...),
-		},
-	}))
+	server := framework.NewUIHostApp(host,
+		framework.WithConfig(framework.AppConfig{
+			Name: {{goString .SiteName}},
+			SecurityHeaders: middleware.SecurityHeadersConfig{
+				ContentSecurityPolicy: fastrdocs.ContentSecurityPolicy(router.ConnectOrigins()...),
+			},
+		}),
+		framework.WithMCP(),
+		framework.WithMCPIntrospection(),
+	)
 	if err := router.MountNavigation(server.Router()); err != nil {
 		return nil, err
 	}
@@ -110,6 +148,18 @@ func buildSite() (*generatedSite, error) {
 		return nil, err
 	}
 	if err := router.MountPluginAssets(server.Router()); err != nil {
+		return nil, err
+	}
+	feedConfig := fastrdocs.RSSConfig{
+		Prefix: "/blog", Title: {{goString .SiteName}} + " updates",
+		Description: "Release notes and implementation updates.",
+		SiteURL: publicSiteURL(), Limit: 20,
+	}
+	if err := router.MountRSS(server.Router(), "/blog/feed.xml", feedConfig); err != nil {
+		return nil, err
+	}
+	rss, err := router.RSSXML(feedConfig)
+	if err != nil {
 		return nil, err
 	}
 	openAPIRuntime, err := fs.ReadFile(openapi.Assets(), "openapi.js")
@@ -136,7 +186,7 @@ func buildSite() (*generatedSite, error) {
 			return nil, err
 		}
 	}
-	return &generatedSite{server: server, openAPIRuntime: openAPIRuntime, searchIndex: searchIndex, manifest: manifest, serverConnectOrigins: router.ConnectOrigins()}, nil
+	return &generatedSite{server: server, openAPIRuntime: openAPIRuntime, searchIndex: searchIndex, manifest: manifest, rss: rss, serverConnectOrigins: router.ConnectOrigins(), notFound: notFound, notFoundCSS: router.CSS() + "\n" + router.BrandCSS()}, nil
 }
 
 func writeRuntimeAssets(dir string, openAPIRuntime, searchIndex, manifest []byte) error {
@@ -219,42 +269,7 @@ func rewriteRuntimeURLs(dir, base string) error {
 }
 
 func rewriteStaticCSP(dir, policy string) error {
-	oldContent := `content="default-src 'self'; img-src 'self' data:; object-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'"`
-	newContent := `content="` + policy + `"`
-	if err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() || filepath.Ext(path) != ".html" {
-			return nil
-		}
-		body, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		updated := strings.ReplaceAll(string(body), oldContent, newContent)
-		if updated == string(body) {
-			return nil
-		}
-		return os.WriteFile(path, []byte(updated), 0o644)
-	}); err != nil {
-		return err
-	}
-	headerPath := filepath.Join(dir, "_headers")
-	body, err := os.ReadFile(headerPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	lines := strings.Split(string(body), "\n")
-	for i, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), "Content-Security-Policy:") {
-			lines[i] = "  Content-Security-Policy: " + policy
-		}
-	}
-	return os.WriteFile(headerPath, []byte(strings.Join(lines, "\n")), 0o644)
+	return fastrdocs.RewriteStaticCSP(dir, policy)
 }
 
 func normalizeBase(base string) string {

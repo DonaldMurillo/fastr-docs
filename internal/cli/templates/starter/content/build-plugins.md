@@ -29,6 +29,20 @@ router.Use(docs.MarkdownComponentsPlugin{
 })
 ```
 
+For packaged content, use `FS` and `Root` instead of `Dir`:
+
+```go
+router.Use(docs.MarkdownCollectionPlugin{
+    Path: "/docs",
+    FS:   contentFS,
+    Root: "content",
+    Config: docs.CollectionConfig{Offline: true},
+})
+```
+
+The plugin delegates to the same collection APIs, so metadata, ordering,
+drafts, search, and validation stay consistent across disk and virtual files.
+
 The OpenAPI plugin is another ordinary contribution to this same tree. An
 extension may add typed screens, Markdown pages, global shortcodes, validation,
 assets, or allowed connect origins, but it should not create a second route or

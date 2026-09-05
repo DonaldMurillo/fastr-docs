@@ -12,10 +12,15 @@ The generated project is deliberately opinionated: one router, explicit order, s
 
 ```sh
 fastr-docs check .
-go run .
+fastr-docs dev .
 ```
 
-Open `http://localhost:3070`. Use `Meta/Control + K` to search the route tree, switch the color scheme from the header, and resize the page to exercise the mobile drawer and in-page navigation.
+GoFastr's dev loop uses `http://localhost:8080` by default. Pass
+`--addr localhost:3070` to choose another address. Use `Meta/Control + K` to
+search the route tree, switch the color scheme from the header, and resize the
+page to exercise the mobile drawer and in-page navigation. The loop rebuilds
+and refreshes the browser when Go, Markdown, HTML, CSS, JavaScript, or
+JSON/YAML contract files change.
 
 ## Add a page
 
@@ -63,6 +68,24 @@ router.MustScreen("/examples/playground", docs.ScreenConfig{
 ```
 
 Prefer Markdown when the content is durable prose. Use a screen when the user needs state, actions, data loading, or a framework component.
+
+## Install and update it
+
+The generated host is installable as a PWA on `localhost` and on HTTPS. For a
+fully offline install, deploy the static export:
+
+```sh
+fastr-docs export . --out dist --pagefind
+```
+
+GoFastr fingerprints the static worker cache. After a redeploy, the browser
+installs the new worker in the background and activates it after older tabs
+close, so the current session is not interrupted.
+
+`fastr-docs dev` delegates to GoFastr and adds JSON/YAML contract watching. If
+the GoFastr CLI is installed, `gofastr dev` runs the framework watcher directly
+without that extra contract bridge. Use `fastr-docs upgrade .` to review
+framework migrations before updating the dependency in `go.mod`.
 
 
 ## Extend the project

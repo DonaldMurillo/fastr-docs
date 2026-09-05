@@ -11,6 +11,10 @@ The generated site is easiest to understand as a tree:
 │   │   ├── content
 │   │   └── layouts
 │   ├── build/
+│   │   ├── screens
+│   │   ├── framework-ui
+│   │   ├── openapi
+│   │   └── plugins
 │   ├── operate/
 │   └── collaborate/
 ├── examples/

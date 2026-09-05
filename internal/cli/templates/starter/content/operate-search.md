@@ -21,8 +21,9 @@ Use `SearchText` for concepts that readers will search for but that are intentio
 
 ## Portable JSON and Pagefind
 
-The router emits portable JSON records and the default runtime keeps search
-available without an extra build dependency. For a larger static site, install
+The router emits portable JSON records and the default runtime fetches the
+generated `search.json` index when a reader searches. This keeps body text
+searchable without an extra build dependency. For a larger static site, install
 the Pagefind CLI and run:
 
 ```sh
@@ -31,5 +32,5 @@ fastr-docs export . --out dist --pagefind
 
 That command exports the HTML first, then runs Pagefind against the generated
 site. The native `Meta/Control + K` palette loads the chunked Pagefind browser
-API when its bundle is present and falls back to the JSON route list if a dev
-server or deployment does not include it.
+API when its bundle is present. The JSON index remains precached as the
+portable fallback for development and deployments without Pagefind.

@@ -6,7 +6,7 @@ The generated project is white-label by construction. Keep the router and conten
 
 ```sh
 fastr-docs check .
-go run .
+fastr-docs dev .
 ```
 
 ## Build a static release

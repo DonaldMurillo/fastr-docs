@@ -9,7 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -29,7 +29,7 @@ func TestInitAndCheckGenerateACompleteProject(t *testing.T) {
 	if err := Run([]string{"doctor", target}, &output, &output); err != nil {
 		t.Fatalf("doctor error = %v\n%s", err, output.String())
 	}
-	for _, name := range []string{"main.go", "docs/router.go", "docs/icon.go", "content/index.md", "openapi.json", "agents/claude.md", ".agents/skills/docs-authoring/SKILL.md"} {
+	for _, name := range []string{"main.go", "docs/router.go", "docs/icon.go", "content/index.md", "content/build-themes.md", "openapi.json", "agents/claude.md", ".agents/skills/docs-authoring/SKILL.md"} {
 		if _, err := os.Stat(filepath.Join(target, filepath.FromSlash(name))); err != nil {
 			t.Fatalf("generated file %s: %v", name, err)
 		}
@@ -62,7 +62,7 @@ func TestInitAndCheckGenerateACompleteProject(t *testing.T) {
 	if !strings.Contains(string(routerSource), `os.Getenv("API_SERVER_URL")`) {
 		t.Fatal("generated router did not expose the API_SERVER_URL override")
 	}
-	if !strings.Contains(string(routerSource), "MarkdownComponentsPlugin") || !strings.Contains(string(routerSource), `os.Getenv("DOCS_SEARCH_BACKEND")`) {
+	if !strings.Contains(string(routerSource), "MarkdownComponentsPlugin") || !strings.Contains(string(routerSource), `os.Getenv("DOCS_SEARCH_BACKEND")`) || !strings.Contains(string(routerSource), `os.Getenv("DOCS_TEMPLATE")`) {
 		t.Fatalf("generated router did not include the reusable authoring/search integrations: %s", routerSource)
 	}
 }
@@ -74,6 +74,159 @@ func TestHelpDocumentsPagefindExport(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "--pagefind") {
 		t.Fatalf("help did not document Pagefind export: %s", output.String())
+	}
+	if !strings.Contains(output.String(), "browser refresh") {
+		t.Fatalf("help did not document the dev reload loop: %s", output.String())
+	}
+}
+
+func TestVersionUsesBuildMetadata(t *testing.T) {
+	previous := Version
+	Version = "v0.2.0"
+	t.Cleanup(func() { Version = previous })
+	var output bytes.Buffer
+	if err := Run([]string{"version"}, &output, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(output.String()); got != "fastr-docs v0.2.0" {
+		t.Fatalf("version output = %q", got)
+	}
+}
+
+func TestSplitInitArgsAcceptsEqualsForm(t *testing.T) {
+	flags, positionals, err := splitInitArgs([]string{"./docs", "--name=Manual Docs", "--module=example.com/manual", "--force"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(positionals, []string{"./docs"}) || !reflect.DeepEqual(flags, []string{"--name", "Manual Docs", "--module", "example.com/manual", "--force"}) {
+		t.Fatalf("splitInitArgs() = %#v, %#v", flags, positionals)
+	}
+}
+
+func TestCreateDevReloadMarkerRemovesStaleMarkers(t *testing.T) {
+	target := t.TempDir()
+	stale := filepath.Join(target, ".fastr-docs-dev-reload-stale.go")
+	if err := os.WriteFile(stale, []byte("// stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	marker, err := createDevReloadMarker(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale marker still exists: %v", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("new marker missing: %v", err)
+	}
+}
+
+func TestGofastrDevCommandPrefersInstalledCLIAndForwardsFlags(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "docs")
+	want := []string{"dev", "--dir", target, "--addr", "localhost:4173", "--no-a11y"}
+	name, got, err := gofastrDevCommandWithLookup(target, want[3:], func(name string) (string, error) {
+		if name == "gofastr" {
+			return `C:\tools\gofastr.exe`, nil
+		}
+		return "", fmt.Errorf("unexpected lookup for %s", name)
+	})
+	if err != nil {
+		t.Fatalf("gofastrDevCommand error = %v", err)
+	}
+	if name != `C:\tools\gofastr.exe` {
+		t.Fatalf("command name = %q", name)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("command args = %#v, want %#v", got, want)
+	}
+}
+
+func TestGofastrDevCommandFallsBackToProjectGoModule(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "docs")
+	name, got, err := gofastrDevCommandWithLookup(target, []string{"--pkg", "./cmd/docs"}, func(name string) (string, error) {
+		if name == "go" {
+			return `C:\Go\bin\go.exe`, nil
+		}
+		return "", fmt.Errorf("%s is not installed", name)
+	})
+	if err != nil {
+		t.Fatalf("gofastrDevCommand fallback error = %v", err)
+	}
+	if name != `C:\Go\bin\go.exe` {
+		t.Fatalf("fallback command name = %q", name)
+	}
+	want := []string{"run", "-mod=mod", "github.com/DonaldMurillo/gofastr/cmd/gofastr", "dev", "--dir", target, "--pkg", "./cmd/docs"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("fallback command args = %#v, want %#v", got, want)
+	}
+}
+
+func TestGofastrBuildCommandUsesInstalledCLI(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "docs")
+	name, got, err := gofastrProjectCommandWithLookup("build", target, []string{"--no-a11y"}, func(name string) (string, error) {
+		if name == "gofastr" {
+			return `C:\tools\gofastr.exe`, nil
+		}
+		return "", fmt.Errorf("unexpected lookup for %s", name)
+	})
+	if err != nil {
+		t.Fatalf("gofastr build command error = %v", err)
+	}
+	if name != `C:\tools\gofastr.exe` {
+		t.Fatalf("command name = %q", name)
+	}
+	want := []string{"build", "--no-a11y"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("command args = %#v, want %#v", got, want)
+	}
+}
+
+func TestGofastrUpgradeCommandPassesProjectRoot(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "docs")
+	name, got, err := gofastrProjectCommandWithLookup("upgrade", target, []string{"--apply"}, func(name string) (string, error) {
+		if name == "gofastr" {
+			return `C:\tools\gofastr.exe`, nil
+		}
+		return "", fmt.Errorf("unexpected lookup for %s", name)
+	})
+	if err != nil {
+		t.Fatalf("gofastr upgrade command error = %v", err)
+	}
+	if name != `C:\tools\gofastr.exe` {
+		t.Fatalf("command name = %q", name)
+	}
+	want := []string{"upgrade", target, "--apply"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("command args = %#v, want %#v", got, want)
+	}
+}
+
+func TestDevExtraFileScanWatchesJSONAndYAMLContracts(t *testing.T) {
+	target := t.TempDir()
+	if err := os.Mkdir(filepath.Join(target, "dist"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"openapi.json":                       "{}",
+		"openapi.yaml":                       "openapi: 3.1.0",
+		"config.yml":                         "name: docs",
+		"content.md":                         "# docs",
+		filepath.Join("dist", "export.json"): "{}",
+	} {
+		if err := os.WriteFile(filepath.Join(target, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := scanDevExtraModTimes(target)
+	for _, name := range []string{"openapi.json", "openapi.yaml", "config.yml"} {
+		if _, ok := files[filepath.Join(target, name)]; !ok {
+			t.Fatalf("extra dev watcher did not include %s", name)
+		}
+	}
+	for _, name := range []string{"content.md", filepath.Join("dist", "export.json")} {
+		if _, ok := files[filepath.Join(target, name)]; ok {
+			t.Fatalf("extra dev watcher unexpectedly included %s", name)
+		}
 	}
 }
 
@@ -101,10 +254,38 @@ func TestInitEscapesSiteNameForGeneratedGoAndJSON(t *testing.T) {
 	}
 }
 
-func TestGeneratedProjectCompilesAgainstTheLocalWorkspace(t *testing.T) {
-	if runtime.GOOS == "windows" && os.Getenv("FASTR_DOCS_SKIP_GENERATED_BUILD") == "1" {
-		t.Skip("generated build disabled by environment")
+func TestCheckRunsStrictRouterValidation(t *testing.T) {
+	target := t.TempDir()
+	if err := Run([]string{"init", target, "--name", "Validation Docs", "--module", "example.com/validation-docs"}, nil, nil); err != nil {
+		t.Fatalf("init error = %v", err)
 	}
+	routerPath := filepath.Join(target, "docs", "router.go")
+	routerSource, err := os.ReadFile(routerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	routerText := string(routerSource)
+	start := strings.Index(routerText, `router.MustPage("/docs/getting-started"`)
+	orderOffset := -1
+	if start >= 0 {
+		orderOffset = strings.Index(routerText[start:], "Order: 1,")
+	}
+	if orderOffset < 0 {
+		t.Fatal("test fixture did not find the Getting started order")
+	}
+	orderOffset += start
+	updated := routerText[:orderOffset] + "Order: 0," + routerText[orderOffset+len("Order: 1,"):]
+	if err := os.WriteFile(routerPath, []byte(updated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	err = Run([]string{"check", target}, &output, &output)
+	if err == nil || !strings.Contains(output.String(), `route "/docs/getting-started": a positive explicit Order is required`) {
+		t.Fatalf("check error = %v, output = %s", err, output.String())
+	}
+}
+
+func TestGeneratedProjectCompilesAgainstTheLocalWorkspace(t *testing.T) {
 	target := t.TempDir()
 	if err := Run([]string{"init", target, "--name", "Build Test", "--module", "example.com/build-test"}, nil, nil); err != nil {
 		t.Fatalf("init error = %v", err)
@@ -116,6 +297,9 @@ func TestGeneratedProjectCompilesAgainstTheLocalWorkspace(t *testing.T) {
 	}
 	if !strings.Contains(string(modBody), "replace github.com/DonaldMurillo/fastr-docs =>") {
 		t.Fatalf("generated go.mod did not contain the local source replace: %s", modBody)
+	}
+	if strings.Contains(string(modBody), "replace github.com/DonaldMurillo/gofastr =>") {
+		t.Fatalf("generated go.mod should use the released GoFastr module: %s", modBody)
 	}
 	smoke := fmt.Sprintf(`package main
 
@@ -136,8 +320,20 @@ func TestGeneratedRouterSmoke(t *testing.T) {
 	if err := router.Validate(); err != nil {
 		t.Fatalf("router validation: %%v", err)
 	}
-	if len(router.Routes()) != 18 {
-		t.Fatalf("route count: %%d", len(router.Routes()))
+	if len(router.Routes()) < 30 {
+		t.Fatalf("route count: %%d, want the generated docs and publication surfaces", len(router.Routes()))
+	}
+	for _, path := range []string{"/blog", "/blog/search", "/blog/archive", "/blog/tags", "/blog/authors"} {
+		found := false
+		for _, route := range router.Routes() {
+			if route.Path == path {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("generated publication route missing: %%s", path)
+		}
 	}
 	site := uiapp.NewApp("Build Test")
 	if err := router.Mount(site, router.Layout()); err != nil {
@@ -185,6 +381,8 @@ func TestGeneratedLiveHostRoutes(t *testing.T) {
 		{path: "/llms.txt", marker: "## When to use"},
 		{path: "/.well-known/agent-card.json", marker: "Build Test"},
 		{path: "/service-worker.js", marker: "__fastr-docs/search.json"},
+		{path: "/__gofastr/pwa/register.js", marker: "gofastr:pwa-update"},
+		{path: "/__gofastr/pwa/offline", marker: "offline"},
 		{path: "/sitemap.xml", marker: "/docs/getting-started"},
 		{path: "/robots.txt", marker: "Disallow: /__fastr-docs/"},
 		{path: "/assets/favicon.svg", marker: "<svg"},
@@ -217,12 +415,16 @@ func TestGeneratedLiveHostRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tidy := exec.Command("go", "mod", "tidy")
+	goExecutable, err := findGoExecutable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tidy := exec.Command(goExecutable, "mod", "tidy")
 	tidy.Dir = target
 	if output, err := tidy.CombinedOutput(); err != nil {
 		t.Fatalf("generated go mod tidy: %v\n%s", err, output)
 	}
-	build := exec.Command("go", "test", "./...")
+	build := exec.Command(goExecutable, "test", "./...")
 	build.Dir = target
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("generated go test: %v\n%s", err, output)
@@ -232,7 +434,7 @@ func TestGeneratedLiveHostRoutes(t *testing.T) {
 	if err := Run([]string{"export", target, "--out", "dist"}, &exportOutput, &exportOutput); err != nil {
 		t.Fatalf("generated static export: %v\n%s", err, exportOutput.String())
 	}
-	for _, name := range []string{"index.html", filepath.Join("docs", "index.html"), filepath.Join("docs", "getting-started", "index.html"), filepath.Join("api-reference", "index.html"), "manifest.webmanifest", "service-worker.js", "sitemap.xml", "robots.txt", "llms.txt", filepath.Join(".well-known", "agent-card.json"), filepath.Join("assets", "favicon.svg"), filepath.Join("__gofastr", "icons", "icon-192.png"), filepath.Join("__gofastr", "icons", "icon-512.png"), filepath.Join("__gofastr", "widgets.json"), filepath.Join("__gofastr", "runtime", "scrollspy.js"), filepath.Join("core-ui", "widget", "fastr-docs-sections", "chrome"), filepath.Join("__fastr-docs", "docs.js"), filepath.Join("__fastr-docs", "openapi.js"), filepath.Join("__fastr-docs", "search.json"), filepath.Join("__fastr-docs", "manifest.json")} {
+	for _, name := range []string{"index.html", "404.html", "404.css", filepath.Join("docs", "index.html"), filepath.Join("docs", "getting-started", "index.html"), filepath.Join("api-reference", "index.html"), filepath.Join("blog", "index.html"), filepath.Join("blog", "search", "index.html"), filepath.Join("blog", "archive", "index.html"), filepath.Join("blog", "tags", "index.html"), filepath.Join("blog", "authors", "index.html"), "manifest.webmanifest", "service-worker.js", "sitemap.xml", "robots.txt", "llms.txt", filepath.Join(".well-known", "agent-card.json"), filepath.Join("assets", "favicon.svg"), filepath.Join("__gofastr", "icons", "icon-192.png"), filepath.Join("__gofastr", "icons", "icon-512.png"), filepath.Join("__gofastr", "widgets.json"), filepath.Join("__gofastr", "runtime", "scrollspy.js"), filepath.Join("__gofastr", "pwa", "register.js"), filepath.Join("__gofastr", "pwa", "offline", "index.html"), filepath.Join("core-ui", "widget", "fastr-docs-sections", "chrome"), filepath.Join("core-ui", "widget", "fastr-docs-blog-sections", "chrome"), filepath.Join("__fastr-docs", "docs.js"), filepath.Join("__fastr-docs", "openapi.js"), filepath.Join("__fastr-docs", "search.json"), filepath.Join("__fastr-docs", "manifest.json")} {
 		if _, err := os.Stat(filepath.Join(dist, name)); err != nil {
 			t.Fatalf("static export missing %s: %v", name, err)
 		}
@@ -248,7 +450,7 @@ func TestGeneratedLiveHostRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(serviceWorker), "/__fastr-docs/docs.js") || !strings.Contains(string(serviceWorker), "/__fastr-docs/openapi.js") || !strings.Contains(string(serviceWorker), "/__fastr-docs/search.json") || !strings.Contains(string(serviceWorker), "/__fastr-docs/manifest.json") || !strings.Contains(string(serviceWorker), "fastr-docs-sections/chrome") || !strings.Contains(string(serviceWorker), "runtime/scrollspy.js") {
+	if !strings.Contains(string(serviceWorker), "gofastr-pwa-static-") || !strings.Contains(string(serviceWorker), "/__fastr-docs/docs.js") || !strings.Contains(string(serviceWorker), "/__fastr-docs/openapi.js") || !strings.Contains(string(serviceWorker), "/__fastr-docs/search.json") || !strings.Contains(string(serviceWorker), "/__fastr-docs/manifest.json") || !strings.Contains(string(serviceWorker), "fastr-docs-sections/chrome") || !strings.Contains(string(serviceWorker), "runtime/scrollspy.js") {
 		t.Fatal("static PWA service worker did not precache the OpenAPI runtime")
 	}
 	searchIndex, err := os.ReadFile(filepath.Join(dist, "__fastr-docs", "search.json"))
@@ -293,5 +495,48 @@ func TestGeneratedLiveHostRoutes(t *testing.T) {
 	}
 	if !strings.Contains(string(baseLLMs), "](/docs/") {
 		t.Fatalf("base-path llms.txt did not rewrite root-relative links: %s", baseLLMs)
+	}
+}
+
+func TestInitShipsSkillsToBothAgentDirectoriesAndTheGitignore(t *testing.T) {
+	target := t.TempDir()
+	var output bytes.Buffer
+	if err := Run([]string{"init", target, "--name", "Skill Docs", "--module", "example.com/skill-docs"}, &output, &output); err != nil {
+		t.Fatalf("init: %v\n%s", err, output.String())
+	}
+
+	skills := starterSkills()
+	if len(skills) < 2 {
+		t.Fatalf("starterSkills() = %v, want the shipped skill set", skills)
+	}
+	for _, skill := range skills {
+		agent := filepath.Join(target, filepath.FromSlash(agentSkillsDir), skill, "SKILL.md")
+		claude := filepath.Join(target, filepath.FromSlash(claudeSkillsDir), skill, "SKILL.md")
+		agentBody, err := os.ReadFile(agent)
+		if err != nil {
+			t.Fatalf("read %s: %v", agent, err)
+		}
+		claudeBody, err := os.ReadFile(claude)
+		if err != nil {
+			t.Fatalf("read %s: %v", claude, err)
+		}
+		if !bytes.Equal(agentBody, claudeBody) {
+			t.Fatalf("%s differs between %s and %s", skill, agentSkillsDir, claudeSkillsDir)
+		}
+		if !bytes.Contains(agentBody, []byte("name: "+skill)) {
+			t.Fatalf("%s front matter does not declare its own name:\n%s", skill, agentBody)
+		}
+	}
+
+	// A plain embed glob silently drops dotfiles, which used to leave generated
+	// projects without the ignore rules for dev-loop and export artifacts.
+	ignore, err := os.ReadFile(filepath.Join(target, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	for _, rule := range []string{"/dist/", ".fastr-docs-dev-reload-*.go"} {
+		if !strings.Contains(string(ignore), rule) {
+			t.Fatalf(".gitignore missing %q:\n%s", rule, ignore)
+		}
 	}
 }

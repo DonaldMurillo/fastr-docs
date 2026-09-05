@@ -3,8 +3,8 @@ module {{.Module}}
 go 1.27.0
 
 require (
-	github.com/DonaldMurillo/fastr-docs v0.1.0
-	github.com/DonaldMurillo/gofastr v0.73.0
+	github.com/DonaldMurillo/fastr-docs {{.FastrDocsVersion}}
+	github.com/DonaldMurillo/gofastr v0.76.0
 )
 {{if .LocalReplace}}
 // Local source checkout dependency; remove this replace when publishing the generated project.

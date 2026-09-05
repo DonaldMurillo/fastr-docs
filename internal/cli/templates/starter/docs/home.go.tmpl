@@ -1,12 +1,18 @@
 package docs
 
-import "github.com/DonaldMurillo/gofastr/core/render"
+import (
+	"strconv"
+	"strings"
+
+	fastrdocs "github.com/DonaldMurillo/fastr-docs"
+	"github.com/DonaldMurillo/gofastr/core/render"
+)
 
 // HomeBody is the generated site's editorial landing surface. It stays a
 // Screen-like GoFastr render function so the starter demonstrates the same
 // router composition point that product sites can extend with their own UI.
-func HomeBody() render.HTML {
-	return render.Raw(`
+func HomeBody(router *fastrdocs.Router) render.HTML {
+	markup := `
 <div class="fastr-docs-home">
   <div class="fastr-docs-home__hero">
     <div class="fastr-docs-home__hero-copy">
@@ -45,7 +51,7 @@ func HomeBody() render.HTML {
   <section class="fastr-docs-home__section">
     <div class="fastr-docs-home__section-intro"><h2>Generated project anatomy</h2><p>Every decision stays visible in the project that the generator creates.</p></div>
     <div class="fastr-docs-home__anatomy">
-      <div class="fastr-docs-home__route-panel"><div class="fastr-docs-home__panel-head"><strong>registered routes</strong><span>18 routes</span></div><div class="fastr-docs-home__route-row fastr-docs-home__route-row--active"><span>page</span><b>Home</b><code>/</code></div><div class="fastr-docs-home__route-row"><span>page</span><b>Documentation</b><code>/docs</code></div><div class="fastr-docs-home__route-row"><span>group</span><b>Concepts</b><code>/docs/concepts/*</code></div><div class="fastr-docs-home__route-row"><span>group</span><b>Build</b><code>/docs/build/*</code></div><div class="fastr-docs-home__route-row"><span>plugin</span><b>API reference</b><code>/api-reference</code></div><div class="fastr-docs-home__route-row"><span>group</span><b>Examples</b><code>/examples/*</code></div></div>
+      <div class="fastr-docs-home__route-panel"><div class="fastr-docs-home__panel-head"><strong>registered routes</strong><span>__ROUTE_COUNT__ routes</span></div>__ROUTE_ROWS__</div>
       <pre class="fastr-docs-home__code"><span class="fastr-docs-home__panel-head"><strong>docs/router.go</strong><span>Go</span></span><code><span>router := docs.NewRouter(</span>
   <span>docs.WithSiteName(<em>"Your Docs"</em>),</span>
   <span>docs.WithStrictValidation(<b>true</b>),</span>
@@ -56,5 +62,27 @@ func HomeBody() render.HTML {
   </section>
 
   <aside class="fastr-docs-home__callout"><span class="fastr-docs-home__callout-mark">◎</span><div><strong>AI-ready from the first commit</strong><p>The generated project includes agent references and authoring skills so humans and agents can extend the same route tree safely.</p></div></aside>
-</div>`)
+</div>`
+	markup = strings.Replace(markup, "__ROUTE_COUNT__", strconv.Itoa(len(router.PublishedRoutes())), 1)
+	markup = strings.Replace(markup, "__ROUTE_ROWS__", string(homeRouteRows(router)), 1)
+	return render.Raw(markup)
+}
+
+func homeRouteRows(router *fastrdocs.Router) render.HTML {
+	rows := make([]render.HTML, 0)
+	for _, item := range router.Navigation() {
+		if item.Depth != 0 {
+			continue
+		}
+		path := item.Path
+		if item.Kind == fastrdocs.KindGroup {
+			path += "/*"
+		}
+		active := ""
+		if item.Path == "/" {
+			active = " fastr-docs-home__route-row--active"
+		}
+		rows = append(rows, render.Raw(`<div class="fastr-docs-home__route-row`+active+`"><span>`+render.Escape(string(item.Kind))+`</span><b>`+render.Escape(item.Title)+`</b><code>`+render.Escape(path)+`</code></div>`))
+	}
+	return render.Join(rows...)
 }

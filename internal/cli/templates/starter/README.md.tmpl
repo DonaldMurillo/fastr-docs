@@ -7,6 +7,9 @@ Reusable, white-label documentation built with `fastr-docs` and GoFastr.
 ```sh
 fastr-docs check .
 fastr-docs doctor .
+fastr-docs build .
+fastr-docs dev .
+# run once without the watcher
 go run .
 # or export a static, installable PWA
 fastr-docs export . --out dist
@@ -14,16 +17,62 @@ fastr-docs export . --out dist
 fastr-docs export . --out dist --pagefind
 ```
 
-Open <http://localhost:3070>.
+`fastr-docs dev` uses GoFastr's default <http://localhost:8080>. Pass
+`--addr localhost:3070` when you need a different port. Running `go run .`
+without the watcher uses the app's default <http://localhost:3070>.
+
+`fastr-docs dev` watches Go, Markdown, HTML, CSS, JavaScript, and JSON/YAML
+contract files. After each successful rebuild it restarts the server and
+refreshes open browser tabs. Use `go run .` for a single process without file
+watching.
+
+`fastr-docs dev` is the fastr-docs wrapper around GoFastr's CLI. It adds
+contract-file watching for JSON/YAML inputs. If you install GoFastr separately,
+`gofastr dev` runs the framework server directly and watches its native file
+set.
+
+`fastr-docs build .` runs GoFastr's build gates and compiler. Use
+`fastr-docs upgrade . --apply` to apply GoFastr framework migrations through
+the same project wrapper.
+
+The generated host is installable as a PWA on `localhost` and on HTTPS. A live
+install keeps the app shell and offline screen available; use the static
+export when every published document must be available offline:
+
+```sh
+fastr-docs export . --out dist --pagefind
+```
+
+Each static export receives a content-fingerprinted GoFastr worker cache. A
+redeploy installs the new worker in the background and activates it after old
+tabs close, so new tabs receive the updated docs without interrupting the
+current session.
+
+To update the GoFastr dependency and its migration notes, use the fastr-docs
+wrapper (or call the GoFastr CLI directly):
+
+```sh
+fastr-docs upgrade .
+fastr-docs upgrade . --apply
+```
+
+Keep the installed `gofastr` CLI on the same release as the module in
+`go.mod`.
 
 ## Where to edit
 
 - `docs/router.go` is the central route tree.
 - `content/` contains Markdown pages.
+- `content/blog/` contains optional publication posts. `MarkdownBlog` builds the archive and RSS feed from these files.
 - `openapi.json` feeds the in-project OpenAPI reference plugin.
 - `API_SERVER_URL` optionally overrides the OpenAPI contract's default server for staging or production.
 - `public/` contains white-label assets served at `/assets/` and copied into static exports.
 - `agents/claude.md` and `.agents/skills/` describe the project conventions to AI agents.
+
+The live host serves GoFastr's read-only MCP introspection endpoint at `/mcp`
+and advertises it through the agent card and `/.well-known/mcp.json`. Static
+exports include the docs and discovery files, but cannot serve the live MCP
+transport.
 
 ## Content model
 
@@ -59,6 +108,11 @@ switchers available.
 `PUBLIC_SITE_URL` configures absolute sitemap URLs. `API_SERVER_URL` controls
 the OpenAPI request origin. Use `fastr-docs export --base /docs` when the
 static site is deployed below a path prefix.
+
+The generated project includes a Router-backed blog at `/blog` and an RSS
+feed at `/blog/feed.xml`. Set `PUBLIC_SITE_URL` in production so feed links
+are absolute. Remove the sample post and directory if the project does not
+publish updates.
 
 The shell is composed from GoFastr UI primitives. The generated `main.go`
 mounts the framework-owned mobile sidebar drawer and native command palette;

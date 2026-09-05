@@ -21,6 +21,7 @@ func NewRouter() *docs.Router {
 		docs.WithLanguage(os.Getenv("DOCS_LOCALE")),
 		docs.WithLocale(os.Getenv("DOCS_CONTENT_LOCALE")),
 		docs.WithVersion(os.Getenv("DOCS_CONTENT_VERSION")),
+		docs.WithTemplate(docs.ParseTemplate(os.Getenv("DOCS_TEMPLATE"))),
 		docs.WithSearchBackend(os.Getenv("DOCS_SEARCH_BACKEND")),
 	)
 	if err := router.Use(docs.MarkdownComponentsPlugin{Components: map[string]docs.MarkdownComponent{
@@ -33,7 +34,7 @@ func NewRouter() *docs.Router {
 	router.MustPage("/", docs.PageConfig{
 		Title: {{goString .SiteName}},
 		Description: "A white-label documentation site.",
-		Body: HomeBody,
+		Body: func() render.HTML { return HomeBody(router) },
 		Order: 1,
 		Offline: true,
 	})
@@ -90,20 +91,48 @@ func NewRouter() *docs.Router {
 		Order: 1,
 		Offline: true,
 	})
+	build.MustPage("framework-ui", docs.PageConfig{
+		Title: "Framework UI",
+		Description: "Use the native GoFastr components that power docs pages and screens.",
+		SourcePath: "content/build-ui.md",
+		Order: 2,
+		Offline: true,
+	})
 	build.MustPage("openapi", docs.PageConfig{
 		Title: "OpenAPI reference",
 		Description: "Turn an API contract into a searchable request console.",
 		SourcePath: "content/build-openapi.md",
-		Order: 2,
+		Order: 3,
 		Offline: true,
 	})
 	build.MustPage("plugins", docs.PageConfig{
 		Title: "Plugins and extensions",
 		Description: "Extend the same router without forking the docs shell.",
 		SourcePath: "content/build-plugins.md",
-		Order: 3,
+		Order: 4,
 		Offline: true,
 	})
+	build.MustPage("blog", docs.PageConfig{
+		Title: "Blog and RSS",
+		Description: "Publish Markdown updates and expose the same posts as RSS.",
+		SourcePath: "content/build-blog.md",
+		Order: 5,
+		Offline: true,
+	})
+	build.MustPage("themes", docs.PageConfig{
+		Title:       "Themes and templates",
+		Description: "Choose one of five visual starting points and customize its tokens.",
+		SourcePath:  "content/build-themes.md",
+		Order:       6,
+		Offline:     true,
+	})
+	if err := router.MarkdownBlog("/blog", "content/blog", docs.BlogConfig{
+		Title: "Blog", Description: "Release notes and implementation updates.", Order: 5,
+		PostsPerPage: 10, RelatedPosts: 3,
+		Offline: true,
+	}); err != nil {
+		panic(err)
+	}
 
 	operate := router.MustGroup("/docs/operate", docs.GroupConfig{
 		Title:       "Operate",
@@ -136,6 +165,13 @@ func NewRouter() *docs.Router {
 		Description: "Apply a brand, configure hosts, and ship the generated site.",
 		SourcePath: "content/operate-deploy.md",
 		Order: 4,
+		Offline: true,
+	})
+	operate.MustPage("feature-coverage", docs.PageConfig{
+		Title: "Feature coverage",
+		Description: "See what fastr-docs supports and which tradeoffs are intentional.",
+		SourcePath: "content/feature-coverage.md",
+		Order: 5,
 		Offline: true,
 	})
 

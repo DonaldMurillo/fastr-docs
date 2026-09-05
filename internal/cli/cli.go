@@ -12,13 +12,24 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	rdebug "runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
+	"time"
 )
 
-//go:embed templates/starter/* templates/starter/docs/* templates/starter/content/* templates/starter/agents/* templates/starter/public/* templates/starter/.agents/skills/docs-authoring/*
+// all: is required so the template's dotfiles ship too. A plain glob skips
+// every name starting with a dot, which silently dropped .gitignore and
+// would drop each new skill directory as it is added.
+//
+//go:embed all:templates/starter
 var starterTemplates embed.FS
+
+// Version is replaced by release builds with -ldflags. Development builds
+// keep the explicit "dev" value so diagnostics never claim a release.
+var Version = "dev"
 
 // Run executes the fastr-docs CLI. Keeping the command runner as a small
 // package makes it possible to test project generation without spawning the
@@ -39,20 +50,22 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		printUsage(stdout)
 		return nil
 	case "version", "--version":
-		_, _ = fmt.Fprintln(stdout, "fastr-docs dev")
+		_, _ = fmt.Fprintln(stdout, "fastr-docs "+Version)
 		return nil
 	case "init":
 		return runInit(args[1:], stdout, stderr)
 	case "check":
-		return runCheck(args[1:], stdout)
+		return runCheck(args[1:], stdout, stderr)
 	case "validate":
-		return runCheck(args[1:], stdout)
+		return runCheck(args[1:], stdout, stderr)
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr)
 	case "build":
-		return runGo(args[1:], "build", []string{"./..."}, stdout, stderr)
+		return runGofastrBuild(args[1:], stdout, stderr)
 	case "dev":
-		return runGo(args[1:], "run", []string{"."}, stdout, stderr)
+		return runDev(args[1:], stdout, stderr)
+	case "upgrade":
+		return runGofastrUpgrade(args[1:], stdout, stderr)
 	case "export":
 		return runExport(args[1:], stdout, stderr)
 	default:
@@ -61,7 +74,7 @@ func Run(args []string, stdout, stderr io.Writer) error {
 }
 
 func runDoctor(args []string, stdout, stderr io.Writer) error {
-	if err := runCheck(args, stdout); err != nil {
+	if err := runCheck(args, stdout, stderr); err != nil {
 		return err
 	}
 	if err := runGo(args, "mod", []string{"tidy"}, stdout, stderr); err != nil {
@@ -97,7 +110,7 @@ func runInit(args []string, stdout, stderr io.Writer) error {
 	if *module == "" {
 		*module = filepath.ToSlash(filepath.Join("example.com", strings.ToLower(filepath.Base(absTarget))))
 	}
-	data := templateData{SiteName: strings.TrimSpace(*name), Module: strings.TrimSpace(*module)}
+	data := templateData{SiteName: strings.TrimSpace(*name), Module: strings.TrimSpace(*module), FastrDocsVersion: docsModuleVersion()}
 	if data.SiteName == "" || data.Module == "" {
 		return errors.New("site name and module must not be empty")
 	}
@@ -112,7 +125,7 @@ func runInit(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	_, _ = fmt.Fprintf(stdout, "created fastr-docs project in %s\n", absTarget)
-	_, _ = fmt.Fprintln(stdout, "next: cd "+absTarget+" && fastr-docs check && go run .")
+	_, _ = fmt.Fprintln(stdout, "next: cd "+absTarget+" && fastr-docs check . && fastr-docs dev .")
 	return nil
 }
 
@@ -129,6 +142,11 @@ func splitInitArgs(args []string) (flags, positionals []string, err error) {
 		case "--force":
 			flags = append(flags, arg)
 		default:
+			if strings.HasPrefix(arg, "--name=") || strings.HasPrefix(arg, "--module=") {
+				parts := strings.SplitN(arg, "=", 2)
+				flags = append(flags, parts[0], parts[1])
+				continue
+			}
 			if strings.HasPrefix(arg, "-") {
 				return nil, nil, fmt.Errorf("unknown init flag %q", arg)
 			}
@@ -138,7 +156,7 @@ func splitInitArgs(args []string) (flags, positionals []string, err error) {
 	return flags, positionals, nil
 }
 
-func runCheck(args []string, stdout io.Writer) error {
+func runCheck(args []string, stdout, stderr io.Writer) error {
 	target := "."
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		target = args[0]
@@ -147,7 +165,10 @@ func runCheck(args []string, stdout io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("resolve target: %w", err)
 	}
-	required := []string{"go.mod", "main.go", "docs/router.go", "docs/icon.go", "content/index.md", "content/getting-started.md", "openapi.json", "public/favicon.svg", "agents/claude.md", ".agents/skills/docs-authoring/SKILL.md"}
+	required := []string{"go.mod", "main.go", "docs/router.go", "docs/icon.go", "content/index.md", "content/getting-started.md", "content/blog/index.md", "openapi.json", "public/favicon.svg", ".gitignore", "agents/claude.md"}
+	for _, skill := range starterSkills() {
+		required = append(required, agentSkillsDir+"/"+skill+"/SKILL.md", claudeSkillsDir+"/"+skill+"/SKILL.md")
+	}
 	var missing []string
 	for _, name := range required {
 		if _, err := os.Stat(filepath.Join(absTarget, filepath.FromSlash(name))); err != nil {
@@ -161,7 +182,7 @@ func runCheck(args []string, stdout io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("read main.go: %w", err)
 	}
-	for _, marker := range []string{"buildSite", "MountNavigation", "MountCommandPalette", "WithPWA", "WithAppIcon", "WithSitemap", "WithRobots", "WithAgentReady", "MountAssets", "__fastr-docs/search.json"} {
+	for _, marker := range []string{"buildSite", "MountNavigation", "MountCommandPalette", "MountRSS", "WriteStaticRSS", "WithPWA", "WithAppIcon", "WithSitemap", "WithRobots", "WithNotFoundScreen", "WithAgentReady", "WithMCP()", "WithMCPIntrospection()", "MountAssets", "__fastr-docs/search.json"} {
 		if !strings.Contains(string(mainSource), marker) {
 			return fmt.Errorf("project check failed; main.go does not contain %q", marker)
 		}
@@ -171,13 +192,85 @@ func runCheck(args []string, stdout io.Writer) error {
 		return fmt.Errorf("read docs/router.go: %w", err)
 	}
 	source := string(routerSource)
-	for _, marker := range []string{"NewRouter", "MustPage", "getting-started", "openapi.Plugin"} {
+	for _, marker := range []string{"NewRouter", "MustPage", "getting-started", "MarkdownBlog", "openapi.Plugin"} {
 		if !strings.Contains(source, marker) {
 			return fmt.Errorf("project check failed; docs/router.go does not contain %q", marker)
 		}
 	}
+	if err := validateProjectRouter(absTarget, stdout, stderr); err != nil {
+		return fmt.Errorf("project check failed; Router validation: %w", err)
+	}
 	_, _ = fmt.Fprintf(stdout, "project check passed: %s\n", absTarget)
 	return nil
+}
+
+// validateProjectRouter executes the generated Router's own strict validation
+// without requiring the project to start a long-running development server.
+// The temporary test is removed before returning, so check never leaves files
+// in the project it is inspecting.
+func validateProjectRouter(target string, stdout, stderr io.Writer) error {
+	module, err := readModulePath(target)
+	if err != nil {
+		return err
+	}
+	goModPath := filepath.Join(target, "go.mod")
+	goMod, err := os.ReadFile(goModPath)
+	if err != nil {
+		return fmt.Errorf("read go.mod for Router validation: %w", err)
+	}
+	checkMod, err := os.CreateTemp(target, "fastr_docs_check_*.mod")
+	if err != nil {
+		return fmt.Errorf("create Router validation module: %w", err)
+	}
+	checkModPath := checkMod.Name()
+	defer os.Remove(checkModPath)
+	checkSumPath := strings.TrimSuffix(checkModPath, ".mod") + ".sum"
+	defer os.Remove(checkSumPath)
+	if _, err := checkMod.Write(goMod); err != nil {
+		_ = checkMod.Close()
+		return fmt.Errorf("write Router validation module: %w", err)
+	}
+	if err := checkMod.Close(); err != nil {
+		return fmt.Errorf("close Router validation module: %w", err)
+	}
+	testFile, err := os.CreateTemp(target, "fastr_docs_check_*_test.go")
+	if err != nil {
+		return fmt.Errorf("create Router validation test: %w", err)
+	}
+	testPath := testFile.Name()
+	defer os.Remove(testPath)
+	source := "package main\n\n" +
+		"import (\n" +
+		"\t\"testing\"\n" +
+		"\tdocsite " + strconv.Quote(module+"/docs") + "\n" +
+		")\n\n" +
+		"func TestFastrDocsRouterGeneratedCheck(t *testing.T) {\n" +
+		"\tif err := docsite.NewRouter().Validate(); err != nil {\n" +
+		"\t\tt.Fatal(err)\n" +
+		"\t}\n" +
+		"}\n"
+	if _, err := testFile.WriteString(source); err != nil {
+		_ = testFile.Close()
+		return fmt.Errorf("write Router validation test: %w", err)
+	}
+	if err := testFile.Close(); err != nil {
+		return fmt.Errorf("close Router validation test: %w", err)
+	}
+	return runGo([]string{target, "-modfile=" + filepath.Base(checkModPath), "-mod=mod", "-run", "^TestFastrDocsRouterGeneratedCheck$", "-count=1"}, "test", []string{"."}, stdout, stderr)
+}
+
+func readModulePath(target string) (string, error) {
+	body, err := os.ReadFile(filepath.Join(target, "go.mod"))
+	if err != nil {
+		return "", fmt.Errorf("read go.mod: %w", err)
+	}
+	for _, line := range strings.Split(string(body), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == "module" && validModulePath(fields[1]) {
+			return fields[1], nil
+		}
+	}
+	return "", errors.New("go.mod does not declare a valid module path")
 }
 
 func runGo(args []string, command string, extra []string, stdout, stderr io.Writer) error {
@@ -193,11 +286,245 @@ func runGo(args []string, command string, extra []string, stdout, stderr io.Writ
 	}
 	cmdArgs := append([]string{command}, extra...)
 	cmdArgs = append(cmdArgs, args...)
-	cmd := exec.Command("go", cmdArgs...)
+	goExecutable, err := findGoExecutable()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(goExecutable, cmdArgs...)
 	cmd.Dir = target
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	return cmd.Run()
+}
+
+func runGofastrBuild(args []string, stdout, stderr io.Writer) error {
+	target, args, err := projectTarget(args, "build")
+	if err != nil {
+		return err
+	}
+	name, cmdArgs, err := gofastrProjectCommand("build", target, args)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(name, cmdArgs...)
+	cmd.Dir = target
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
+}
+
+func runGofastrUpgrade(args []string, stdout, stderr io.Writer) error {
+	target, args, err := projectTarget(args, "upgrade")
+	if err != nil {
+		return err
+	}
+	name, cmdArgs, err := gofastrProjectCommand("upgrade", target, args)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(name, cmdArgs...)
+	cmd.Dir = target
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
+}
+
+func projectTarget(args []string, command string) (string, []string, error) {
+	target := "."
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		target = args[0]
+		args = args[1:]
+	}
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return "", nil, fmt.Errorf("resolve %s project: %w", command, err)
+	}
+	info, err := os.Stat(absTarget)
+	if err != nil {
+		return "", nil, fmt.Errorf("stat %s project %q: %w", command, target, err)
+	}
+	if !info.IsDir() {
+		return "", nil, fmt.Errorf("%s project %q is not a directory", command, target)
+	}
+	return absTarget, args, nil
+}
+
+func gofastrProjectCommand(subcommand, target string, args []string) (string, []string, error) {
+	return gofastrProjectCommandWithLookup(subcommand, target, args, exec.LookPath)
+}
+
+func gofastrProjectCommandWithLookup(subcommand, target string, args []string, lookPath func(string) (string, error)) (string, []string, error) {
+	commandArgs := append([]string{subcommand}, args...)
+	if subcommand == "upgrade" {
+		commandArgs = append([]string{subcommand, target}, args...)
+	}
+	if executable, err := lookPath("gofastr"); err == nil {
+		return executable, commandArgs, nil
+	}
+	goExecutable, err := lookPath("go")
+	if err != nil {
+		return "", nil, errors.New("fastr-docs " + subcommand + " requires the GoFastr CLI or the Go toolchain; install gofastr or add go to PATH")
+	}
+	return goExecutable, append([]string{"run", "-mod=mod", "github.com/DonaldMurillo/gofastr/cmd/gofastr"}, commandArgs...), nil
+}
+
+func runDev(args []string, stdout, stderr io.Writer) error {
+	// Keep the first positional argument as the project directory, matching
+	// the other project commands. The remaining arguments are GoFastr dev
+	// flags, such as --addr, --pkg, and --no-a11y.
+	target := "."
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		target = args[0]
+		args = args[1:]
+	}
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return fmt.Errorf("resolve dev project: %w", err)
+	}
+	info, err := os.Stat(absTarget)
+	if err != nil {
+		return fmt.Errorf("stat dev project %q: %w", target, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("dev project %q is not a directory", target)
+	}
+	reloadMarker, err := createDevReloadMarker(absTarget)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(reloadMarker)
+	stopExtraWatch := make(chan struct{})
+	defer close(stopExtraWatch)
+	go watchDevExtraFiles(absTarget, reloadMarker, stopExtraWatch)
+
+	name, cmdArgs, err := gofastrDevCommand(absTarget, args)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(name, cmdArgs...)
+	cmd.Dir = absTarget
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
+}
+
+// createDevReloadMarker gives the fastr-docs wrapper a harmless .go file that
+// GoFastr's watcher can observe. It is ignored by the Go build, but touching
+// it causes the normal GoFastr rebuild, accessibility gate, and browser
+// refresh flow to run when a docs contract changes.
+func createDevReloadMarker(target string) (string, error) {
+	if err := removeDevReloadMarkers(target); err != nil {
+		return "", err
+	}
+	path := filepath.Join(target, fmt.Sprintf(".fastr-docs-dev-reload-%d.go", os.Getpid()))
+	const source = "//go:build ignore\n\npackage main\n"
+	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+		return "", fmt.Errorf("create dev reload marker: %w", err)
+	}
+	return path, nil
+}
+
+func removeDevReloadMarkers(target string) error {
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		return fmt.Errorf("scan dev reload markers: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), ".fastr-docs-dev-reload-") || !strings.HasSuffix(entry.Name(), ".go") {
+			continue
+		}
+		if err := os.Remove(filepath.Join(target, entry.Name())); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove stale dev reload marker %q: %w", entry.Name(), err)
+		}
+	}
+	return nil
+}
+
+// watchDevExtraFiles covers documentation inputs that GoFastr v0.76 does not
+// watch itself. Markdown, Go, HTML, CSS, and JavaScript remain on GoFastr's
+// native watcher; this bridge only adds JSON/YAML contract files such as an
+// OpenAPI document.
+func watchDevExtraFiles(dir, marker string, stop <-chan struct{}) {
+	previous := scanDevExtraModTimes(dir)
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	const debounce = 750 * time.Millisecond
+	pending := false
+	lastChange := time.Time{}
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			current := scanDevExtraModTimes(dir)
+			if devExtraFilesChanged(previous, current) {
+				previous = current
+				pending = true
+				lastChange = time.Now()
+				continue
+			}
+			if !pending || time.Since(lastChange) < debounce {
+				continue
+			}
+			pending = false
+			_ = os.Chtimes(marker, time.Now(), time.Now())
+		}
+	}
+}
+
+func scanDevExtraModTimes(dir string) map[string]time.Time {
+	result := make(map[string]time.Time)
+	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info == nil {
+			return nil
+		}
+		if info.IsDir() {
+			switch info.Name() {
+			case "vendor", ".git", "node_modules", "tmp", "dist", ".fastr-docs":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".json", ".yaml", ".yml":
+			result[path] = info.ModTime()
+		}
+		return nil
+	})
+	return result
+}
+
+func devExtraFilesChanged(previous, current map[string]time.Time) bool {
+	if len(previous) != len(current) {
+		return true
+	}
+	for path, modTime := range current {
+		if previous[path] != modTime {
+			return true
+		}
+	}
+	return false
+}
+
+func gofastrDevCommand(target string, args []string) (string, []string, error) {
+	return gofastrDevCommandWithLookup(target, args, exec.LookPath)
+}
+
+func gofastrDevCommandWithLookup(target string, args []string, lookPath func(string) (string, error)) (string, []string, error) {
+	devArgs := append([]string{"dev", "--dir", target}, args...)
+	if executable, err := lookPath("gofastr"); err == nil {
+		return executable, devArgs, nil
+	}
+
+	// A generated project already depends on GoFastr, so this keeps the CLI
+	// usable without requiring a second globally installed binary. Running the
+	// package through the target module also respects that project's selected
+	// GoFastr version and any local replace directive.
+	goExecutable, err := lookPath("go")
+	if err != nil {
+		return "", nil, errors.New("fastr-docs dev requires the GoFastr CLI or the Go toolchain; install gofastr or add go to PATH")
+	}
+	return goExecutable, append([]string{"run", "-mod=mod", "github.com/DonaldMurillo/gofastr/cmd/gofastr"}, devArgs...), nil
 }
 
 func runExport(args []string, stdout, stderr io.Writer) error {
@@ -232,12 +559,44 @@ func runExport(args []string, stdout, stderr io.Writer) error {
 	if len(positionals) > 0 {
 		target = positionals[0]
 	}
-	goArgs := []string{"run", ".", "--export", out}
-	if base != "" {
-		goArgs = append(goArgs, "--export-base", base)
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return fmt.Errorf("resolve export project: %w", err)
 	}
-	cmd := exec.Command("go", goArgs...)
-	cmd.Dir = target
+	info, err := os.Stat(absTarget)
+	if err != nil {
+		return fmt.Errorf("stat export project %q: %w", target, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("export project %q is not a directory", target)
+	}
+	goExecutable, err := findGoExecutable()
+	if err != nil {
+		return err
+	}
+	temporaryBinary, err := os.CreateTemp(absTarget, ".fastr-docs-export-*.exe")
+	if err != nil {
+		return fmt.Errorf("create export binary: %w", err)
+	}
+	binaryPath := temporaryBinary.Name()
+	if err := temporaryBinary.Close(); err != nil {
+		return fmt.Errorf("close export binary: %w", err)
+	}
+	_ = os.Remove(binaryPath)
+	defer os.Remove(binaryPath)
+	build := exec.Command(goExecutable, "build", "-o", binaryPath, ".")
+	build.Dir = absTarget
+	build.Stdout = stdout
+	build.Stderr = stderr
+	if err := build.Run(); err != nil {
+		return err
+	}
+	appArgs := []string{"--export", out}
+	if base != "" {
+		appArgs = append(appArgs, "--export-base", base)
+	}
+	cmd := exec.Command(binaryPath, appArgs...)
+	cmd.Dir = absTarget
 	if pagefind {
 		cmd.Env = append(os.Environ(), "DOCS_SEARCH_BACKEND=pagefind")
 	}
@@ -276,9 +635,40 @@ func runPagefind(target, site string, stdout, stderr io.Writer) error {
 }
 
 type templateData struct {
-	SiteName     string
-	Module       string
-	LocalReplace string
+	SiteName         string
+	Module           string
+	FastrDocsVersion string
+	LocalReplace     string
+}
+
+func docsModuleVersion() string {
+	if value := strings.TrimSpace(Version); value != "" && value != "dev" && value != "(devel)" {
+		if !strings.HasPrefix(value, "v") {
+			value = "v" + value
+		}
+		return value
+	}
+	if info, ok := rdebug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return "v0.0.0-dev"
+}
+
+func findGoExecutable() (string, error) {
+	if executable, err := exec.LookPath("go"); err == nil {
+		return executable, nil
+	}
+	if root := strings.TrimSpace(os.Getenv("GOROOT")); root != "" {
+		name := "go"
+		if runtime.GOOS == "windows" {
+			name += ".exe"
+		}
+		executable := filepath.Join(root, "bin", name)
+		if info, err := os.Stat(executable); err == nil && !info.IsDir() {
+			return executable, nil
+		}
+	}
+	return "", errors.New("fastr-docs requires the Go toolchain; install Go or add go to PATH")
 }
 
 // localFastrDocsReplace makes projects generated from this checkout runnable
@@ -302,11 +692,37 @@ func localFastrDocsReplace(target string) string {
 	return filepath.ToSlash(relative)
 }
 
+// The skills are authored once under .agents/skills and copied to
+// .claude/skills on init. .agents is the cross-agent convention the generated
+// agents/claude.md points at; .claude/skills is what Claude Code actually
+// loads. Keeping one source avoids the two copies drifting.
+const (
+	agentSkillsDir  = ".agents/skills"
+	claudeSkillsDir = ".claude/skills"
+)
+
+// starterSkills lists the skill directories shipped with a generated project,
+// read from the embedded template so adding a skill needs no code change.
+func starterSkills() []string {
+	entries, err := fs.ReadDir(starterTemplates, "templates/starter/"+agentSkillsDir)
+	if err != nil {
+		return nil
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			names = append(names, entry.Name())
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
 func writeStarter(target string, data templateData, force bool) error {
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		return fmt.Errorf("create target: %w", err)
 	}
-	return fs.WalkDir(starterTemplates, "templates/starter", func(path string, entry fs.DirEntry, walkErr error) error {
+	if err := fs.WalkDir(starterTemplates, "templates/starter", func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -344,7 +760,33 @@ func writeStarter(target string, data templateData, force bool) error {
 			return fmt.Errorf("write %s: %w", destination, err)
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	return mirrorSkills(target, force)
+}
+
+// mirrorSkills copies each .agents/skills entry to .claude/skills so the same
+// guidance is discoverable by Claude Code without a second authored copy.
+func mirrorSkills(target string, force bool) error {
+	for _, skill := range starterSkills() {
+		source := filepath.Join(target, filepath.FromSlash(agentSkillsDir), skill, "SKILL.md")
+		body, err := os.ReadFile(source)
+		if err != nil {
+			return fmt.Errorf("read skill %s: %w", skill, err)
+		}
+		destination := filepath.Join(target, filepath.FromSlash(claudeSkillsDir), skill, "SKILL.md")
+		if _, err := os.Stat(destination); err == nil && !force {
+			return fmt.Errorf("refusing to overwrite %s; use --force", destination)
+		}
+		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+			return fmt.Errorf("create %s: %w", filepath.Dir(destination), err)
+		}
+		if err := os.WriteFile(destination, body, 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", destination, err)
+		}
+	}
+	return nil
 }
 
 func jsonEscape(value string) string {
@@ -370,9 +812,10 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  check [dir]  validate generated project conventions")
 	_, _ = fmt.Fprintln(w, "  validate     alias for check")
 	_, _ = fmt.Fprintln(w, "  doctor [dir] run conventions and the full Go test suite")
-	_, _ = fmt.Fprintln(w, "  dev [dir]    run the GoFastr development server")
-	_, _ = fmt.Fprintln(w, "  build [dir]  build the project and its packages")
+	_, _ = fmt.Fprintln(w, "  dev [dir]    run GoFastr dev with rebuild and browser refresh")
+	_, _ = fmt.Fprintln(w, "  build [dir]  run GoFastr's build gates and compile the project")
 	_, _ = fmt.Fprintln(w, "  export [dir] export a static PWA to dist (use --out or --pagefind to change it)")
+	_, _ = fmt.Fprintln(w, "  upgrade [dir] guide or apply GoFastr framework migrations")
 }
 
 func humanize(name string) string {

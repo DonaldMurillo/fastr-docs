@@ -14,6 +14,17 @@ The authoring guidance says to:
 
 This is not a second product workflow. It is a compact, machine-readable explanation of the human workflow already enforced by the project.
 
+## Use the live agent endpoint
+
+The generated host serves GoFastr's `/mcp` endpoint and advertises it through
+the agent card and `/.well-known/mcp.json`. `framework.WithMCP()` mounts the
+transport. `framework.WithMCPIntrospection()` adds read-only tools for
+inspecting routes, plugins, configuration, and readiness.
+
+Static exports include the docs and discovery files, but they cannot serve a
+live MCP transport. Remove the two framework options and
+`AgentCard.MCPEndpoint` together if a deployment should not expose MCP.
+
 ## Safe agent changes
 
 Ask an agent to add a page, update a route description, or extend an existing plugin with a concrete path and acceptance behavior. Require it to report changed routes, tests run, and any visual surfaces inspected.

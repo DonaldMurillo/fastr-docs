@@ -109,6 +109,33 @@ and then fails to match `go`, silently costing you syntax highlighting.
 Line highlighting wraps the line's own HTML, because `CodeBlock` owns the
 `.ui-code-block__line` wrapper and offers no hook to mark one.
 
+## Translation
+
+`labels.go` holds every framework-owned string. There are no hardcoded UI
+strings left in `blog_surface.go`, `notfound.go`, `toc.go`, `router_chrome.go`,
+or `versions.go`; a grep for `render.Text("Capitalized")` in those files should
+stay at zero.
+
+`mergeUIStrings` uses reflection rather than one if-statement per field. There
+are over eighty labels, and the previous hand-written merge was already 47
+lines for thirteen.
+
+Labels holding `%s`/`%d` go through `formatLabel`, which returns the label
+unchanged when a translation dropped the placeholder, instead of emitting Go's
+`%!(EXTRA ...)` into a page. `go vet` treats `formatLabel` as a printf wrapper,
+so a test passing an argument to a label without a directive has to hide the
+literal behind a table.
+
+The blog's client-side search filter reads its labels from `data-*` attributes
+on the search root, because the runtime JS is a constant and cannot see the
+Router.
+
+Locale fallback lives in `i18n.go`. `localeAllows` replaces the old inline
+locale filter in `routePublished`, and the family index it consults is
+invalidated in `rebuildTree`. Coverage reporting is advisory on purpose:
+wiring it into `ContentIssues` made `Validate` fail on any partially
+translated site, which a test caught immediately.
+
 ## Known GoFastr limitations worked around here
 
 Ticket these rather than re-discovering them:

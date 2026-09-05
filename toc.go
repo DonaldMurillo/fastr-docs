@@ -46,7 +46,7 @@ func (r *Router) wrapDocPage(route *Route, body render.HTML, headings []Heading)
 		}
 		if len(items) > 0 {
 			rail := ui.AnchoredRail(ui.AnchoredRailConfig{
-				Label:           "On this page",
+				Label:           r.UIStrings().OnThisPage,
 				Items:           items,
 				ObserveSelector: ".ui-doc-layout__content",
 				TargetSelector:  "h2[id], h3[id]",

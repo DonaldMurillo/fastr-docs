@@ -186,6 +186,52 @@ When a project contains localized or versioned route siblings, the header emits
 route-aware Language and Version selectors that preserve the current page
 family.
 
+## Translating the chrome
+
+`WithUIStrings` translates every framework-owned label. The struct is grouped,
+and empty fields keep their English defaults, so a project can translate one
+label at a time:
+
+```go
+router := docs.NewRouter(docs.WithUIStrings(docs.UIStrings{
+    Search:     "Rechercher",
+    DateFormat: "02/01/2006",
+    Blog: docs.BlogStrings{
+        Archive:    "Archives",
+        ResultsFor: "Résultats pour « %s »",
+    },
+    NotFound: docs.NotFoundStrings{Heading: "Page introuvable"},
+}))
+```
+
+Labels containing `%s` or `%d` are format strings; a translation may reorder
+the surrounding words. Dropping the placeholder is tolerated rather than
+producing Go's `%!(EXTRA ...)` in the middle of a page.
+
+Dates use `DateFormat`, a Go layout. The standard library ships no CLDR data,
+so the layout is the project's choice rather than something inferred from the
+locale.
+
+### Fallback for untranslated pages
+
+By default a page tagged `locale: en` is absent from a build for another
+locale, which leaves a partially translated site with missing pages.
+`WithLocaleFallback` serves the default-locale page instead:
+
+```go
+router := docs.NewRouter(
+    docs.WithLocale(os.Getenv("DOCS_CONTENT_LOCALE")),
+    docs.WithLocaleFallback("en"),
+)
+```
+
+A fallback never shadows a real translation: if the family has a page in the
+build locale, that one wins and the default-locale variant stays hidden.
+
+`Router.LocaleCoverage()` reports which families are missing a translation, and
+`fastr-docs check` logs those gaps. They are advisory. A partially translated
+site is a normal state, not a broken build.
+
 ## Landing pages
 
 A page can opt into the splash shell from front matter, so a landing page needs

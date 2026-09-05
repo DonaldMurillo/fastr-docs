@@ -62,7 +62,7 @@ func (r *Router) MarkdownVersionedCollection(prefix, dir string, cfg VersionedCo
 			groupPath := joinPath(prefix, version)
 			if _, err := r.Group(groupPath, GroupConfig{
 				Title:       version,
-				Description: "Documentation for version " + version + ".",
+				Description: formatLabel(r.UIStrings().VersionDescription, version),
 				Order:       r.nextChildOrder(groupPath, cfg.Collection.OrderStart+index),
 			}); err != nil {
 				return fmt.Errorf("docs: register version group %q: %w", version, err)
@@ -120,7 +120,7 @@ func (r *Router) MarkdownVersionedCollectionFS(prefix string, content fs.FS, roo
 			groupPath := joinPath(prefix, version)
 			if _, err := r.Group(groupPath, GroupConfig{
 				Title:       version,
-				Description: "Documentation for version " + version + ".",
+				Description: formatLabel(r.UIStrings().VersionDescription, version),
 				Order:       r.nextChildOrder(groupPath, cfg.Collection.OrderStart+index),
 			}); err != nil {
 				return fmt.Errorf("docs: register version group %q: %w", version, err)

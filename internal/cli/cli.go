@@ -259,8 +259,14 @@ func validateProjectRouter(target string, stdout, stderr io.Writer) error {
 		"\tdocsite " + strconv.Quote(module+"/docs") + "\n" +
 		")\n\n" +
 		"func TestFastrDocsRouterGeneratedCheck(t *testing.T) {\n" +
-		"\tif err := docsite.NewRouter().Validate(); err != nil {\n" +
+		"\trouter := docsite.NewRouter()\n" +
+		"\tif err := router.Validate(); err != nil {\n" +
 		"\t\tt.Fatal(err)\n" +
+		"\t}\n" +
+		// Translation gaps are reported, never failed on. A partially
+		// translated site is a normal state, not a broken build.
+		"\tfor locale, families := range router.LocaleCoverage() {\n" +
+		"\t\tt.Logf(\"translation gap: %s is missing %d page(s): %v\", locale, len(families), families)\n" +
 		"\t}\n" +
 		"}\n"
 	if _, err := testFile.WriteString(source); err != nil {

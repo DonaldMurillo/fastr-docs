@@ -402,3 +402,26 @@ test('hand-authored framework surfaces remain usable at narrow widths', async ({
   await expect(page.locator('#manual-table')).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+// The fixture translates a sample of the label surface, so a string that
+// regresses to hardcoded English fails here rather than in someone's site.
+test('framework chrome renders the configured translations', async ({ page }) => {
+  await page.goto(manualPage('/blog'));
+  const nav = page.locator('nav.fastr-docs-blog__toolbar-nav');
+  await expect(nav).toContainText('Arquivo');
+  await expect(nav).toContainText('Etiquetas');
+  await expect(nav).toContainText('Autores');
+  // The English originals must be gone from the surface that was translated,
+  // which is what a regression to a hardcoded string would reintroduce.
+  await expect(nav).not.toContainText('Archive');
+  await expect(nav).not.toContainText('Authors');
+  await expect(nav).not.toContainText('Tags');
+
+  await page.goto(manualPage('/blog/archive'));
+  await expect(page.locator('h1')).toContainText('Arquivo');
+
+  // The date layout is a label too.
+  await page.goto(manualPage('/blog/fixture-release'));
+  await expect(page.locator('.fastr-docs-blog-post__meta, .fastr-docs-blog-card__meta').first())
+    .toContainText(/\d{4}-\d{2}-\d{2}/);
+});

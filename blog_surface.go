@@ -79,6 +79,7 @@ func (r *Router) blogPublicPosts(prefix string) []*Route {
 func (r *Router) registerBlogViews(prefix string) error {
 	collection := r.blogCollection(prefix)
 	cfg := collection.cfg
+	labels := r.UIStrings().Blog
 	posts := r.blogPublicPosts(prefix)
 	nextOrder := cfg.PostOrderStart + len(posts) + 100
 	for _, route := range r.Routes() {
@@ -108,7 +109,7 @@ func (r *Router) registerBlogViews(prefix string) error {
 	}
 
 	if !cfg.DisableSearch {
-		if err := add(joinPath(prefix, "search"), blogView{kind: blogViewSearch}, "Search", "Search the published posts.", nextOrder, func(ctx context.Context) render.HTML {
+		if err := add(joinPath(prefix, "search"), blogView{kind: blogViewSearch}, labels.Search, labels.SearchDescription, nextOrder, func(ctx context.Context) render.HTML {
 			return r.renderBlogSearch(prefix, ctx)
 		}); err != nil {
 			return err
@@ -116,37 +117,37 @@ func (r *Router) registerBlogViews(prefix string) error {
 		nextOrder++
 	}
 	if !cfg.DisableArchive {
-		if err := add(joinPath(prefix, "archive"), blogView{kind: blogViewArchive}, "Archive", "Browse every published post by year.", nextOrder, nil); err != nil {
+		if err := add(joinPath(prefix, "archive"), blogView{kind: blogViewArchive}, labels.Archive, labels.ArchiveDescription, nextOrder, nil); err != nil {
 			return err
 		}
 		nextOrder++
 		for yearIndex, year := range blogYears(posts) {
 			path := joinPath(prefix, "archive/"+year)
-			if err := add(path, blogView{kind: blogViewArchive, term: year}, year+" archive", "Posts published in "+year+".", yearIndex+1, nil); err != nil {
+			if err := add(path, blogView{kind: blogViewArchive, term: year}, formatLabel(labels.ArchiveYear, year), formatLabel(labels.ArchiveYearDescription, year), yearIndex+1, nil); err != nil {
 				return err
 			}
 		}
 	}
 	if !cfg.DisableTags {
-		if err := add(joinPath(prefix, "tags"), blogView{kind: blogViewTags}, "Tags", "Browse posts by topic.", nextOrder, nil); err != nil {
+		if err := add(joinPath(prefix, "tags"), blogView{kind: blogViewTags}, labels.Tags, labels.TagsDescription, nextOrder, nil); err != nil {
 			return err
 		}
 		nextOrder++
 		for index, tag := range blogTerms(posts, false) {
 			path := joinPath(prefix, "tags/"+blogSlug(tag))
-			if err := add(path, blogView{kind: blogViewTag, term: tag}, tag, "Posts tagged "+tag+".", index+1, nil); err != nil {
+			if err := add(path, blogView{kind: blogViewTag, term: tag}, tag, formatLabel(labels.TagDescription, tag), index+1, nil); err != nil {
 				return err
 			}
 		}
 	}
 	if !cfg.DisableAuthors {
-		if err := add(joinPath(prefix, "authors"), blogView{kind: blogViewAuthors}, "Authors", "Browse posts by author.", nextOrder, nil); err != nil {
+		if err := add(joinPath(prefix, "authors"), blogView{kind: blogViewAuthors}, labels.Authors, labels.AuthorsDescription, nextOrder, nil); err != nil {
 			return err
 		}
 		nextOrder++
 		for index, author := range blogTerms(posts, true) {
 			path := joinPath(prefix, "authors/"+blogSlug(author))
-			if err := add(path, blogView{kind: blogViewAuthor, term: author}, author, "Posts by "+author+".", index+1, nil); err != nil {
+			if err := add(path, blogView{kind: blogViewAuthor, term: author}, author, formatLabel(labels.AuthorDescription, author), index+1, nil); err != nil {
 				return err
 			}
 		}
@@ -154,7 +155,7 @@ func (r *Router) registerBlogViews(prefix string) error {
 
 	for page := 2; page <= blogPageCount(len(posts), cfg.PostsPerPage); page++ {
 		path := joinPath(prefix, "page/"+strconv.Itoa(page))
-		if err := add(path, blogView{kind: blogViewPage, page: page}, "Blog · Page "+strconv.Itoa(page), "More posts from "+collection.cfg.Title+".", nextOrder, nil); err != nil {
+		if err := add(path, blogView{kind: blogViewPage, page: page}, formatLabel(labels.PagedTitle, page), formatLabel(labels.PageDescription, collection.cfg.Title), nextOrder, nil); err != nil {
 			return err
 		}
 		nextOrder++
@@ -256,7 +257,7 @@ func (r *Router) renderBlogArchive(prefix string, page int, indexBody string) re
 	collection := r.blogCollection(prefix)
 	posts := r.blogPublicPosts(prefix)
 	intro := strings.TrimSpace(stripLeadingMarkdownTitle(indexBody))
-	return r.blogArchiveShell(prefix, "Blog", collection.cfg.Description, intro, posts, page, true)
+	return r.blogArchiveShell(prefix, r.UIStrings().Blog.Title, collection.cfg.Description, intro, posts, page, true)
 }
 
 func (r *Router) renderBlogArchiveView(prefix, year string) render.HTML {
@@ -264,16 +265,17 @@ func (r *Router) renderBlogArchiveView(prefix, year string) render.HTML {
 	if year != "" {
 		posts = blogPostsForYear(posts, year)
 	}
-	description := "Browse every published post by year."
+	labels := r.UIStrings().Blog
+	description := labels.ArchiveDescription
 	if year != "" {
-		description = "Posts published in " + year + "."
+		description = formatLabel(labels.ArchiveYearDescription, year)
 	}
-	return r.blogArchiveShell(prefix, "Archive", description, "", posts, 1, false)
+	return r.blogArchiveShell(prefix, labels.Archive, description, "", posts, 1, false)
 }
 
 func (r *Router) renderBlogArchivePage(prefix string, page int) render.HTML {
 	collection := r.blogCollection(prefix)
-	return r.blogArchiveShell(prefix, "Page "+strconv.Itoa(page), "More posts from "+collection.cfg.Title+".", "", r.blogPublicPosts(prefix), page, false)
+	return r.blogArchiveShell(prefix, formatLabel(r.UIStrings().Blog.Page, page), formatLabel(r.UIStrings().Blog.PageDescription, collection.cfg.Title), "", r.blogPublicPosts(prefix), page, false)
 }
 
 func blogPostsForYear(posts []*Route, year string) []*Route {
@@ -287,6 +289,7 @@ func blogPostsForYear(posts []*Route, year string) []*Route {
 }
 
 func (r *Router) blogArchiveShell(prefix, title, description, intro string, posts []*Route, page int, showFeatured bool) render.HTML {
+	labels := r.UIStrings().Blog
 	collection := r.blogCollection(prefix)
 	if page < 1 {
 		page = 1
@@ -309,13 +312,13 @@ func (r *Router) blogArchiveShell(prefix, title, description, intro string, post
 	}
 	selected := posts[start:end]
 	listTitle := title
-	if title == "Blog" {
-		listTitle = "Latest posts"
+	if title == r.UIStrings().Blog.Title {
+		listTitle = r.UIStrings().Blog.LatestPosts
 	}
 
 	children := []render.HTML{
 		render.Tag("header", map[string]string{"class": "fastr-docs-blog__header"},
-			render.Tag("p", map[string]string{"class": "fastr-docs-blog__eyebrow"}, render.Text("Publication")),
+			render.Tag("p", map[string]string{"class": "fastr-docs-blog__eyebrow"}, render.Text(labels.Publication)),
 			render.Tag("h1", nil, render.Text(title)),
 			render.Tag("p", map[string]string{"class": "fastr-docs-blog__lede"}, render.Text(description)),
 			render.Tag("div", map[string]string{"class": "fastr-docs-blog__toolbar"}, r.blogToolbar(prefix)),
@@ -327,7 +330,7 @@ func (r *Router) blogArchiveShell(prefix, title, description, intro string, post
 	if showFeatured && len(posts) > 0 {
 		children = append(children,
 			render.Tag("section", map[string]string{"class": "fastr-docs-blog__featured", "aria-labelledby": "fastr-docs-blog-featured"},
-				render.Tag("p", map[string]string{"class": "fastr-docs-blog__section-label", "id": "fastr-docs-blog-featured"}, render.Text("Featured")),
+				render.Tag("p", map[string]string{"class": "fastr-docs-blog__section-label", "id": "fastr-docs-blog-featured"}, render.Text(labels.Featured)),
 				r.blogPostCard(posts[0], true),
 			),
 		)
@@ -342,7 +345,7 @@ func (r *Router) blogArchiveShell(prefix, title, description, intro string, post
 		),
 	)
 	if len(selected) == 0 {
-		children = append(children, render.Tag("p", map[string]string{"class": "fastr-docs-blog__empty"}, render.Text("No posts are published here yet.")))
+		children = append(children, render.Tag("p", map[string]string{"class": "fastr-docs-blog__empty"}, render.Text(r.UIStrings().Blog.NoPostsYet)))
 	}
 	if pageCount > 1 {
 		children = append(children, r.blogPagination(prefix, page, pageCount))
@@ -351,23 +354,24 @@ func (r *Router) blogArchiveShell(prefix, title, description, intro string, post
 }
 
 func (r *Router) blogToolbar(prefix string) render.HTML {
+	labels := r.UIStrings().Blog
 	collection := r.blogCollection(prefix)
 	links := []render.HTML{
-		render.Tag("a", map[string]string{"href": prefix, "class": "fastr-docs-blog__toolbar-link"}, render.Text("Latest")),
+		render.Tag("a", map[string]string{"href": prefix, "class": "fastr-docs-blog__toolbar-link"}, render.Text(labels.Latest)),
 	}
 	if !collection.cfg.DisableArchive {
-		links = append(links, render.Tag("a", map[string]string{"href": joinPath(prefix, "archive"), "class": "fastr-docs-blog__toolbar-link"}, render.Text("Archive")))
+		links = append(links, render.Tag("a", map[string]string{"href": joinPath(prefix, "archive"), "class": "fastr-docs-blog__toolbar-link"}, render.Text(labels.Archive)))
 	}
 	if !collection.cfg.DisableTags {
-		links = append(links, render.Tag("a", map[string]string{"href": joinPath(prefix, "tags"), "class": "fastr-docs-blog__toolbar-link"}, render.Text("Tags")))
+		links = append(links, render.Tag("a", map[string]string{"href": joinPath(prefix, "tags"), "class": "fastr-docs-blog__toolbar-link"}, render.Text(labels.Tags)))
 	}
 	if !collection.cfg.DisableAuthors {
-		links = append(links, render.Tag("a", map[string]string{"href": joinPath(prefix, "authors"), "class": "fastr-docs-blog__toolbar-link"}, render.Text("Authors")))
+		links = append(links, render.Tag("a", map[string]string{"href": joinPath(prefix, "authors"), "class": "fastr-docs-blog__toolbar-link"}, render.Text(labels.Authors)))
 	}
 	if !collection.cfg.DisableSearch {
-		links = append(links, render.Tag("a", map[string]string{"href": joinPath(prefix, "search"), "class": "fastr-docs-blog__toolbar-link"}, render.Text("Search")))
+		links = append(links, render.Tag("a", map[string]string{"href": joinPath(prefix, "search"), "class": "fastr-docs-blog__toolbar-link"}, render.Text(labels.Search)))
 	}
-	links = append(links, render.Tag("a", map[string]string{"href": joinPath(prefix, "feed.xml"), "class": "fastr-docs-blog__feed-link", "type": "application/rss+xml"}, render.Text("RSS")))
+	links = append(links, render.Tag("a", map[string]string{"href": joinPath(prefix, "feed.xml"), "class": "fastr-docs-blog__feed-link", "type": "application/rss+xml"}, render.Text(labels.Feed)))
 	return render.Tag("nav", map[string]string{"class": "fastr-docs-blog__toolbar-nav", "aria-label": "Blog views"}, links...)
 }
 
@@ -383,7 +387,7 @@ func (r *Router) blogPostCard(post *Route, featured bool) render.HTML {
 	if post == nil {
 		return render.Text("")
 	}
-	meta := render.Tag("div", map[string]string{"class": "fastr-docs-blog-card__meta"}, render.Text(formatBlogDate(post.Metadata.DatePublished)+" · "+blogReadingTime(post)+" min read"))
+	meta := render.Tag("div", map[string]string{"class": "fastr-docs-blog-card__meta"}, render.Text(r.formatBlogDate(post.Metadata.DatePublished)+" · "+formatLabel(r.UIStrings().Blog.ReadingTime, blogReadingTime(post))))
 	header := render.Join(meta, render.Tag("h3", nil, render.Text(post.Title)))
 	excerpt := post.Metadata.Excerpt
 	if excerpt == "" {
@@ -404,7 +408,7 @@ func (r *Router) blogPostCard(post *Route, featured bool) render.HTML {
 	// of inside its anchor so the generated HTML remains valid and both the
 	// post link and each topic filter stay independently keyboard accessible.
 	tagRow := render.Tag("div", map[string]string{"class": "fastr-docs-blog-card__tags", "aria-label": "Topics"},
-		render.Tag("span", map[string]string{"class": "ui-visually-hidden"}, render.Text("Topics: ")),
+		render.Tag("span", map[string]string{"class": "ui-visually-hidden"}, render.Text(r.UIStrings().Blog.TopicsPrefix)),
 		render.Join(tags...))
 	return render.Tag("div", map[string]string{"class": "fastr-docs-blog-card-wrap"}, card, tagRow)
 }
@@ -453,18 +457,19 @@ func blogShareTargetID(route *Route) string {
 }
 
 func (r *Router) blogPostActions(route *Route) render.HTML {
+	labels := r.UIStrings().Blog
 	targetID := blogShareTargetID(route)
 	return corehtml.Group(corehtml.GroupConfig{
 		Role:       "group",
-		AriaLabel:  "Post actions",
+		AriaLabel:  labels.PostActions,
 		Class:      "fastr-docs-blog-post__actions",
 		ExtraAttrs: corehtml.Attrs{"data-fastr-docs-share-surface": ""},
 	},
 		ui.Button(ui.ButtonConfig{
-			Label:     "Share",
+			Label:     labels.Share,
 			Variant:   ui.ButtonGhost,
 			Class:     "fastr-docs-blog-post__share",
-			AriaLabel: "Share this post",
+			AriaLabel: labels.ShareThisPost,
 			ExtraAttrs: corehtml.Attrs{
 				"data-fastr-docs-share":       "",
 				"data-fastr-docs-share-title": route.Title,
@@ -475,10 +480,10 @@ func (r *Router) blogPostActions(route *Route) render.HTML {
 		ui.CopyButton(ui.CopyButtonConfig{
 			Target:       "#" + targetID,
 			IconOnly:     true,
-			AriaLabel:    "Copy link",
-			AnnounceText: "Link copied",
+			AriaLabel:    labels.CopyLink,
+			AnnounceText: labels.LinkCopied,
 			ToastOnCopy:  true,
-			ToastTitle:   "Link copied",
+			ToastTitle:   labels.LinkCopied,
 			Class:        "fastr-docs-blog-post__copy",
 		}),
 		render.Tag("span", map[string]string{
@@ -511,7 +516,7 @@ func (r *Router) blogPagination(prefix string, page, pageCount int) render.HTML 
 		links = append(links, render.Tag("a", map[string]string{"href": blogPageHref(prefix, page-1), "class": "fastr-docs-blog__pager-link"}, render.Text("← Newer posts")))
 	}
 	if page < pageCount {
-		links = append(links, render.Tag("a", map[string]string{"href": blogPageHref(prefix, page+1), "class": "fastr-docs-blog__pager-link"}, render.Text("Older posts →")))
+		links = append(links, render.Tag("a", map[string]string{"href": blogPageHref(prefix, page+1), "class": "fastr-docs-blog__pager-link"}, render.Text(r.UIStrings().Blog.OlderPosts)))
 	}
 	return render.Tag("nav", map[string]string{"class": "fastr-docs-blog__pagination", "aria-label": "Blog pagination"}, links...)
 }
@@ -524,6 +529,7 @@ func blogPageHref(prefix string, page int) string {
 }
 
 func (r *Router) renderBlogSearch(prefix string, ctx context.Context) render.HTML {
+	labels := r.UIStrings().Blog
 	query := ""
 	if ctx != nil {
 		query = strings.TrimSpace(uiapp.QueryFromContext(ctx).Get("q"))
@@ -538,22 +544,22 @@ func (r *Router) renderBlogSearch(prefix string, ctx context.Context) render.HTM
 			}
 		}
 	}
-	label := "Search the publication"
+	label := labels.SearchThePublication
 	if query != "" {
-		label = "Results for “" + query + "”"
+		label = formatLabel(labels.ResultsFor, query)
 	}
 	body := []render.HTML{
 		render.Tag("header", map[string]string{"class": "fastr-docs-blog__header"},
-			render.Tag("p", map[string]string{"class": "fastr-docs-blog__eyebrow"}, render.Text("Publication")),
-			render.Tag("h1", nil, render.Text("Search")),
-			render.Tag("p", map[string]string{"class": "fastr-docs-blog__lede"}, render.Text("Find release notes, essays, and implementation updates.")),
+			render.Tag("p", map[string]string{"class": "fastr-docs-blog__eyebrow"}, render.Text(r.UIStrings().Blog.Publication)),
+			render.Tag("h1", nil, render.Text(labels.Search)),
+			render.Tag("p", map[string]string{"class": "fastr-docs-blog__lede"}, render.Text(labels.Lede)),
 			render.Tag("form", map[string]string{"class": "fastr-docs-blog-search", "action": joinPath(prefix, "search"), "method": "get", "role": "search", "data-fastr-docs-blog-search-form": ""},
-				render.Tag("label", map[string]string{"for": "fastr-docs-blog-search-input"}, render.Text("Search posts")),
-				render.Tag("input", map[string]string{"id": "fastr-docs-blog-search-input", "name": "q", "type": "search", "value": query, "placeholder": "Search posts", "autocomplete": "off", "data-fastr-docs-blog-search-input": ""}),
-				render.Tag("button", map[string]string{"type": "submit"}, render.Text("Search")),
+				render.Tag("label", map[string]string{"for": "fastr-docs-blog-search-input"}, render.Text(labels.SearchPosts)),
+				render.Tag("input", map[string]string{"id": "fastr-docs-blog-search-input", "name": "q", "type": "search", "value": query, "placeholder": labels.SearchPosts, "autocomplete": "off", "data-fastr-docs-blog-search-input": ""}),
+				render.Tag("button", map[string]string{"type": "submit"}, render.Text(labels.Search)),
 			),
 			render.Tag("div", map[string]string{"class": "fastr-docs-blog__toolbar"}, r.blogToolbar(prefix)),
-			render.Tag("div", map[string]string{"class": "fastr-docs-blog__search-summary", "data-fastr-docs-blog-search-summary": ""}, render.Text(label+" · "+strconv.Itoa(len(results))+" matches")),
+			render.Tag("div", map[string]string{"class": "fastr-docs-blog__search-summary", "data-fastr-docs-blog-search-summary": ""}, render.Text(label+" · "+formatLabel(labels.MatchesSummary, len(results)))),
 		),
 	}
 	searchItems := r.blogSearchPostCards(posts, query)
@@ -564,8 +570,16 @@ func (r *Router) renderBlogSearch(prefix string, ctx context.Context) render.HTM
 	if len(results) > 0 {
 		emptyAttrs["hidden"] = ""
 	}
-	body = append(body, render.Tag("p", emptyAttrs, render.Text("No posts matched that search.")))
-	return render.Tag("div", map[string]string{"class": "fastr-docs-blog-page fastr-docs-blog-page--search", "data-blog-view": "search", "data-fastr-docs-blog-search": ""}, body...)
+	body = append(body, render.Tag("p", emptyAttrs, render.Text(labels.NoPostsMatched)))
+	// The client-side filter rewrites the summary as you type, so it needs the
+	// same labels the server rendered.
+	return render.Tag("div", map[string]string{
+		"class": "fastr-docs-blog-page fastr-docs-blog-page--search", "data-blog-view": "search",
+		"data-fastr-docs-blog-search":        "",
+		"data-fastr-docs-blog-results-for":   labels.ResultsFor,
+		"data-fastr-docs-blog-search-label":  labels.SearchThePublication,
+		"data-fastr-docs-blog-match-summary": labels.MatchesSummary,
+	}, body...)
 }
 
 func (r *Router) blogSearchPostCards(posts []*Route, query string) []render.HTML {
@@ -621,11 +635,12 @@ func blogQueryMatch(post *Route, query string) bool {
 }
 
 func (r *Router) renderBlogTerms(prefix string, authors bool) render.HTML {
-	label := "Tags"
-	termLabel := "topics"
+	labels := r.UIStrings().Blog
+	label := labels.Tags
+	termLabel := strings.ToLower(labels.Tags)
 	if authors {
-		label = "Authors"
-		termLabel = "authors"
+		label = labels.Authors
+		termLabel = strings.ToLower(labels.Authors)
 	}
 	terms := blogTerms(r.blogPublicPosts(prefix), authors)
 	items := make([]render.HTML, 0, len(terms))
@@ -636,30 +651,31 @@ func (r *Router) renderBlogTerms(prefix string, authors bool) render.HTML {
 		}
 		count := len(r.blogPostsForTerm(prefix, authors, term))
 		items = append(items, render.Tag("a", map[string]string{"href": joinPath(prefix, pathPart+"/"+blogSlug(term)), "class": "fastr-docs-blog-term"},
-			render.Tag("strong", nil, render.Text(term)), render.Tag("span", nil, render.Text(strconv.Itoa(count)+" posts"))))
+			render.Tag("strong", nil, render.Text(term)), render.Tag("span", nil, render.Text(formatLabel(labels.PostCount, count)))))
 	}
 	body := []render.HTML{
 		render.Tag("header", map[string]string{"class": "fastr-docs-blog__header"},
-			render.Tag("p", map[string]string{"class": "fastr-docs-blog__eyebrow"}, render.Text("Publication")),
+			render.Tag("p", map[string]string{"class": "fastr-docs-blog__eyebrow"}, render.Text(r.UIStrings().Blog.Publication)),
 			render.Tag("h1", nil, render.Text(label)),
-			render.Tag("p", map[string]string{"class": "fastr-docs-blog__lede"}, render.Text("Explore "+termLabel+" across the publication.")),
+			render.Tag("p", map[string]string{"class": "fastr-docs-blog__lede"}, render.Text(formatLabel(labels.ExploreTerms, termLabel))),
 			render.Tag("div", map[string]string{"class": "fastr-docs-blog__toolbar"}, r.blogToolbar(prefix)),
 		),
 		render.Tag("div", map[string]string{"class": "fastr-docs-blog-terms"}, items...),
 	}
 	if len(items) == 0 {
-		body = append(body, render.Tag("p", map[string]string{"class": "fastr-docs-blog__empty"}, render.Text("Nothing has been classified yet.")))
+		body = append(body, render.Tag("p", map[string]string{"class": "fastr-docs-blog__empty"}, render.Text(r.UIStrings().Blog.NothingClassified)))
 	}
 	return render.Tag("div", map[string]string{"class": "fastr-docs-blog-page fastr-docs-blog-page--terms", "data-blog-view": strings.ToLower(label)}, body...)
 }
 
 func (r *Router) renderBlogTerm(prefix string, authors bool, term string) render.HTML {
+	labels := r.UIStrings().Blog
 	posts := r.blogPostsForTerm(prefix, authors, term)
-	label := "Tag"
+	label := labels.Tag
 	if authors {
-		label = "Author"
+		label = labels.Author
 	}
-	return r.blogArchiveShell(prefix, label+": "+term, "Published posts in this collection.", "", posts, 1, false)
+	return r.blogArchiveShell(prefix, label+": "+term, labels.CollectionDescription, "", posts, 1, false)
 }
 
 func (r *Router) blogPostsForTerm(prefix string, authors bool, term string) []*Route {
@@ -684,12 +700,12 @@ func (r *Router) wrapBlogPost(route *Route, body render.HTML, source string) ren
 	headings := markdownHeadings(source)
 	meta := route.Metadata
 	metaParts := []render.HTML{}
-	if date := formatBlogDate(meta.DatePublished); date != "" {
+	if date := r.formatBlogDate(meta.DatePublished); date != "" {
 		metaParts = append(metaParts, render.Tag("span", map[string]string{"class": "fastr-docs-blog-post__meta-item"},
-			render.Text("Published "), render.Tag("time", map[string]string{"datetime": meta.DatePublished}, render.Text(date))))
+			render.Text(r.UIStrings().Published+" "), render.Tag("time", map[string]string{"datetime": meta.DatePublished}, render.Text(date))))
 	}
 	if authors := r.blogAuthorLinks(route); len(authors) > 0 {
-		authorParts := []render.HTML{render.Text("By ")}
+		authorParts := []render.HTML{render.Text(r.UIStrings().By + " ")}
 		for index, author := range authors {
 			if index > 0 {
 				authorParts = append(authorParts, render.Text(", "))
@@ -698,14 +714,14 @@ func (r *Router) wrapBlogPost(route *Route, body render.HTML, source string) ren
 		}
 		metaParts = append(metaParts, render.Tag("span", map[string]string{"class": "fastr-docs-blog-post__meta-item"}, render.Join(authorParts...)))
 	}
-	if modified := formatBlogDate(meta.DateModified); modified != "" && modified != formatBlogDate(meta.DatePublished) {
+	if modified := r.formatBlogDate(meta.DateModified); modified != "" && modified != r.formatBlogDate(meta.DatePublished) {
 		metaParts = append(metaParts, render.Tag("span", map[string]string{"class": "fastr-docs-blog-post__meta-item"},
-			render.Text("Updated "), render.Tag("time", map[string]string{"datetime": meta.DateModified}, render.Text(modified))))
+			render.Text(r.UIStrings().LastUpdated+" "), render.Tag("time", map[string]string{"datetime": meta.DateModified}, render.Text(modified))))
 	}
-	metaParts = append(metaParts, render.Text(blogReadingTime(route)+" min read"))
+	metaParts = append(metaParts, render.Text(formatLabel(r.UIStrings().Blog.ReadingTime, blogReadingTime(route))))
 	titleID := blogShareTargetID(route) + "-title"
 	header := render.Tag("header", map[string]string{"class": "fastr-docs-blog-post__header"},
-		render.Tag("p", map[string]string{"class": "fastr-docs-blog__eyebrow"}, render.Text("Publication")),
+		render.Tag("p", map[string]string{"class": "fastr-docs-blog__eyebrow"}, render.Text(r.UIStrings().Blog.Publication)),
 		render.Tag("h1", map[string]string{"id": titleID}, render.Text(route.Title)),
 		render.Tag("p", map[string]string{"class": "fastr-docs-blog-post__lede"}, render.Text(route.Description)),
 		render.Tag("div", map[string]string{"class": "fastr-docs-blog-post__meta"}, joinWithDot(metaParts...)),
@@ -728,12 +744,12 @@ func (r *Router) wrapBlogPost(route *Route, body render.HTML, source string) ren
 			items = append(items, ui.RailItem{Anchor: heading.ID, Text: heading.Title})
 		}
 		rail := ui.AnchoredRail(ui.AnchoredRailConfig{
-			Label: "On this page", Items: items,
+			Label: r.UIStrings().OnThisPage, Items: items,
 			ObserveSelector: ".fastr-docs-blog-post__content",
 			TargetSelector:  "h2[id], h3[id]",
 			Class:           "fastr-docs-toc fastr-docs-toc--rail",
 		})
-		children = append(children, render.Tag("div", map[string]string{"class": "fastr-docs-blog-post__grid"}, article, corehtml.Aside(corehtml.AsideConfig{Label: "On this page", Class: "fastr-docs-blog-post__toc"}, rail, r.docsTocSelect(headings))))
+		children = append(children, render.Tag("div", map[string]string{"class": "fastr-docs-blog-post__grid"}, article, corehtml.Aside(corehtml.AsideConfig{Label: r.UIStrings().OnThisPage, Class: "fastr-docs-blog-post__toc"}, rail, r.docsTocSelect(headings))))
 	} else {
 		children = append(children, article)
 	}
@@ -745,7 +761,7 @@ func (r *Router) wrapBlogPost(route *Route, body render.HTML, source string) ren
 	}
 	if related := r.blogRelated(route); len(related) > 0 {
 		children = append(children, corehtml.Section(corehtml.SectionConfig{Class: "fastr-docs-blog-post__related", LabelledBy: "fastr-docs-blog-related"},
-			render.Tag("h2", map[string]string{"id": "fastr-docs-blog-related"}, render.Text("Keep reading")),
+			render.Tag("h2", map[string]string{"id": "fastr-docs-blog-related"}, render.Text(r.UIStrings().Blog.KeepReading)),
 			render.Tag("div", map[string]string{"class": "fastr-docs-blog__cards"}, r.blogPostCards(related, false)...),
 		))
 	}
@@ -772,7 +788,7 @@ func (r *Router) blogCrumbs(route *Route) []render.HTML {
 		crumbs = append(crumbs, render.Text(" / "), render.Tag("a", map[string]string{"href": prefix}, render.Text(r.blogCollection(prefix).cfg.Title)))
 	}
 	crumbs = append(crumbs, render.Text(" / "), render.Tag("span", map[string]string{"aria-current": "page"}, render.Text(route.Title)))
-	return []render.HTML{corehtml.Nav(corehtml.NavConfig{Label: "Breadcrumb"}, crumbs...)}
+	return []render.HTML{corehtml.Nav(corehtml.NavConfig{Label: r.UIStrings().Blog.Breadcrumb}, crumbs...)}
 }
 
 func (r *Router) blogPager(route *Route) *ui.DocPager {
@@ -788,7 +804,7 @@ func (r *Router) blogPager(route *Route) *ui.DocPager {
 	if index < 0 {
 		return nil
 	}
-	pager := &ui.DocPager{PrevHref: prefix, PrevLabel: "All posts"}
+	pager := &ui.DocPager{PrevHref: prefix, PrevLabel: r.UIStrings().Blog.AllPosts}
 	if index+1 < len(posts) {
 		pager.PrevHref = posts[index+1].Path
 		pager.PrevLabel = posts[index+1].Title
@@ -843,13 +859,13 @@ func blogReadingTime(route *Route) string {
 	return strconv.Itoa(minutes)
 }
 
-func formatBlogDate(raw string) string {
+func (r *Router) formatBlogDate(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
 	}
 	if date, ok := parseBlogDate(raw); ok {
-		return date.Format("Jan 2, 2006")
+		return r.UIStrings().formatDate(date)
 	}
 	return raw
 }
@@ -873,6 +889,8 @@ type blogSidebar struct {
 	prefix string
 }
 
+func (s *blogSidebar) labelSet() BlogStrings { return s.router.UIStrings().Blog }
+
 func (s *blogSidebar) Render() render.HTML { return s.render("") }
 
 func (s *blogSidebar) RenderCtx(ctx context.Context) render.HTML {
@@ -893,20 +911,20 @@ func (s *blogSidebar) config(currentPath, drawer string) ui.SidebarConfig {
 	}
 	posts := s.router.blogPublicPosts(s.prefix)
 	items := []ui.SidebarItem{
-		{Label: "All posts", Href: s.prefix, Icon: sidebarIcon(KindPage, NavBadge{}, s.prefix, false), Active: strings.TrimSpace(currentPath) == "" || normalizePath(currentPath) == normalizePath(s.prefix)},
+		{Label: s.labelSet().AllPosts, Href: s.prefix, Icon: sidebarIcon(KindPage, NavBadge{}, s.prefix, false), Active: strings.TrimSpace(currentPath) == "" || normalizePath(currentPath) == normalizePath(s.prefix)},
 	}
 	collection := s.router.blogCollection(s.prefix)
 	if !collection.cfg.DisableArchive {
-		items = append(items, ui.SidebarItem{Label: "Archive", Href: joinPath(s.prefix, "archive"), Icon: sidebarIcon(KindPage, NavBadge{}, joinPath(s.prefix, "archive"), false), Active: normalizePath(currentPath) == joinPath(s.prefix, "archive"), MatchPath: joinPath(s.prefix, "archive")})
+		items = append(items, ui.SidebarItem{Label: s.labelSet().Archive, Href: joinPath(s.prefix, "archive"), Icon: sidebarIcon(KindPage, NavBadge{}, joinPath(s.prefix, "archive"), false), Active: normalizePath(currentPath) == joinPath(s.prefix, "archive"), MatchPath: joinPath(s.prefix, "archive")})
 	}
 	if !collection.cfg.DisableTags {
-		items = append(items, ui.SidebarItem{Label: "Tags", Href: joinPath(s.prefix, "tags"), Icon: sidebarIcon(KindPage, NavBadge{}, joinPath(s.prefix, "tags"), false), MatchPath: joinPath(s.prefix, "tags")})
+		items = append(items, ui.SidebarItem{Label: s.labelSet().Tags, Href: joinPath(s.prefix, "tags"), Icon: sidebarIcon(KindPage, NavBadge{}, joinPath(s.prefix, "tags"), false), MatchPath: joinPath(s.prefix, "tags")})
 	}
 	if !collection.cfg.DisableAuthors {
-		items = append(items, ui.SidebarItem{Label: "Authors", Href: joinPath(s.prefix, "authors"), Icon: sidebarIcon(KindPage, NavBadge{}, joinPath(s.prefix, "authors"), false), MatchPath: joinPath(s.prefix, "authors")})
+		items = append(items, ui.SidebarItem{Label: s.labelSet().Authors, Href: joinPath(s.prefix, "authors"), Icon: sidebarIcon(KindPage, NavBadge{}, joinPath(s.prefix, "authors"), false), MatchPath: joinPath(s.prefix, "authors")})
 	}
 	if !collection.cfg.DisableSearch {
-		items = append(items, ui.SidebarItem{Label: "Search", Href: joinPath(s.prefix, "search"), Icon: sidebarIcon(KindPage, NavBadge{}, joinPath(s.prefix, "search"), false), MatchPath: joinPath(s.prefix, "search")})
+		items = append(items, ui.SidebarItem{Label: s.labelSet().Search, Href: joinPath(s.prefix, "search"), Icon: sidebarIcon(KindPage, NavBadge{}, joinPath(s.prefix, "search"), false), MatchPath: joinPath(s.prefix, "search")})
 	}
 	if len(posts) > 0 {
 		recent := posts
@@ -917,10 +935,10 @@ func (s *blogSidebar) config(currentPath, drawer string) ui.SidebarConfig {
 		for _, post := range recent {
 			recentItems = append(recentItems, ui.SidebarItem{Label: post.Title, Href: post.Path, Icon: sidebarIcon(KindPage, NavBadge{}, post.Path, false), Active: normalizePath(currentPath) == normalizePath(post.Path)})
 		}
-		items = append(items, ui.SidebarItem{Label: "Recent posts", Icon: sidebarIcon(KindGroup, NavBadge{}, s.prefix, false), Children: recentItems})
+		items = append(items, ui.SidebarItem{Label: s.labelSet().RecentPosts, Icon: sidebarIcon(KindGroup, NavBadge{}, s.prefix, false), Children: recentItems})
 	}
 	return ui.SidebarConfig{
-		Title: "Blog", NavLabel: "Blog navigation", Items: items,
+		Title: s.labelSet().Title, NavLabel: s.labelSet().Navigation, Items: items,
 		CurrentPath: currentPath, DrawerName: drawer, SuppressDrawerTrigger: true,
 	}
 }

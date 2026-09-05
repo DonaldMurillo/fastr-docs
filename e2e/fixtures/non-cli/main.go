@@ -107,6 +107,19 @@ func buildSite() (*builtSite, error) {
 		// This fixture serves the docs assets from /__manual, not the starter's
 		// /__fastr-docs prefix, so the palette needs the matching index URL.
 		docs.WithSearchIndexPath("/__manual/search.json"),
+		// Exercises the translated chrome end to end. Every one of these is a
+		// label that used to be hardcoded English somewhere in the renderers.
+		docs.WithUIStrings(docs.UIStrings{
+			OnThisPage: "Nesta pagina",
+			DateFormat: "2006-01-02",
+			Blog: docs.BlogStrings{
+				Archive:  "Arquivo",
+				Tags:     "Etiquetas",
+				Authors:  "Autores",
+				AllPosts: "Todos os posts",
+			},
+			NotFound: docs.NotFoundStrings{Heading: "Pagina nao encontrada"},
+		}),
 	)
 	if err := router.Use(docs.MarkdownComponentsPlugin{Components: map[string]docs.MarkdownComponent{
 		"note": func(props map[string]string, body render.HTML) render.HTML {

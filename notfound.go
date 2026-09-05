@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -20,6 +21,15 @@ import (
 type NotFoundScreen struct {
 	SiteName string
 	HomeHref string
+	// Strings translates the page. Empty fields keep the English defaults, so
+	// a host that does not localize passes nothing.
+	Strings NotFoundStrings
+}
+
+func (s NotFoundScreen) labels() NotFoundStrings {
+	merged := defaultUIStrings.NotFound
+	overlayStrings(reflect.ValueOf(&merged).Elem(), reflect.ValueOf(s.Strings))
+	return merged
 }
 
 func (s NotFoundScreen) Render() render.HTML {
@@ -38,19 +48,21 @@ func (s NotFoundScreen) render(path string) render.HTML {
 	if home == "" {
 		home = "/"
 	}
+	labels := s.labels()
 	name := s.SiteName
 	if name == "" {
-		name = "Documentation"
+		name = labels.SiteFallback
 	}
-	message := "This page does not exist."
+	message := render.Escape(labels.Message)
 	if path != "" {
-		message = "No page matches " + render.Escape(path) + "."
+		message = render.Escape(formatLabel(labels.MessageForURL, path))
 	}
 	return render.Raw(`<div class="fastr-docs-not-found">` +
 		`<p class="fastr-docs-not-found__code">404</p>` +
-		`<h1>Page not found</h1>` +
+		`<h1>` + render.Escape(labels.Heading) + `</h1>` +
 		`<p class="fastr-docs-not-found__message">` + message + `</p>` +
-		`<a class="fastr-docs-not-found__link" href="` + render.Escape(home) + `">Back to ` + render.Escape(name) + `</a>` +
+		`<a class="fastr-docs-not-found__link" href="` + render.Escape(home) + `">` +
+		render.Escape(formatLabel(labels.BackTo, name)) + `</a>` +
 		`</div>`)
 }
 
@@ -69,7 +81,7 @@ func WriteStaticNotFound(dir, basePath string, screen NotFoundScreen, css string
 		screen.HomeHref = basePath + "/"
 	}
 	if screen.SiteName == "" {
-		screen.SiteName = "Documentation"
+		screen.SiteName = screen.labels().SiteFallback
 	}
 	if strings.TrimSpace(css) == "" {
 		css = `body{box-sizing:border-box;margin:0;min-height:100vh;background:#0d1411;color:#eef1ed}.fastr-docs-not-found{box-sizing:border-box;max-width:620px;margin:0 auto;padding:12vh 19px;color:#eef1ed;font:16px/1.6 system-ui,sans-serif}.fastr-docs-not-found__code{margin:0 0 12px;color:#ff8b43;font:650 11px/1.2 ui-monospace,monospace;letter-spacing:.12em}.fastr-docs-not-found h1{margin:0 0 14px;font-size:clamp(40px,7vw,68px);line-height:1;letter-spacing:-.06em}.fastr-docs-not-found__message{margin:0 0 26px;color:#9ba79f}.fastr-docs-not-found__link{display:inline-flex;padding:10px 13px;border:1px solid #35423a;border-radius:7px;color:#ff8b43;background:#19211d;font-weight:650;text-decoration:none}`

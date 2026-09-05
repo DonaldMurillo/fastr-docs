@@ -352,7 +352,13 @@ const docsRuntimeJS = `(function(){
         if (match) visible++;
       });
       input.value = query;
-      if (summary) summary.textContent = (query ? 'Results for “' + query + '”' : 'Search the publication') + ' · ' + visible + ' matches';
+      if (summary) {
+        var resultsFor = root.getAttribute('data-fastr-docs-blog-results-for') || 'Results for “%s”';
+        var idleLabel = root.getAttribute('data-fastr-docs-blog-search-label') || 'Search the publication';
+        var matchLabel = root.getAttribute('data-fastr-docs-blog-match-summary') || '%d matches';
+        var heading = query ? resultsFor.replace('%s', query) : idleLabel;
+        summary.textContent = heading + ' · ' + matchLabel.replace('%d', visible);
+      }
       if (empty) empty.hidden = visible > 0;
     }
     function onSubmit(event){

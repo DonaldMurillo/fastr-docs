@@ -39,11 +39,23 @@ router := docs.NewRouter(docs.WithBrand(docs.BrandConfig{
 Empty fields fall back to the neutral mark and the Router's site name. Leave
 them empty rather than restating the default.
 
-## Labels
+## Labels and translation
 
-`WithUIStrings` translates the shell chrome (search, contents, language,
-version) without touching route titles or content metadata. Translated page
-content is the project's job; the framework does not invent translations.
+`WithUIStrings` translates every framework-owned label without touching route
+titles or content metadata. The struct is grouped: top-level fields for the
+shell, `Blog` for the publication surface, `NotFound` for the 404 page. Empty
+fields keep their English defaults, so translate one label at a time.
+
+Labels with `%s` or `%d` are format strings. Reorder the surrounding words
+freely; dropping the placeholder is tolerated rather than corrupting the page.
+
+`DateFormat` is a Go time layout. Go has no CLDR data, so the date format is
+the project's choice, not something derived from the locale.
+
+Translated page content is the project's job; the framework does not invent
+translations. `WithLocaleFallback("en")` keeps a partially translated site
+usable by serving the default-locale page where a translation is missing, and
+`fastr-docs check` logs which pages still need one.
 
 ## Token overrides
 

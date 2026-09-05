@@ -422,6 +422,9 @@ type Router struct {
 	markdownRaws          map[string]MarkdownRawComponent
 	gitMeta               *GitMetadataConfig
 	gitMetaResolved       bool
+	localeFallback        bool
+	fallbackLocale        string
+	localeFamilies        map[string]map[string]bool
 	brand                 BrandConfig
 	themeConfig           ThemeConfig
 	ui                    UIStrings
@@ -1703,6 +1706,8 @@ func (r *Router) addRoute(path string, route Route) (*Route, error) {
 }
 
 func (r *Router) rebuildTree() {
+	// The locale family index describes the tree, so it cannot outlive it.
+	r.localeFamilies = nil
 	r.roots = nil
 	for _, route := range r.routes {
 		route.Parent = nil
@@ -1809,7 +1814,7 @@ func (r *Router) routePublished(route *Route) bool {
 	if route.Metadata.Draft && !r.includeDrafts && !route.includeDrafts {
 		return false
 	}
-	if r.locale != "" && route.Metadata.Locale != "" && route.Metadata.Locale != r.locale {
+	if !r.localeAllows(route) {
 		return false
 	}
 	if r.version != "" && route.Metadata.Version != "" && route.Metadata.Version != r.version {

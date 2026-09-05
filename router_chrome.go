@@ -581,14 +581,82 @@ func (r *Router) sidebarRoots(currentPath string) []*Route {
 	if active == nil {
 		return r.roots
 	}
+	// A locale home such as /es is the translation of "/", not a section of the
+	// site. Left as the active root it wraps the whole translated tree in one
+	// extra level that the default locale does not have, so the reader gets
+	// "Espanol > Documentacion > ..." where an English reader gets
+	// "Documentation > ...". Descend past it to the section actually being read.
+	if active.Path != "/" && variantFamily(active) == "" {
+		if section := r.sectionForPath(active.Children, currentPath); section != nil {
+			active = section
+		}
+	}
 	if active.Path == "/" {
 		return r.roots
 	}
 	roots := make([]*Route, 0, 2)
-	if home := r.routes["/"]; home != nil && r.routeVisible(home) {
+	if home := r.localeHome(currentPath); home != nil && r.routeVisible(home) {
 		roots = append(roots, home)
 	}
 	return append(roots, active)
+}
+
+// sectionForPath finds the child that contains the current path, so a locale
+// home can hand over to the section beneath it.
+func (r *Router) sectionForPath(routes []*Route, currentPath string) *Route {
+	path := normalizePath(currentPath)
+	var best *Route
+	for _, route := range routes {
+		if !r.routeVisible(route) || !pathActive(route.Path, path) {
+			continue
+		}
+		if best == nil || len(route.Path) > len(best.Path) {
+			best = route
+		}
+	}
+	return best
+}
+
+// localeHome returns the home route for the language being read.
+//
+// Translating the label alone is worse than not translating it: the link still
+// took the reader to the default-locale home, so "Inicio" quietly left the
+// Spanish site.
+func (r *Router) localeHome(currentPath string) *Route {
+	home := r.routes["/"]
+	current := r.routeAtPath(currentPath)
+	if current == nil {
+		return home
+	}
+	locale := r.effectiveLocale(current)
+	if home != nil && r.effectiveLocale(home) == locale {
+		return home
+	}
+	if match := r.findVariant(r.roots, nil, "", locale); match != nil {
+		return match
+	}
+	return home
+}
+
+// homeFirst puts the home of the current locale at the top of the sidebar.
+//
+// Explicit Order decides the rest, but a translated home cannot compete on it:
+// /es sits among the site's top-level sections and would sort wherever its
+// number falls, landing "Inicio" under the section it introduces.
+func homeFirst(routes []*Route) []*Route {
+	for i, route := range routes {
+		if variantFamily(route) != "" {
+			continue
+		}
+		if i == 0 {
+			return routes
+		}
+		ordered := make([]*Route, 0, len(routes))
+		ordered = append(ordered, route)
+		ordered = append(ordered, routes[:i]...)
+		return append(ordered, routes[i+1:]...)
+	}
+	return routes
 }
 
 func (r *Router) rootForPath(currentPath string) *Route {
@@ -607,14 +675,21 @@ func (r *Router) rootForPath(currentPath string) *Route {
 
 func (r *Router) sidebarItems(routes []*Route, currentPath string) []ui.SidebarItem {
 	items := make([]ui.SidebarItem, 0, len(routes))
-	for _, route := range r.sorted(routes) {
+	for _, route := range homeFirst(r.sorted(routes)) {
 		if !r.routeVisible(route) {
 			continue
 		}
 		children := r.sidebarItems(route.Children, currentPath)
 		label := route.Title
-		if route.Path == "/" {
+		// Every locale has a home, and each one is labelled "Home" in its own
+		// language rather than by its route title.
+		//
+		// It is also a link, never a section. A locale home such as /es owns
+		// the whole translated tree, so recursing into it would list the entire
+		// site again underneath the word "Inicio".
+		if variantFamily(route) == "" {
 			label = r.uiAt(currentPath).Home
+			children = nil
 		}
 		item := ui.SidebarItem{
 			Label:    label,

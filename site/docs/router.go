@@ -222,7 +222,6 @@ func NewRouter() *docs.Router {
 		SourcePath:  siteFile("content", "es", "index-splash.md"),
 		Order:       6,
 		Offline:     true,
-		Badge:       docs.NavBadge{Label: "es", Tone: docs.NavBadgeToneAccent},
 	})
 	router.MustPage("/es/docs", docs.PageConfig{
 		Title:       "Documentación",

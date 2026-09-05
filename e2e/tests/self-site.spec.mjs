@@ -512,3 +512,42 @@ test('the selector appears without annotating the original pages', async ({ page
     expect(options, path).toEqual(['English', 'Español']);
   }
 });
+
+// The translated sidebar has to mirror the original, not nest it one level
+// deeper under the language's own name.
+test('the Spanish sidebar mirrors the English one', async ({ page }) => {
+  const read = async (path) => {
+    await page.goto(selfPage(path));
+    return page.evaluate(() => {
+      const links = [...document.querySelectorAll('.ui-sidebar a')];
+      return { count: links.length, first: { label: links[0]?.textContent.trim(), href: links[0]?.getAttribute('href') } };
+    });
+  };
+  const es = await read('/es/docs/build/math');
+  const en = await read('/docs/build/math');
+
+  expect(es.count).toBe(en.count);
+  // The home is first in both, and each one stays inside its own language.
+  expect(en.first).toEqual({ label: 'Home', href: '/' });
+  expect(es.first).toEqual({ label: 'Inicio', href: '/es' });
+
+  await page.goto(selfPage('/es/docs/build/math'));
+  const labels = await page.evaluate(() => [...document.querySelectorAll('.ui-sidebar a')].map((a) => a.textContent.trim()));
+  // "Español" was the locale home showing up as a section of the site.
+  expect(labels).not.toContain('Español');
+  expect(labels).toContain('Primeros pasos');
+  expect(labels.every((l) => l !== 'Getting started')).toBe(true);
+});
+
+// Following the home link from a Spanish page must not drop the reader into the
+// English site. Asserted by href rather than by clicking, because at mobile
+// widths the sidebar lives inside a drawer.
+test('the home link keeps a Spanish reader in Spanish', async ({ page }) => {
+  await page.goto(selfPage('/es/docs/build/math'));
+  const href = await page.locator('.ui-sidebar a').first().getAttribute('href');
+  expect(href).toBe('/es');
+
+  await page.goto(selfPage(href));
+  await expect(page.locator('.ui-sidebar__title')).toContainText('Contenido');
+  await expect(page.locator('h1')).toContainText('árbol de rutas');
+});

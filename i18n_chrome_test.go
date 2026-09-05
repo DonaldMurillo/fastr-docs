@@ -227,3 +227,42 @@ func TestTheDefaultLocaleRuleDoesNotChangeWhatPublishes(t *testing.T) {
 	}
 	t.Fatal("a route with no declared locale stopped publishing in an es build")
 }
+
+// A locale home is the translation of "/", not a section of the site. Left as
+// the active root it wraps the whole translated tree in one extra level the
+// default locale does not have.
+func TestALocaleHomeIsNotAnExtraSidebarLevel(t *testing.T) {
+	r := chromeLocaleSite(t)
+	spanish := r.sidebarItems(r.sidebarRoots("/es/guide"), "/es/guide")
+	english := r.sidebarItems(r.sidebarRoots("/guide"), "/guide")
+	if len(spanish) != len(english) {
+		t.Fatalf("Spanish sidebar has %d top-level items, English has %d", len(spanish), len(english))
+	}
+	for _, item := range spanish {
+		if item.Label == "Español" {
+			t.Fatalf("the locale home appeared as a section: %+v", spanish)
+		}
+	}
+}
+
+// Translating the home's label while leaving its link alone is worse than not
+// translating it: "Inicio" quietly took the reader out of the Spanish site.
+func TestTheHomeLinkStaysInTheReadersLanguage(t *testing.T) {
+	r := chromeLocaleSite(t)
+	for path, want := range map[string]string{"/es/guide": "/es", "/guide": "/"} {
+		items := r.sidebarItems(r.sidebarRoots(path), path)
+		if len(items) == 0 {
+			t.Fatalf("%s produced no sidebar", path)
+		}
+		// The home is always first, whatever explicit Order the routes carry.
+		if items[0].Href != want {
+			t.Fatalf("%s home link = %q, want %q", path, items[0].Href, want)
+		}
+		if len(items[0].Children) != 0 {
+			t.Fatalf("%s home is a section, not a link: %+v", path, items[0])
+		}
+	}
+	if got := r.sidebarItems(r.sidebarRoots("/es/guide"), "/es/guide")[0].Label; got != "Inicio" {
+		t.Fatalf("Spanish home label = %q", got)
+	}
+}

@@ -203,6 +203,26 @@ untouched, so an unmarked route still serves in every locale build.
 only, and a translated section is usually a group, so a `Routes()` search found
 nothing.
 
+### The locale home
+
+A locale home such as `/es` is the translation of `/`, not a section of the
+site. Two things follow, and both were wrong before:
+
+`sidebarRoots` descends past it to the section actually being read. Left as the
+active root it wraps the whole translated tree in an extra level the default
+locale does not have, so a Spanish reader got "Espanol > Documentacion > ..."
+where an English one got "Documentation > ...".
+
+`localeHome` resolves the home link per language. Translating the label alone
+was worse than not translating it: "Inicio" still pointed at `/` and quietly
+took the reader out of the Spanish site. `sidebarItems` renders any home-family
+route as a link with no children, and `homeFirst` puts it at the top, because a
+translated home sits among the top-level sections and cannot compete on explicit
+`Order`.
+
+The test for this compares the two sidebars: same number of links, each home
+pointing inside its own language.
+
 ## Runtime assets
 
 `runtime_assets.go` collects `docs.js`, the search index, the export manifest,

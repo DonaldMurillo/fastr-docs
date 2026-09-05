@@ -18,7 +18,10 @@
 package mermaid
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"errors"
 	"io/fs"
 	"net/http"
@@ -43,6 +46,9 @@ const (
 	FramePath = AssetDir + "/diagram.html"
 	// AdapterPath is the host-side bridge, relative to the docs asset prefix.
 	AdapterPath = AssetDir + "/adapter.js"
+	// EntryPath is the frame's entry module. It is small; Mermaid arrives as
+	// chunks beside it, and only the ones a diagram uses.
+	EntryPath = AssetDir + "/frame/frame.js"
 
 	// framePolicy is the only place the strict policy is relaxed, and it
 	// applies to the frame document alone. Mermaid needs inline styles;
@@ -50,6 +56,14 @@ const (
 	framePolicy = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; " +
 		"script-src 'self'; font-src 'self' data:; connect-src 'none'; object-src 'none'; " +
 		"base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
+
+	// assetCache is a year. The frame addresses these by content hash, so a
+	// rebuild changes the URL rather than needing a revalidation round trip on
+	// a 3.4MB file.
+	assetCache = "public, max-age=31536000, immutable"
+	// documentCache keeps the frame document itself revalidated, because it is
+	// what carries the current hashes.
+	documentCache = "public, max-age=0, must-revalidate"
 )
 
 // Plugin registers the `mermaid` shortcode and serves the sandboxed renderer.
@@ -100,19 +114,20 @@ func (p Plugin) Apply(r *docs.Router) error {
 // adapter, so a project does not wire any of them into its own main.go.
 func (Plugin) RuntimeAssets() (map[string][]byte, error) {
 	assets := map[string][]byte{AdapterPath: adapterJS}
-	entries, err := fs.ReadDir(assetsFS, "assets")
+	// A walk, not a ReadDir: the split bundle lives in assets/frame/.
+	err := fs.WalkDir(assetsFS, "assets", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		body, readErr := fs.ReadFile(assetsFS, path)
+		if readErr != nil {
+			return readErr
+		}
+		assets[AssetDir+strings.TrimPrefix(path, "assets")] = body
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		body, err := fs.ReadFile(assetsFS, "assets/"+entry.Name())
-		if err != nil {
-			return nil, err
-		}
-		assets[AssetDir+"/"+entry.Name()] = body
 	}
 	return assets, nil
 }
@@ -122,43 +137,102 @@ func (Plugin) RuntimeAssets() (map[string][]byte, error) {
 // belongs in a page <script> tag.
 func (Plugin) PageScripts() []string { return []string{AdapterPath} }
 
-// MountAssets serves the three framed files with the headers the sandbox
-// requires. Router.MountRuntimeAssets already serves everything the plugin
-// contributed; these routes take precedence for the files the frame loads.
+// MountAssets serves the framed files with the headers the sandbox requires.
+// Router.MountRuntimeAssets already serves everything the plugin contributed;
+// these routes take precedence for the files the frame loads.
 //
-// A frame with no allow-same-origin has an opaque origin, so its own
-// stylesheet and bundle are cross-origin requests as far as the browser is
-// concerned. Without Cross-Origin-Resource-Policy: cross-origin they are
-// blocked with ERR_BLOCKED_BY_RESPONSE.NotSameOrigin and the frame renders
-// nothing. The host adapter deliberately does not carry that header: it is an
-// ordinary same-origin script on the page.
+// Three headers matter here, and getting any of them wrong fails quietly.
+//
+// A frame with no allow-same-origin has an opaque origin, so its own stylesheet
+// and chunks are cross-origin requests as far as the browser is concerned.
+// Without Cross-Origin-Resource-Policy: cross-origin they are blocked with
+// ERR_BLOCKED_BY_RESPONSE.NotSameOrigin and the frame renders nothing. The host
+// adapter deliberately does not carry that header: it is an ordinary
+// same-origin script on the page.
+//
+// That same opaque origin gives each frame its own HTTP cache partition, so two
+// diagrams on a page cannot share a download and a reload cannot reuse one
+// either. Caching still earns its keep inside a single frame, where the shared
+// chunks are fetched once for the whole render, and the files are addressed by
+// content hash so a year-long immutable cache is safe.
+//
+// The frame document itself must stay revalidated, because it is what carries
+// the current entry hash.
 func (p Plugin) MountAssets(r *docs.Router, httpRouter *gofastrRouter.Router) error {
 	if httpRouter == nil {
 		return errors.New("mermaid: MountAssets requires a GoFastr router")
 	}
+	document, err := frameDocument()
+	if err != nil {
+		return err
+	}
 	prefix := r.AssetPrefix() + "/" + AssetDir + "/"
-	for _, framed := range []struct{ file, contentType string }{
-		{"diagram.html", "text/html; charset=utf-8"},
-		{"diagram.css", "text/css; charset=utf-8"},
-		{"diagram.js", "text/javascript; charset=utf-8"},
-	} {
-		body, err := fs.ReadFile(assetsFS, "assets/"+framed.file)
+	err = fs.WalkDir(assetsFS, "assets", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		body, err := fs.ReadFile(assetsFS, path)
 		if err != nil {
 			return err
 		}
-		contentType := framed.contentType
-		isDocument := strings.HasSuffix(framed.file, ".html")
-		httpRouter.Get(prefix+framed.file, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		name := strings.TrimPrefix(path, "assets/")
+		isDocument := strings.HasSuffix(name, ".html")
+		if isDocument {
+			body = document
+		}
+		contentType := frameContentType(name)
+		httpRouter.Get(prefix+name, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", contentType)
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("Cross-Origin-Resource-Policy", "cross-origin")
+			// A module script is fetched in CORS mode, and the frame's origin
+			// is literally "null", so without this the browser blocks the
+			// entry and every chunk it imports. These are public static files
+			// with no credentials attached, which is the case the wildcard is
+			// for.
+			w.Header().Set("Access-Control-Allow-Origin", "*")
 			if isDocument {
 				w.Header().Set("Content-Security-Policy", framePolicy)
+				w.Header().Set("Cache-Control", documentCache)
+			} else {
+				w.Header().Set("Cache-Control", assetCache)
 			}
 			_, _ = w.Write(body)
 		}))
+		return nil
+	})
+	return err
+}
+
+func frameContentType(name string) string {
+	switch {
+	case strings.HasSuffix(name, ".html"):
+		return "text/html; charset=utf-8"
+	case strings.HasSuffix(name, ".css"):
+		return "text/css; charset=utf-8"
+	default:
+		return "text/javascript; charset=utf-8"
 	}
-	return nil
+}
+
+// frameDocument stamps a content hash onto the frame's own sub-resource URLs.
+// esbuild already names the split chunks by content, but the entry module and
+// the stylesheet keep stable names, so they need this to be cacheable for a
+// year without a rebuild going unnoticed.
+func frameDocument() ([]byte, error) {
+	html, err := fs.ReadFile(assetsFS, "assets/diagram.html")
+	if err != nil {
+		return nil, err
+	}
+	for _, ref := range []string{"./diagram.css", "./frame/frame.js"} {
+		body, err := fs.ReadFile(assetsFS, "assets/"+strings.TrimPrefix(ref, "./"))
+		if err != nil {
+			return nil, err
+		}
+		sum := sha256.Sum256(body)
+		html = bytes.ReplaceAll(html, []byte(ref+`"`), []byte(ref+"?v="+hex.EncodeToString(sum[:6])+`"`))
+	}
+	return html, nil
 }
 
 // diagram renders the placeholder the host adapter turns into an iframe. The

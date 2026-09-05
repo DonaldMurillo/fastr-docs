@@ -220,13 +220,38 @@ test('the diagram frame carries its own policy and the page does not', async ({ 
   // or the browser blocks it and nothing renders.
   expect(frame.headers()['cross-origin-resource-policy']).toBe('cross-origin');
 
-  const bundle = await request.get(selfPage('/__fastr-docs/mermaid/diagram.js'));
-  expect(bundle.ok()).toBeTruthy();
-  expect(bundle.headers()['cross-origin-resource-policy']).toBe('cross-origin');
+  const entry = await request.get(selfPage('/__fastr-docs/mermaid/frame/frame.js'));
+  expect(entry.ok()).toBeTruthy();
+  expect(entry.headers()['cross-origin-resource-policy']).toBe('cross-origin');
+  // The entry is a module, fetched in CORS mode from an origin of "null".
+  expect(entry.headers()['access-control-allow-origin']).toBe('*');
+  expect(entry.headers()['cache-control']).toContain('immutable');
 
   const adapter = await request.get(selfPage('/__fastr-docs/mermaid/adapter.js'));
   expect(adapter.ok()).toBeTruthy();
   expect(adapter.headers()['cross-origin-resource-policy']).not.toBe('cross-origin');
+});
+
+// The frame used to pull all 3.4MB of Mermaid, once per frame, because every
+// diagram type was in one file. Splitting it means a flowchart fetches the
+// flowchart code and nothing else.
+test('a diagram fetches only the chunks it needs', async ({ page }) => {
+  let bytes = 0;
+  page.on('response', async (r) => {
+    if (!r.url().includes('__fastr-docs/mermaid')) return;
+    try { bytes += (await r.body()).length; } catch {}
+  });
+
+  await page.goto(selfPage('/docs/build/diagrams'), { waitUntil: 'networkidle' });
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect.poll(async () => (await page.locator('.fastr-docs-mermaid iframe').last().getAttribute('style')) || '',
+    { timeout: 20_000 }).toContain('height');
+  await page.waitForTimeout(1500);
+
+  // Two frames, each an isolated origin that cannot reuse the other's download.
+  // Before splitting this page transferred 6.9MB.
+  expect(bytes).toBeLessThan(3_000_000);
+  expect(bytes).toBeGreaterThan(100_000);
 });
 
 test('a diagram falls back to its source without JavaScript', async ({ browser }) => {

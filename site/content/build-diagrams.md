@@ -76,3 +76,20 @@ rather than an empty box.
 The frame cannot read the host's stylesheet, so the host mirrors the theme by
 asking for a re-render whenever the colour scheme changes. Toggle the theme in
 the header and the diagrams above follow.
+
+## What a page downloads
+
+Nothing, until a diagram is close to the viewport. The adapter builds each frame
+on an `IntersectionObserver`; `loading="lazy"` alone does not defer, because the
+browser's threshold is generous enough to load every diagram on a normal page
+immediately.
+
+The frame bundle is split by diagram type, so a flowchart fetches the flowchart
+code rather than all of Mermaid. This page transfers about 1.7 MB across its two
+diagrams, down from 6.9 MB before the split.
+
+Two diagrams cost roughly twice one, and that is not a bug we can fix. Each frame
+is a separate opaque origin, which is what keeps it isolated, and that also gives
+it its own HTTP cache partition: frames cannot share a download, and a reload
+cannot reuse one. Isolation and caching are the same tradeoff seen from two
+sides.

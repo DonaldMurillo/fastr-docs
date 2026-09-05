@@ -177,9 +177,33 @@ Two things are easy to get wrong here, and both fail silently:
 - The frame cannot read the host stylesheet, so dark mode is mirrored by asking
   it to re-render, not by CSS.
 
-`assets/diagram.js` is a generated 3.3MB esbuild bundle with Mermaid inlined.
-Rebuild it with `cd plugin/mermaid/js && npm install && npm run build`. It is a
-separate Go package, so nothing links it in unless the project imports it.
+`assets/frame/` is a generated esbuild bundle, split rather than single-file.
+Mermaid loads each diagram type through a dynamic import, so `format: 'esm'` with
+`splitting` emits them as separate chunks and a flowchart fetches the flowchart
+code instead of all 3.4MB. Rebuild with
+`cd plugin/mermaid/js && npm install && npm run build`. It is a separate Go
+package, so nothing links it in unless the project imports it.
+
+Splitting matters more here than it would in a page, because of a property that
+took measuring to find: **every frame is a distinct opaque origin, so it gets its
+own HTTP cache partition.** Two diagrams on one page cannot share a download, and
+a reload cannot reuse either. This repo's diagrams page transferred 6.9MB, warm
+cache or not; it is now 1.7MB. Shrinking what one frame needs is the only lever
+that exists, so do not "simplify" the build back to a single file.
+
+Three more things that fail quietly here:
+
+- A module entry is fetched in **CORS mode**, and the frame's origin is literally
+  `null`, so the chunks need `Access-Control-Allow-Origin: *` on top of CORP.
+  Without it the entry fails with a CORS error and nothing renders. They are
+  public static files with no credentials, which is the case the wildcard is for.
+- The framed files had **no `Cache-Control` and no validator**, so nothing cached
+  them even within a single frame. They are content-addressed now and immutable
+  for a year; the frame document stays revalidated because it carries the hashes.
+- `iframe loading="lazy"` does **not** defer in practice. Chrome's threshold is
+  generous enough that both diagrams on a normal page loaded immediately. The
+  adapter gates frame creation on an `IntersectionObserver` instead, and forces
+  every diagram in on `beforeprint`, since printing has no viewport to scroll.
 
 ## Math (plugin/katex)
 

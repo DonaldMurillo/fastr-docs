@@ -83,14 +83,29 @@ func TestRuntimeAssetsCarryTheFrameAndAdapter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RuntimeAssets() error = %v", err)
 	}
-	for _, want := range []string{"mermaid/diagram.html", "mermaid/diagram.css", "mermaid/diagram.js", "mermaid/adapter.js"} {
+	for _, want := range []string{"mermaid/diagram.html", "mermaid/diagram.css", EntryPath, "mermaid/adapter.js"} {
 		if len(assets[want]) == 0 {
 			t.Fatalf("RuntimeAssets() missing or empty %q", want)
 		}
 	}
-	// The bundle carries Mermaid itself; a stub would defeat the point.
-	if len(assets["mermaid/diagram.js"]) < 500_000 {
-		t.Fatalf("bundle is %d bytes, too small to contain Mermaid", len(assets["mermaid/diagram.js"]))
+	// The bundle is split, so the entry is small and the diagram types sit in
+	// chunks beside it. Both halves of that need asserting: a single 3.4MB file
+	// would pass a total-size check just as well.
+	if len(assets[EntryPath]) > 100_000 {
+		t.Fatalf("entry module is %d bytes; the bundle is not split", len(assets[EntryPath]))
+	}
+	chunks, total := 0, 0
+	for name, body := range assets {
+		if strings.HasPrefix(name, "mermaid/frame/") {
+			chunks++
+			total += len(body)
+		}
+	}
+	if chunks < 10 {
+		t.Fatalf("%d files in the frame bundle; the diagram types are not split out", chunks)
+	}
+	if total < 500_000 {
+		t.Fatalf("frame bundle is %d bytes, too small to contain Mermaid", total)
 	}
 	// Nothing may be fetched at runtime: the frame is an opaque origin under
 	// script-src 'self'.
@@ -115,7 +130,7 @@ func TestFramedAssetsAreServedCrossOriginAndTheAdapterIsNot(t *testing.T) {
 	server := httptest.NewServer(httpRouter)
 	defer server.Close()
 
-	for _, path := range []string{"/diagram.html", "/diagram.css", "/diagram.js"} {
+	for _, path := range []string{"/diagram.html", "/diagram.css", "/frame/frame.js"} {
 		response, err := http.Get(server.URL + "/__fastr-docs/mermaid" + path)
 		if err != nil {
 			t.Fatalf("GET %s: %v", path, err)
@@ -127,6 +142,11 @@ func TestFramedAssetsAreServedCrossOriginAndTheAdapterIsNot(t *testing.T) {
 		}
 		if got := body.Get("Cross-Origin-Resource-Policy"); got != "cross-origin" {
 			t.Fatalf("%s CORP = %q, want cross-origin", path, got)
+		}
+		// The entry is a module, so it and every chunk it imports are fetched
+		// in CORS mode from an origin that is literally "null".
+		if got := body.Get("Access-Control-Allow-Origin"); got != "*" {
+			t.Fatalf("%s ACAO = %q, want *", path, got)
 		}
 	}
 
@@ -193,7 +213,7 @@ func TestStripFenceKeepsDiagramLines(t *testing.T) {
 }
 
 func TestBundledAssetsAreEmbedded(t *testing.T) {
-	for _, name := range []string{"assets/diagram.html", "assets/diagram.css", "assets/diagram.js"} {
+	for _, name := range []string{"assets/diagram.html", "assets/diagram.css", "assets/frame/frame.js"} {
 		if _, err := fs.Stat(assetsFS, name); err != nil {
 			t.Fatalf("%s is not embedded: %v", name, err)
 		}
@@ -214,8 +234,58 @@ func TestOnlyTheAdapterIsAPageScript(t *testing.T) {
 		t.Fatalf("RuntimeScriptNames() error = %v", err)
 	}
 	for _, name := range names {
-		if name == AssetDir+"/diagram.js" {
-			t.Fatal("the Mermaid bundle was listed as a page script")
+		if strings.HasPrefix(name, AssetDir+"/frame/") {
+			t.Fatalf("a frame bundle file was listed as a page script: %q", name)
 		}
+	}
+}
+
+// Each frame is a distinct opaque origin with its own HTTP cache partition, so
+// two diagrams on a page cannot share a download. Caching still pays inside one
+// frame, where a dozen chunks are fetched for a single render, and the files
+// are content-addressed so a year is safe. The document is the exception: it
+// carries the current entry hash and has to stay revalidated.
+func TestFramedAssetsAreCacheableAndTheDocumentIsNot(t *testing.T) {
+	r := routerWithPlugin(t, Plugin{})
+	httpRouter := gofastrRouter.New()
+	if err := r.MountPluginAssets(httpRouter); err != nil {
+		t.Fatalf("MountPluginAssets() error = %v", err)
+	}
+	server := httptest.NewServer(httpRouter)
+	defer server.Close()
+
+	for path, wantImmutable := range map[string]bool{
+		"/__fastr-docs/mermaid/frame/frame.js": true,
+		"/__fastr-docs/mermaid/diagram.css":    true,
+		"/__fastr-docs/mermaid/diagram.html":   false,
+	} {
+		response, err := http.Get(server.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		_ = response.Body.Close()
+		cache := response.Header.Get("Cache-Control")
+		if strings.Contains(cache, "immutable") != wantImmutable {
+			t.Fatalf("%s Cache-Control = %q, immutable should be %v", path, cache, wantImmutable)
+		}
+	}
+}
+
+// The document is what makes a year-long cache safe: it points at the entry by
+// content hash, so a rebuild changes the URL rather than serving a stale file.
+func TestTheFrameDocumentVersionsItsOwnSubResources(t *testing.T) {
+	document, err := frameDocument()
+	if err != nil {
+		t.Fatalf("frameDocument() error = %v", err)
+	}
+	html := string(document)
+	for _, want := range []string{"./frame/frame.js?v=", "./diagram.css?v="} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("frame document does not version %q: %s", want, html)
+		}
+	}
+	// The entry has to stay a module or the chunks never load.
+	if !strings.Contains(html, `type="module"`) {
+		t.Fatalf("the entry is not loaded as a module, so nothing would be split: %s", html)
 	}
 }

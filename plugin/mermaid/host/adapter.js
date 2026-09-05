@@ -11,6 +11,7 @@
   var PROTOCOL_VERSION = 1;
   var SELECTOR = '[data-fastr-docs-mermaid]';
   var frames = new WeakMap();
+  var pending = new WeakSet();
 
   function frameSrc(root) {
     return root.getAttribute('data-fastr-docs-mermaid-frame') || '/__fastr-docs/mermaid/diagram.html';
@@ -80,9 +81,33 @@
     }
   }
 
+  // The bundle behind each frame is 3.4MB, so a frame is created only when its
+  // diagram approaches the viewport.
+  //
+  // iframe loading="lazy" is not enough on its own: Chrome's threshold is
+  // generous enough that both diagrams on a normal page load immediately, which
+  // is what this measured before the observer existed.
+  var visible = window.IntersectionObserver
+    ? new IntersectionObserver(function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+          if (!entries[i].isIntersecting) continue;
+          visible.unobserve(entries[i].target);
+          mount(entries[i].target);
+        }
+      }, { rootMargin: '600px 0px' })
+    : null;
+
   function mountAll() {
     var roots = document.querySelectorAll(SELECTOR);
-    for (var i = 0; i < roots.length; i++) mount(roots[i]);
+    for (var i = 0; i < roots.length; i++) {
+      if (frames.has(roots[i]) || pending.has(roots[i])) continue;
+      if (!visible) {
+        mount(roots[i]);
+        continue;
+      }
+      pending.add(roots[i]);
+      visible.observe(roots[i]);
+    }
   }
 
   function init() {
@@ -104,6 +129,18 @@
       if (media.addEventListener) media.addEventListener('change', rerenderAll);
     }
   }
+
+  // Printing has no viewport to scroll, so every diagram is forced in first.
+  function mountEverything() {
+    var roots = document.querySelectorAll(SELECTOR);
+    for (var i = 0; i < roots.length; i++) mount(roots[i]);
+  }
+
+  if (window.matchMedia) {
+    var print = window.matchMedia('print');
+    if (print.addEventListener) print.addEventListener('change', function (e) { if (e.matches) mountEverything(); });
+  }
+  window.addEventListener('beforeprint', mountEverything);
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init, { once: true });

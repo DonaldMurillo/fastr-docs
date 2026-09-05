@@ -25,7 +25,9 @@
   </head>
   <body>
     <div id="fastr-docs-mermaid-root" role="img" aria-label="Diagram"></div>
-    <!-- The only script. Mermaid is bundled in; nothing is fetched at runtime. -->
-    <script src="./diagram.js"></script>
+    <!-- A module, so Mermaid's per-diagram-type chunks load on demand instead
+         of all 3.4MB up front. Everything it imports is served from this same
+         directory; nothing is fetched from the network. -->
+    <script type="module" src="./frame/frame.js"></script>
   </body>
 </html>

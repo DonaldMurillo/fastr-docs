@@ -70,13 +70,10 @@ func expandMarkdownShortcodes(source string, components map[string]MarkdownCompo
 		}
 		body := render.HTML("")
 		if renderBody || strings.TrimSpace(bodySource) != "" {
-			body = renderDocsMarkdown(bodySource, nil)
-			for _, replacement := range nested {
-				body = replaceShortcode(body, replacement)
-			}
+			body = applyShortcodes(renderDocsMarkdown(bodySource, nil), nested)
 		}
 		html := component(node.props, body)
-		marker := fmt.Sprintf(`FASTRDOCSSHORTCODESLOT%d`, len(replacements))
+		marker := fmt.Sprintf(`FASTRDOCSSHORTCODESLOT%dEND`, len(replacements))
 		replacements = append(replacements, shortcodeReplacement{marker: marker, html: html})
 		appendText(marker)
 		return nil
@@ -157,11 +154,23 @@ func renderMarkdownWithComponents(source string, components map[string]MarkdownC
 	if err != nil {
 		return "", err
 	}
-	html := renderDocsMarkdown(expanded, attrs)
-	for _, replacement := range replacements {
-		html = replaceShortcode(html, replacement)
+	return applyShortcodes(renderDocsMarkdown(expanded, attrs), replacements), nil
+}
+
+// applyShortcodes substitutes rendered components back into the document.
+//
+// Order matters. Replacements are collected as each shortcode closes, so a
+// child always lands before its parent. A child's marker only appears in the
+// output once the parent's HTML has been inserted, so substituting in
+// collection order leaves the child marker stranded as visible text. Walking
+// backwards inserts each parent first and resolves its children afterwards, to
+// any depth. It also settles the prefix collision between marker 1 and marker
+// 10, since the higher index is always replaced first.
+func applyShortcodes(html render.HTML, replacements []shortcodeReplacement) render.HTML {
+	for i := len(replacements) - 1; i >= 0; i-- {
+		html = replaceShortcode(html, replacements[i])
 	}
-	return html, nil
+	return html
 }
 
 func replaceShortcode(source render.HTML, replacement shortcodeReplacement) render.HTML {

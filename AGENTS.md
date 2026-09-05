@@ -155,6 +155,31 @@ The e2e fixture at `e2e/fixtures/non-cli/` still wires its assets by hand, on
 purpose: it proves the lower-level API works without the convenience wrapper,
 and it uses a non-default `/__manual` prefix.
 
+## Mermaid and KaTeX: blocked on a CSP decision
+
+Measured in a real browser against the live policy, not reasoned about:
+`default-src 'self'` blocks both dynamically injected `<style>` elements and
+inline `style` attributes. Chrome logged two violations, and neither the
+injected stylesheet nor the inline attribute applied.
+
+Mermaid renders by injecting a `<style>` element and emitting SVG carrying
+inline styles, so it cannot work under the current policy. There is no way to
+ship it without one of:
+
+1. Adding `style-src 'unsafe-inline'`, which weakens the strict CSP for every
+   generated site.
+2. Mounting it through GoFastr's `framework/pluginhost` sandboxed iframe, which
+   keeps the policy intact but is substantially more work.
+
+Vendoring is its own decision: mermaid.min.js is roughly 3MB, embedded into the
+binary of any project that opts in. `plugin/openapi` shows the pattern, and a
+separate package means unused ones are never linked in, so the cost only lands
+on projects that ask for it.
+
+This is a product and security-posture call, so it is deliberately not made
+here. `RuntimeAssetPlugin` exists and is tested, so whichever way it goes the
+plumbing is ready.
+
 ## Known GoFastr limitations worked around here
 
 Ticket these rather than re-discovering them:

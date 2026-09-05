@@ -142,6 +142,25 @@ A title with no language works too:
 Plain text, with a filename header and nothing tokenized.
 ```
 
+## Three shapes
+
+A shortcode is registered as one of three kinds, and a name resolves to exactly
+one of them.
+
+| Kind | Receives | Used by |
+| --- | --- | --- |
+| `MarkdownComponent` | its body as rendered Markdown | most of them |
+| `MarkdownContainer` | its nested shortcodes as separate children | `tabs`, `cards`, `hero` |
+| `MarkdownRawComponent` | its body unrendered | `diff`, `filetree` |
+
+The container exists because a component receives one merged blob and cannot
+tell where one child ends and the next begins, which is exactly what a tab set
+needs to know.
+
+The raw kind exists because rendering a body as Markdown destroys line
+structure. A patch collapses onto one line, and the code block's own chrome
+ends up inside the text. Write those two as a fenced block.
+
 ## Replacing a default
 
 Registering a name replaces whatever held it:

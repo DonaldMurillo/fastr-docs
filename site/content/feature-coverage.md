@@ -17,17 +17,20 @@ the project using fastr-docs.
 | Capability | fastr-docs implementation |
 | --- | --- |
 | Content hierarchy | One `docs.Router` with nested groups, pages, typed screens, and plugin routes. |
-| Markdown authoring | Filesystem Markdown, embedded `fs.FS`, front matter, custom slugs, links, code blocks, and registered shortcodes. |
+| Markdown authoring | Filesystem Markdown, embedded `fs.FS`, front matter, custom slugs, links, and a shortcode vocabulary registered by default. |
 | Interactive content | Native GoFastr screens and components on the same route tree as Markdown. |
 | Layout composition | Global and section layouts, including layouts nested inside other layouts through GoFastr. |
 | Navigation | Explicit sibling `Order`, active ancestor state, breadcrumbs, previous/next links, responsive drawers, and in-page heading navigation. |
 | Search | JSON index during development, Pagefind export support, and GoFastr's native `Ctrl+K` or `⌘K` command palette. |
-| Localization | Locale metadata, alternate page links, locale filters, localized UI strings, and a route manifest inventory. |
+| Localization | Locale metadata, alternates, locale filters, a fully translatable UI string surface, configurable date formats, fallback to a default locale, and translation-coverage reporting. |
 | Documentation versions | Version metadata, version filters, route-aware selectors, `MarkdownVersionedCollection`, and a version inventory in the export manifest. |
 | SEO and publishing | Titles, descriptions, canonical URLs, `noindex`, authors, published/updated dates, social images, redirects, sitemap, robots rules, Markdown blogs, and RSS feeds. |
 | Offline delivery | GoFastr PWA integration and static export of offline-eligible routes and assets. |
 | API references | In-project OpenAPI plugin with JSON or YAML contracts and an optional server URL override. |
-| Extensibility | Plugins, Markdown component adapters, custom layout factories, assets, validation, and search contributions. |
+| Extensibility | Plugins, three shortcode shapes, custom layout factories, validation, search contributions, and a collected runtime-asset pipeline. |
+| Page templates | A front-matter `splash` shell for landing pages, alongside typed screens for anything it cannot express. |
+| Code blocks | Fence options for a title, line numbers, line highlighting, and internal scrolling. |
+| Repository metadata | `last_updated` and `edit_url` derived from git history, with front matter overriding. |
 | Agent workflows | Generated `agents/claude.md`, authoring guidance, `/llms.txt`, agent card, and optional MCP discovery. |
 | Quality gates | Strict route/content validation, CLI checks, static export checks, and desktop/mobile browser tests. |
 
@@ -107,7 +110,7 @@ but does not copy every ecosystem feature.
 | Docs sidebars | Router groups and explicit order | Keep the route tree as the source of truth instead of maintaining a second sidebar file. |
 | Markdown components | Shortcodes and typed GoFastr screens | Use native Go components. React, MDX, and Markdoc runtimes are not required. |
 | Search | Local JSON, Pagefind, and native command palette | Keep search deployable without a hosted service. |
-| i18n | Metadata, filters, alternates, selectors, and translated shell labels | The project supplies translated content; the framework does not invent translations. |
+| i18n | Metadata, filters, alternates, selectors, translated shell labels, and fallback for untranslated pages | The project supplies translated content; the framework does not invent translations, and never machine-translates. |
 | Versioning | Metadata, filtering, selectors, versioned collections, and manifest inventory | Snapshot creation remains a content or VCS workflow; the Router publishes immutable directories once they are authored. |
 | Plugins | Go plugins contribute routes, content components, validation, assets, and search data | Extensions stay inside the same Router lifecycle. |
 | Blog and RSS | `MarkdownBlog`, `BlogPosts`, `RSSXML`, live feed mounting, and static feed output | Keep posts in the Router so publishing metadata, navigation, search, locale/version filters, and export stay in sync. |

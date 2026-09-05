@@ -1,5 +1,6 @@
 ---
 template: splash
+locale: en
 hero:
   eyebrow: Reusable documentation for GoFastr
   title: Build docs around one route tree.

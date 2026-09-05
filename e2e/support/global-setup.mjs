@@ -75,7 +75,9 @@ const stop = (child) => {
   try { process.kill(child.pid, 'SIGTERM'); } catch {}
 };
 
-const waitFor = async (url, timeout = 60_000) => {
+// The dev loop compiles the generated project before it serves anything, and
+// that project grows as the starter template does. 60s was already marginal.
+const waitFor = async (url, timeout = 180_000) => {
   const started = Date.now();
   while (Date.now() - started < timeout) {
     try {

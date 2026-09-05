@@ -1,5 +1,6 @@
 ---
 tags: [getting-started, installation, authoring]
+locale: en
 ---
 
 # Getting started

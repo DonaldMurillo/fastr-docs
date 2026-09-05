@@ -20,6 +20,9 @@ func NewRouter() *docs.Router {
 		docs.WithIncludeDrafts(os.Getenv("DOCS_INCLUDE_DRAFTS") == "1"),
 		docs.WithLanguage(os.Getenv("DOCS_LOCALE")),
 		docs.WithLocale(os.Getenv("DOCS_CONTENT_LOCALE")),
+		// Keeps a build for one locale usable while most pages are still
+		// untranslated, which is the normal state of a real site.
+		docs.WithLocaleFallback("en"),
 		docs.WithVersion(os.Getenv("DOCS_CONTENT_VERSION")),
 		docs.WithTemplate(docs.ParseTemplate(os.Getenv("DOCS_TEMPLATE"))),
 		docs.WithSearchBackend(os.Getenv("DOCS_SEARCH_BACKEND")),
@@ -146,6 +149,36 @@ func NewRouter() *docs.Router {
 		Offline:     true,
 		Badge:       docs.NavBadge{Label: "New", Tone: docs.NavBadgeToneInfo},
 	})
+	// A partial Spanish translation. Only three pages exist in Spanish on
+	// purpose: it demonstrates the language selector, and it demonstrates what a
+	// half-translated site looks like, which is what every real one is.
+	//
+	// The paths mirror the English ones with an /es prefix so variantFamily
+	// pairs them: /es/docs/getting-started strips its locale segment and
+	// matches /docs/getting-started.
+	router.MustPage("/es", docs.PageConfig{
+		Title:       "Español",
+		Description: "Documentación construida sobre un árbol de rutas.",
+		SourcePath:  siteFile("content", "es", "index-splash.md"),
+		Order:       6,
+		Offline:     true,
+		Badge:       docs.NavBadge{Label: "es", Tone: docs.NavBadgeToneAccent},
+	})
+	router.MustPage("/es/docs/getting-started", docs.PageConfig{
+		Title:       "Primeros pasos",
+		Description: "Crea tu primer proyecto y entiende qué se traduce.",
+		SourcePath:  siteFile("content", "es", "getting-started.md"),
+		Order:       1,
+		Offline:     true,
+	})
+	router.MustPage("/es/docs/concepts/router", docs.PageConfig{
+		Title:       "El Router",
+		Description: "El objeto central: un solo árbol de rutas.",
+		SourcePath:  siteFile("content", "es", "concepts-router.md"),
+		Order:       2,
+		Offline:     true,
+	})
+
 	if err := router.MarkdownBlog("/blog", siteFile("content", "blog"), docs.BlogConfig{
 		Title: "Blog", Description: "Release notes and implementation updates for fastr-docs.", Order: 5,
 		PostsPerPage: 10, RelatedPosts: 3,
@@ -187,11 +220,26 @@ func NewRouter() *docs.Router {
 		Order:       4,
 		Offline:     true,
 	})
+	operate.MustPage("i18n", docs.PageConfig{
+		Title:       "Languages",
+		Description: "Translate content and chrome, and keep a partial translation usable.",
+		SourcePath:  contentFile("operate-i18n.md"),
+		Order:       5,
+		Offline:     true,
+		Badge:       docs.NavBadge{Label: "New", Tone: docs.NavBadgeToneInfo},
+	})
+	operate.MustPage("assets", docs.PageConfig{
+		Title:       "Runtime assets",
+		Description: "Collect the runtime, search index, and plugin assets in one call.",
+		SourcePath:  contentFile("operate-assets.md"),
+		Order:       6,
+		Offline:     true,
+	})
 	operate.MustPage("feature-coverage", docs.PageConfig{
 		Title:       "Feature coverage",
 		Description: "See what fastr-docs supports and which tradeoffs are intentional.",
 		SourcePath:  contentFile("feature-coverage.md"),
-		Order:       5,
+		Order:       7,
 		Offline:     true,
 	})
 

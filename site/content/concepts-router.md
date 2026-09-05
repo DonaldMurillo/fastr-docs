@@ -1,5 +1,6 @@
 ---
 tags: [router, concepts, architecture]
+locale: en
 ---
 
 # The Router

@@ -8,6 +8,10 @@ import { runtime } from '../support/runtime.mjs';
 // test then starts against a server that is still coming back, and its very
 // first navigation fails. Both helpers below exist for that, not for any
 // product behaviour.
+// These tests wait on real rebuilds of a growing site, so the default 30s
+// budget is not enough: the wait alone could consume it.
+test.describe.configure({ timeout: 120_000 });
+
 const waitForDevServer = async (request, url) => {
   await expect.poll(async () => {
     try {
@@ -15,7 +19,7 @@ const waitForDevServer = async (request, url) => {
     } catch {
       return false;
     }
-  }, { timeout: 30_000, intervals: [250] }).toBe(true);
+  }, { timeout: 60_000, intervals: [250] }).toBe(true);
 };
 
 const reloadThroughDevLoop = async (page, url) => {
@@ -59,10 +63,10 @@ test('fastr-docs dev reloads OpenAPI contract changes through GoFastr', async ({
         // GoFastr briefly closes the child server while rebuilding.
         return false;
       }
-    }, { timeout: 20_000 }).toBe(true);
+    }, { timeout: 60_000 }).toBe(true);
 
     await reloadThroughDevLoop(page, `${devURL}/api-reference`);
-    await expect(page.locator('[data-openapi-operation]').filter({ hasText: 'devReloadCheck' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('[data-openapi-operation]').filter({ hasText: 'devReloadCheck' })).toBeVisible({ timeout: 60_000 });
   } finally {
     await fs.writeFile(contractPath, original);
   }
@@ -88,10 +92,10 @@ test('fastr-docs dev reloads Markdown collection files through GoFastr', async (
       } catch {
         return false;
       }
-    }, { timeout: 20_000 }).toBe(true);
+    }, { timeout: 60_000 }).toBe(true);
 
     await reloadThroughDevLoop(page, `${devURL}/docs/getting-started`);
-    await expect(page.getByRole('heading', { name: 'Reload check', exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: 'Reload check', exact: true })).toBeVisible({ timeout: 60_000 });
   } finally {
     await fs.writeFile(contentPath, original);
   }

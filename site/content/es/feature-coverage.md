@@ -103,7 +103,7 @@ pero no copia cada función del ecosistema.
 | i18n | Metadatos, filtros, alternativas, selectores, interfaz traducida por idioma y fallback para lo no traducido | El proyecto aporta el contenido traducido; el framework no inventa traducciones ni traduce a máquina. |
 | Versiones | Metadatos, filtros, selectores, colecciones versionadas e inventario | Congelar una versión sigue siendo un flujo de contenido o de control de versiones. |
 | Plugins | Los plugins de Go aportan rutas, componentes, validación, recursos y datos de búsqueda | Las extensiones viven dentro del mismo ciclo del Router. |
-| Blog y RSS | `MarkdownBlog`, `BlogPosts`, `RSSXML`, feed en vivo y salida estática | Las entradas viven en el Router para que metadatos, navegación, búsqueda, filtros y exportación no se desincronicen. |
+| Blog y RSS | `MarkdownBlog`, `BlogPosts`, `RSSXML`, feed en vivo, salida estática y una colección por idioma | Las entradas viven en el Router para que metadatos, navegación, búsqueda, filtros y exportación no se desincronicen. |
 | Analítica e integraciones | Responsabilidad del host o de un plugin | El núcleo de marca blanca se mantiene libre de cuentas de proveedor y de supuestos de rastreo. |
 
 ## Qué demuestra el proyecto generado

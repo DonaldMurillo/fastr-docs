@@ -159,12 +159,15 @@ row of the table says why.
 | Previous/next pager | Yes, labels and neighbours both |
 | Search results | Yes, narrowed to the page's language |
 | The 404 page | Yes, matched against the URL that was missed |
-| Blog archive, tags, and post chrome | No, those labels are resolved once for the site |
+| Blog landing, archive, tags, authors, search, and post chrome | Yes, each collection reads the strings of its own language |
+| The header after a client-side navigation | Yes, refreshed from the page that was loaded |
 
-Only the last is a limitation rather than a decision, and it is written down in
-`AGENTS.md` rather than hidden here. The blog reads its labels once, when
-`MarkdownBlog` registers its routes, so a translated blog needs a second
-collection with its own strings.
+The blog is a collection per language. `MarkdownBlog("/es/blog", ...)` with
+`DefaultLocale: "es"` gets its own landing, archive, tags, authors, search and
+feed, in the strings `WithLocaleUIStrings("es", ...)` provides under `Blog`.
+Its views pair with the English ones by path, and so does a post that keeps its
+file name; a post with a translated slug names its original with
+`translation_of`.
 
 The 404 and the search modal are both built once for the whole site, so neither
 has a route to read a language from. The 404 goes by the URL that was missed: a

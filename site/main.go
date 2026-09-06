@@ -31,6 +31,9 @@ func main() {
 		if err := fastrdocs.WriteStaticRSS(dir, base, "/blog/feed.xml", built.rss); err != nil {
 			panic(err)
 		}
+		if err := fastrdocs.WriteStaticRSS(dir, base, "/es/blog/feed.xml", built.rssES); err != nil {
+			panic(err)
+		}
 		if err := fastrdocs.WriteStaticNotFound(dir, base, built.notFound, built.notFoundCSS); err != nil {
 			panic(err)
 		}
@@ -93,6 +96,7 @@ type generatedSite struct {
 	searchIndex          []byte
 	manifest             []byte
 	rss                  []byte
+	rssES                []byte
 	serverConnectOrigins []string
 	notFound             fastrdocs.NotFoundScreen
 	notFoundCSS          string
@@ -187,6 +191,20 @@ func buildSite() (*generatedSite, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The Spanish collection has its own feed, so a reader who subscribes from
+	// /es/blog gets Spanish posts and nothing else.
+	feedConfigES := fastrdocs.RSSConfig{
+		Prefix: "/es/blog", Title: "Novedades de fastr-docs",
+		Description: "Notas de versión y cambios de implementación de fastr-docs.",
+		SiteURL:     publicSiteURL(), Limit: 20,
+	}
+	if err := router.MountRSS(server.Router(), "/es/blog/feed.xml", feedConfigES); err != nil {
+		return nil, err
+	}
+	rssES, err := router.RSSXML(feedConfigES)
+	if err != nil {
+		return nil, err
+	}
 	// One call serves the docs runtime, the search index, the export manifest,
 	// and every plugin's assets.
 	if err := router.MountRuntimeAssets(server.Router(), router.AssetPrefix(), normalizeBase(exportBase(os.Args[1:]))); err != nil {
@@ -198,7 +216,7 @@ func buildSite() (*generatedSite, error) {
 			return nil, err
 		}
 	}
-	return &generatedSite{server: server, router: router, rss: rss, serverConnectOrigins: router.ConnectOrigins(), notFound: notFound, notFoundCSS: router.CSS() + "\n" + router.BrandCSS()}, nil
+	return &generatedSite{server: server, router: router, rss: rss, rssES: rssES, serverConnectOrigins: router.ConnectOrigins(), notFound: notFound, notFoundCSS: router.CSS() + "\n" + router.BrandCSS()}, nil
 }
 
 func copyPublicAssets(dir string) error {

@@ -31,10 +31,18 @@ func (h *docsHeader) RenderCtx(ctx context.Context) render.HTML {
 }
 
 func (h *docsHeader) render(currentPath string) render.HTML {
+	return render.Join(h.siteHeader(currentPath), h.router.headerVariantActiveConfig())
+}
+
+// siteHeader is the header as rendered for one page: its nav tabs, language
+// and version selectors, and search trigger all follow that page's language.
+func (h *docsHeader) siteHeader(currentPath string) render.HTML {
 	searchTrigger := h.router.searchTrigger(currentPath)
 	labels := h.router.uiAt(currentPath)
 	drawerName := "fastr-docs-sections"
-	if root := h.router.rootForPath(currentPath); root != nil && h.router.isBlogPrefix(root.Path) {
+	// The collection, not the tree root: /es/blog sits under the Spanish
+	// home, and its trigger must open the Spanish blog's drawer.
+	if root := h.router.blogRootFor(h.router.routeAtPath(currentPath)); root != nil {
 		drawerName = blogDrawerName(root.Path)
 	}
 	brand := render.Join(
@@ -83,7 +91,30 @@ func (h *docsHeader) render(currentPath string) render.HTML {
 		Drawer:       ui.SiteHeaderDrawerPopover,
 		NavUnderline: true,
 	})
-	return render.Join(header, h.router.headerVariantActiveConfig())
+	return header
+}
+
+// chromeTemplate is the page's own header, carried inside the region GoFastr
+// swaps on client-side navigation.
+//
+// The header lives in the outermost layout layer, which the runtime keeps
+// across navigations, so after a client-side move from a Spanish page to an
+// English one the header stayed Spanish: nav tabs, search label, the
+// language selector still aimed at the previous page's translation, and
+// <html lang>. The runtime reads this template on every navigation and
+// copies the parts that change into the live header (syncChrome in
+// runtime.go). On a full page load it is a no-op. The path comes from the
+// request when there is one, because a dynamic screen's route path is a
+// pattern.
+func (r *Router) chromeTemplate(ctx context.Context, fallbackPath string) render.HTML {
+	currentPath := fallbackPath
+	if request := uiapp.RequestFromContext(ctx); request != nil && request.URL != nil {
+		currentPath = request.URL.Path
+	}
+	return render.Tag("template", map[string]string{
+		"data-fastr-docs-chrome": "",
+		"data-fastr-docs-lang":   r.LanguageFor(currentPath),
+	}, (&docsHeader{router: r}).siteHeader(currentPath))
 }
 
 // headerVariantActiveScript extends GoFastr's normal exact/prefix active-link
@@ -227,9 +258,9 @@ func (r *Router) variantSelectors(currentPath string) render.HTML {
 	if options := r.variantOptions(current, "version"); len(options) > 1 {
 		selectors = append(selectors, r.variantSelect(r.uiAt(currentPath).Version, "version", options, currentPath))
 	}
-	if len(selectors) == 0 {
-		return render.Text("")
-	}
+	// The container is rendered even when empty, so the runtime can swap a
+	// page's selectors into it after a client-side navigation whichever page
+	// came before; CSS hides it while it has nothing.
 	return render.Tag("div", map[string]string{"class": "fastr-docs-variant-selectors"}, selectors...)
 }
 

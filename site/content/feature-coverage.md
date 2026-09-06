@@ -113,7 +113,7 @@ but does not copy every ecosystem feature.
 | i18n | Metadata, filters, alternates, selectors, translated shell labels, and fallback for untranslated pages | The project supplies translated content; the framework does not invent translations, and never machine-translates. |
 | Versioning | Metadata, filtering, selectors, versioned collections, and manifest inventory | Snapshot creation remains a content or VCS workflow; the Router publishes immutable directories once they are authored. |
 | Plugins | Go plugins contribute routes, content components, validation, assets, and search data | Extensions stay inside the same Router lifecycle. |
-| Blog and RSS | `MarkdownBlog`, `BlogPosts`, `RSSXML`, live feed mounting, and static feed output | Keep posts in the Router so publishing metadata, navigation, search, locale/version filters, and export stay in sync. |
+| Blog and RSS | `MarkdownBlog`, `BlogPosts`, `RSSXML`, live feed mounting, static feed output, and a collection per language | Keep posts in the Router so publishing metadata, navigation, search, locale/version filters, and export stay in sync. |
 | Analytics and third-party integrations | Host or plugin responsibility | Keep the white-label core free of vendor accounts and tracking assumptions. |
 
 Snapshot creation is intentionally a content or VCS workflow rather than a

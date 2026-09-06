@@ -32,6 +32,12 @@ func (r *Router) isBlogView(path string) bool {
 	return ok
 }
 
+// blogLabels is a collection's own label set: the strings of the language
+// its prefix is in. One Router can serve a blog per language, so the
+// Router-wide set is right for at most one of them; reading it everywhere is
+// what left a Spanish blog with "All posts" and "Archive" in its sidebar.
+func (r *Router) blogLabels(prefix string) BlogStrings { return r.uiAt(prefix).Blog }
+
 func (r *Router) blogCollection(prefix string) blogCollection {
 	return r.blogs[normalizePath(prefix)]
 }
@@ -79,7 +85,7 @@ func (r *Router) blogPublicPosts(prefix string) []*Route {
 func (r *Router) registerBlogViews(prefix string) error {
 	collection := r.blogCollection(prefix)
 	cfg := collection.cfg
-	labels := r.UIStrings().Blog
+	labels := r.blogLabels(prefix)
 	posts := r.blogPublicPosts(prefix)
 	nextOrder := cfg.PostOrderStart + len(posts) + 100
 	for _, route := range r.Routes() {
@@ -99,6 +105,10 @@ func (r *Router) registerBlogViews(prefix string) error {
 			DisableTOC:  true,
 			Body:        func() render.HTML { return r.renderBlogView(path) },
 			ContextBody: contextBody,
+			// The views are in the collection's language like its posts, so
+			// their chrome reads the right strings and /es/blog/archive pairs
+			// with /blog/archive.
+			Metadata: ContentMetadata{Locale: collection.cfg.DefaultLocale, Version: collection.cfg.DefaultVersion},
 		}
 		if err := r.Page(path, cfg); err != nil {
 			delete(r.blogViews, normalizePath(path))
@@ -257,7 +267,7 @@ func (r *Router) renderBlogArchive(prefix string, page int, indexBody string) re
 	collection := r.blogCollection(prefix)
 	posts := r.blogPublicPosts(prefix)
 	intro := strings.TrimSpace(stripLeadingMarkdownTitle(indexBody))
-	return r.blogArchiveShell(prefix, r.UIStrings().Blog.Title, collection.cfg.Description, intro, posts, page, true)
+	return r.blogArchiveShell(prefix, r.blogLabels(prefix).Title, collection.cfg.Description, intro, posts, page, true)
 }
 
 func (r *Router) renderBlogArchiveView(prefix, year string) render.HTML {
@@ -265,7 +275,7 @@ func (r *Router) renderBlogArchiveView(prefix, year string) render.HTML {
 	if year != "" {
 		posts = blogPostsForYear(posts, year)
 	}
-	labels := r.UIStrings().Blog
+	labels := r.blogLabels(prefix)
 	description := labels.ArchiveDescription
 	if year != "" {
 		description = formatLabel(labels.ArchiveYearDescription, year)
@@ -275,7 +285,7 @@ func (r *Router) renderBlogArchiveView(prefix, year string) render.HTML {
 
 func (r *Router) renderBlogArchivePage(prefix string, page int) render.HTML {
 	collection := r.blogCollection(prefix)
-	return r.blogArchiveShell(prefix, formatLabel(r.UIStrings().Blog.Page, page), formatLabel(r.UIStrings().Blog.PageDescription, collection.cfg.Title), "", r.blogPublicPosts(prefix), page, false)
+	return r.blogArchiveShell(prefix, formatLabel(r.blogLabels(prefix).Page, page), formatLabel(r.blogLabels(prefix).PageDescription, collection.cfg.Title), "", r.blogPublicPosts(prefix), page, false)
 }
 
 func blogPostsForYear(posts []*Route, year string) []*Route {
@@ -289,7 +299,7 @@ func blogPostsForYear(posts []*Route, year string) []*Route {
 }
 
 func (r *Router) blogArchiveShell(prefix, title, description, intro string, posts []*Route, page int, showFeatured bool) render.HTML {
-	labels := r.UIStrings().Blog
+	labels := r.blogLabels(prefix)
 	collection := r.blogCollection(prefix)
 	if page < 1 {
 		page = 1
@@ -312,8 +322,8 @@ func (r *Router) blogArchiveShell(prefix, title, description, intro string, post
 	}
 	selected := posts[start:end]
 	listTitle := title
-	if title == r.UIStrings().Blog.Title {
-		listTitle = r.UIStrings().Blog.LatestPosts
+	if title == r.blogLabels(prefix).Title {
+		listTitle = r.blogLabels(prefix).LatestPosts
 	}
 
 	children := []render.HTML{
@@ -345,7 +355,7 @@ func (r *Router) blogArchiveShell(prefix, title, description, intro string, post
 		),
 	)
 	if len(selected) == 0 {
-		children = append(children, render.Tag("p", map[string]string{"class": "fastr-docs-blog__empty"}, render.Text(r.UIStrings().Blog.NoPostsYet)))
+		children = append(children, render.Tag("p", map[string]string{"class": "fastr-docs-blog__empty"}, render.Text(r.blogLabels(prefix).NoPostsYet)))
 	}
 	if pageCount > 1 {
 		children = append(children, r.blogPagination(prefix, page, pageCount))
@@ -354,7 +364,7 @@ func (r *Router) blogArchiveShell(prefix, title, description, intro string, post
 }
 
 func (r *Router) blogToolbar(prefix string) render.HTML {
-	labels := r.UIStrings().Blog
+	labels := r.blogLabels(prefix)
 	collection := r.blogCollection(prefix)
 	links := []render.HTML{
 		render.Tag("a", map[string]string{"href": prefix, "class": "fastr-docs-blog__toolbar-link"}, render.Text(labels.Latest)),
@@ -387,7 +397,7 @@ func (r *Router) blogPostCard(post *Route, featured bool) render.HTML {
 	if post == nil {
 		return render.Text("")
 	}
-	meta := render.Tag("div", map[string]string{"class": "fastr-docs-blog-card__meta"}, render.Text(r.formatBlogDate(post.Metadata.DatePublished)+" · "+formatLabel(r.UIStrings().Blog.ReadingTime, blogReadingTime(post))))
+	meta := render.Tag("div", map[string]string{"class": "fastr-docs-blog-card__meta"}, render.Text(r.formatBlogDate(r.blogPrefixForPost(post), post.Metadata.DatePublished)+" · "+formatLabel(r.blogLabels(r.blogPrefixForPost(post)).ReadingTime, blogReadingTime(post))))
 	header := render.Join(meta, render.Tag("h3", nil, render.Text(post.Title)))
 	excerpt := post.Metadata.Excerpt
 	if excerpt == "" {
@@ -408,7 +418,7 @@ func (r *Router) blogPostCard(post *Route, featured bool) render.HTML {
 	// of inside its anchor so the generated HTML remains valid and both the
 	// post link and each topic filter stay independently keyboard accessible.
 	tagRow := render.Tag("div", map[string]string{"class": "fastr-docs-blog-card__tags", "aria-label": "Topics"},
-		render.Tag("span", map[string]string{"class": "ui-visually-hidden"}, render.Text(r.UIStrings().Blog.TopicsPrefix)),
+		render.Tag("span", map[string]string{"class": "ui-visually-hidden"}, render.Text(r.blogLabels(r.blogPrefixForPost(post)).TopicsPrefix)),
 		render.Join(tags...))
 	return render.Tag("div", map[string]string{"class": "fastr-docs-blog-card-wrap"}, card, tagRow)
 }
@@ -457,7 +467,7 @@ func blogShareTargetID(route *Route) string {
 }
 
 func (r *Router) blogPostActions(route *Route) render.HTML {
-	labels := r.UIStrings().Blog
+	labels := r.blogLabels(r.blogPrefixForPost(route))
 	targetID := blogShareTargetID(route)
 	return corehtml.Group(corehtml.GroupConfig{
 		Role:       "group",
@@ -516,7 +526,7 @@ func (r *Router) blogPagination(prefix string, page, pageCount int) render.HTML 
 		links = append(links, render.Tag("a", map[string]string{"href": blogPageHref(prefix, page-1), "class": "fastr-docs-blog__pager-link"}, render.Text("← Newer posts")))
 	}
 	if page < pageCount {
-		links = append(links, render.Tag("a", map[string]string{"href": blogPageHref(prefix, page+1), "class": "fastr-docs-blog__pager-link"}, render.Text(r.UIStrings().Blog.OlderPosts)))
+		links = append(links, render.Tag("a", map[string]string{"href": blogPageHref(prefix, page+1), "class": "fastr-docs-blog__pager-link"}, render.Text(r.blogLabels(prefix).OlderPosts)))
 	}
 	return render.Tag("nav", map[string]string{"class": "fastr-docs-blog__pagination", "aria-label": "Blog pagination"}, links...)
 }
@@ -529,7 +539,7 @@ func blogPageHref(prefix string, page int) string {
 }
 
 func (r *Router) renderBlogSearch(prefix string, ctx context.Context) render.HTML {
-	labels := r.UIStrings().Blog
+	labels := r.blogLabels(prefix)
 	query := ""
 	if ctx != nil {
 		query = strings.TrimSpace(uiapp.QueryFromContext(ctx).Get("q"))
@@ -550,7 +560,7 @@ func (r *Router) renderBlogSearch(prefix string, ctx context.Context) render.HTM
 	}
 	body := []render.HTML{
 		render.Tag("header", map[string]string{"class": "fastr-docs-blog__header"},
-			render.Tag("p", map[string]string{"class": "fastr-docs-blog__eyebrow"}, render.Text(r.UIStrings().Blog.Publication)),
+			render.Tag("p", map[string]string{"class": "fastr-docs-blog__eyebrow"}, render.Text(r.blogLabels(prefix).Publication)),
 			render.Tag("h1", nil, render.Text(labels.Search)),
 			render.Tag("p", map[string]string{"class": "fastr-docs-blog__lede"}, render.Text(labels.Lede)),
 			render.Tag("form", map[string]string{"class": "fastr-docs-blog-search", "action": joinPath(prefix, "search"), "method": "get", "role": "search", "data-fastr-docs-blog-search-form": ""},
@@ -635,7 +645,7 @@ func blogQueryMatch(post *Route, query string) bool {
 }
 
 func (r *Router) renderBlogTerms(prefix string, authors bool) render.HTML {
-	labels := r.UIStrings().Blog
+	labels := r.blogLabels(prefix)
 	label := labels.Tags
 	termLabel := strings.ToLower(labels.Tags)
 	if authors {
@@ -655,7 +665,7 @@ func (r *Router) renderBlogTerms(prefix string, authors bool) render.HTML {
 	}
 	body := []render.HTML{
 		render.Tag("header", map[string]string{"class": "fastr-docs-blog__header"},
-			render.Tag("p", map[string]string{"class": "fastr-docs-blog__eyebrow"}, render.Text(r.UIStrings().Blog.Publication)),
+			render.Tag("p", map[string]string{"class": "fastr-docs-blog__eyebrow"}, render.Text(r.blogLabels(prefix).Publication)),
 			render.Tag("h1", nil, render.Text(label)),
 			render.Tag("p", map[string]string{"class": "fastr-docs-blog__lede"}, render.Text(formatLabel(labels.ExploreTerms, termLabel))),
 			render.Tag("div", map[string]string{"class": "fastr-docs-blog__toolbar"}, r.blogToolbar(prefix)),
@@ -663,13 +673,13 @@ func (r *Router) renderBlogTerms(prefix string, authors bool) render.HTML {
 		render.Tag("div", map[string]string{"class": "fastr-docs-blog-terms"}, items...),
 	}
 	if len(items) == 0 {
-		body = append(body, render.Tag("p", map[string]string{"class": "fastr-docs-blog__empty"}, render.Text(r.UIStrings().Blog.NothingClassified)))
+		body = append(body, render.Tag("p", map[string]string{"class": "fastr-docs-blog__empty"}, render.Text(r.blogLabels(prefix).NothingClassified)))
 	}
 	return render.Tag("div", map[string]string{"class": "fastr-docs-blog-page fastr-docs-blog-page--terms", "data-blog-view": strings.ToLower(label)}, body...)
 }
 
 func (r *Router) renderBlogTerm(prefix string, authors bool, term string) render.HTML {
-	labels := r.UIStrings().Blog
+	labels := r.blogLabels(prefix)
 	posts := r.blogPostsForTerm(prefix, authors, term)
 	label := labels.Tag
 	if authors {
@@ -700,7 +710,7 @@ func (r *Router) wrapBlogPost(route *Route, body render.HTML, source string) ren
 	headings := markdownHeadings(source)
 	meta := route.Metadata
 	metaParts := []render.HTML{}
-	if date := r.formatBlogDate(meta.DatePublished); date != "" {
+	if date := r.formatBlogDate(r.blogPrefixForPost(route), meta.DatePublished); date != "" {
 		metaParts = append(metaParts, render.Tag("span", map[string]string{"class": "fastr-docs-blog-post__meta-item"},
 			render.Text(r.UIStrings().Published+" "), render.Tag("time", map[string]string{"datetime": meta.DatePublished}, render.Text(date))))
 	}
@@ -714,14 +724,14 @@ func (r *Router) wrapBlogPost(route *Route, body render.HTML, source string) ren
 		}
 		metaParts = append(metaParts, render.Tag("span", map[string]string{"class": "fastr-docs-blog-post__meta-item"}, render.Join(authorParts...)))
 	}
-	if modified := r.formatBlogDate(meta.DateModified); modified != "" && modified != r.formatBlogDate(meta.DatePublished) {
+	if modified := r.formatBlogDate(r.blogPrefixForPost(route), meta.DateModified); modified != "" && modified != r.formatBlogDate(r.blogPrefixForPost(route), meta.DatePublished) {
 		metaParts = append(metaParts, render.Tag("span", map[string]string{"class": "fastr-docs-blog-post__meta-item"},
 			render.Text(r.UIStrings().LastUpdated+" "), render.Tag("time", map[string]string{"datetime": meta.DateModified}, render.Text(modified))))
 	}
-	metaParts = append(metaParts, render.Text(formatLabel(r.UIStrings().Blog.ReadingTime, blogReadingTime(route))))
+	metaParts = append(metaParts, render.Text(formatLabel(r.blogLabels(r.blogPrefixForPost(route)).ReadingTime, blogReadingTime(route))))
 	titleID := blogShareTargetID(route) + "-title"
 	header := render.Tag("header", map[string]string{"class": "fastr-docs-blog-post__header"},
-		render.Tag("p", map[string]string{"class": "fastr-docs-blog__eyebrow"}, render.Text(r.UIStrings().Blog.Publication)),
+		render.Tag("p", map[string]string{"class": "fastr-docs-blog__eyebrow"}, render.Text(r.blogLabels(r.blogPrefixForPost(route)).Publication)),
 		render.Tag("h1", map[string]string{"id": titleID}, render.Text(route.Title)),
 		render.Tag("p", map[string]string{"class": "fastr-docs-blog-post__lede"}, render.Text(route.Description)),
 		render.Tag("div", map[string]string{"class": "fastr-docs-blog-post__meta"}, joinWithDot(metaParts...)),
@@ -761,7 +771,7 @@ func (r *Router) wrapBlogPost(route *Route, body render.HTML, source string) ren
 	}
 	if related := r.blogRelated(route); len(related) > 0 {
 		children = append(children, corehtml.Section(corehtml.SectionConfig{Class: "fastr-docs-blog-post__related", LabelledBy: "fastr-docs-blog-related"},
-			render.Tag("h2", map[string]string{"id": "fastr-docs-blog-related"}, render.Text(r.UIStrings().Blog.KeepReading)),
+			render.Tag("h2", map[string]string{"id": "fastr-docs-blog-related"}, render.Text(r.blogLabels(r.blogPrefixForPost(route)).KeepReading)),
 			render.Tag("div", map[string]string{"class": "fastr-docs-blog__cards"}, r.blogPostCards(related, false)...),
 		))
 	}
@@ -788,7 +798,7 @@ func (r *Router) blogCrumbs(route *Route) []render.HTML {
 		crumbs = append(crumbs, render.Text(" / "), render.Tag("a", map[string]string{"href": prefix}, render.Text(r.blogCollection(prefix).cfg.Title)))
 	}
 	crumbs = append(crumbs, render.Text(" / "), render.Tag("span", map[string]string{"aria-current": "page"}, render.Text(route.Title)))
-	return []render.HTML{corehtml.Nav(corehtml.NavConfig{Label: r.UIStrings().Blog.Breadcrumb}, crumbs...)}
+	return []render.HTML{corehtml.Nav(corehtml.NavConfig{Label: r.blogLabels(r.blogPrefixForPost(route)).Breadcrumb}, crumbs...)}
 }
 
 func (r *Router) blogPager(route *Route) *ui.DocPager {
@@ -804,7 +814,10 @@ func (r *Router) blogPager(route *Route) *ui.DocPager {
 	if index < 0 {
 		return nil
 	}
-	pager := &ui.DocPager{PrevHref: prefix, PrevLabel: r.UIStrings().Blog.AllPosts}
+	// The direction lines come from the collection's language, like every
+	// other label on the post; the arrow travels with the translation.
+	labels := r.uiAt(prefix)
+	pager := &ui.DocPager{PrevHref: prefix, PrevLabel: labels.Blog.AllPosts, PrevDirLabel: labels.Previous, NextDirLabel: labels.Next}
 	if index+1 < len(posts) {
 		pager.PrevHref = posts[index+1].Path
 		pager.PrevLabel = posts[index+1].Title
@@ -859,13 +872,13 @@ func blogReadingTime(route *Route) string {
 	return strconv.Itoa(minutes)
 }
 
-func (r *Router) formatBlogDate(raw string) string {
+func (r *Router) formatBlogDate(prefix, raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
 	}
 	if date, ok := parseBlogDate(raw); ok {
-		return r.UIStrings().formatDate(date)
+		return r.uiAt(prefix).formatDate(date)
 	}
 	return raw
 }
@@ -889,7 +902,7 @@ type blogSidebar struct {
 	prefix string
 }
 
-func (s *blogSidebar) labelSet() BlogStrings { return s.router.UIStrings().Blog }
+func (s *blogSidebar) labelSet() BlogStrings { return s.router.blogLabels(s.prefix) }
 
 func (s *blogSidebar) Render() render.HTML { return s.render("") }
 

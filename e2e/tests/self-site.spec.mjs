@@ -22,10 +22,12 @@ const openSectionNav = async (page, testInfo) => {
   return nav;
 };
 
-const openBlogNav = async (page, testInfo) => {
-  const nav = page.locator(isMobileProject(testInfo) ? '[data-fui-widget="fastr-docs-blog-sections"]' : '.layout-blog .ui-sidebar__inline');
+// Each blog collection has its own drawer; the English one keeps the short
+// name, a second collection's is derived from its prefix.
+const openBlogNav = async (page, testInfo, drawer = 'fastr-docs-blog-sections') => {
+  const nav = page.locator(isMobileProject(testInfo) ? `[data-fui-widget="${drawer}"]` : '[data-fui-layout^="blog"] .ui-sidebar__inline');
   if (isMobileProject(testInfo) && await nav.isHidden()) {
-    await page.locator('[data-fui-open="fastr-docs-blog-sections"]:visible').first().click();
+    await page.locator(`[data-fui-open="${drawer}"]:visible`).first().click();
   }
   await expect(nav).toBeVisible();
   return nav;
@@ -130,7 +132,7 @@ test('self-hosted blog archive and RSS feed share the Router content', async ({ 
   });
   await page.goto(selfPage('/blog'));
   await expect(page.locator('h1').filter({ hasText: 'Blog' })).toBeVisible();
-  await expect(page.locator('.layout-blog')).toBeVisible();
+  await expect(page.locator('[data-fui-layout^="blog"]')).toBeVisible();
   const blogNav = await openBlogNav(page, testInfo);
   await expect(blogNav.getByRole('link', { name: 'All posts', exact: true })).toHaveAttribute('aria-current', 'page');
   if (isMobileProject(testInfo)) {
@@ -487,6 +489,92 @@ test('a translated slug pairs with its original through translation_of', async (
 
   await page.selectOption('[data-docs-variant-select=locale]', { label: 'Español' });
   await page.waitForURL('**/es/ejemplos/arbol-de-rutas');
+});
+
+// The blog is a second collection in Spanish: its own landing, sidebar,
+// archive, feed and posts, in its own strings, paired with the English one.
+test('the Spanish blog is a blog in Spanish', async ({ page }, testInfo) => {
+  await page.goto(selfPage('/es/blog'));
+  await expect(page.locator('h1').filter({ hasText: 'Blog' })).toBeVisible();
+  const state = await page.evaluate(() => ({
+    lang: document.documentElement.lang,
+    layout: document.querySelector('[data-fui-layout^="blog"]')?.getAttribute('data-fui-layout'),
+    feed: document.querySelector('.fastr-docs-blog__feed-link')?.getAttribute('href'),
+    hreflang: document.querySelector('link[rel="alternate"][hreflang="en"]')?.getAttribute('href'),
+    selector: [...(document.querySelector('[data-docs-variant-select=locale]')?.options || [])].map((o) => o.value),
+    latest: document.querySelector('.fastr-docs-blog__section-title, h2')?.textContent.trim(),
+  }));
+  expect(state.lang).toBe('es');
+  expect(state.layout).toBe('blog-es');
+  expect(state.feed).toBe('/es/blog/feed.xml');
+  expect(state.hreflang).toBe('/blog');
+  expect(state.selector).toEqual(['/blog', '/es/blog']);
+  await expect(page.getByText('Últimas entradas', { exact: true })).toBeVisible();
+
+  const blogNav = await openBlogNav(page, testInfo, 'fastr-docs-blog-es-blog-sections');
+  for (const label of ['Todas las entradas', 'Archivo', 'Etiquetas', 'Autores', 'Buscar']) {
+    await expect(blogNav.getByRole('link', { name: label, exact: true })).toBeVisible();
+  }
+  await expect(blogNav.getByRole('link', { name: 'All posts', exact: true })).toHaveCount(0);
+  if (isMobileProject(testInfo)) await page.keyboard.press('Escape');
+
+  // A post with a translated slug pairs with its original.
+  await page.goto(selfPage('/es/blog/un-arbol-para-docs-y-publicacion'));
+  await expect(page.locator('h1')).toContainText('Un árbol para docs y publicación');
+  await expect(page.locator('link[rel="alternate"][hreflang="en"]')).toHaveAttribute('href', '/blog/route-tree');
+  await page.selectOption('[data-docs-variant-select=locale]', { label: 'English' });
+  await page.waitForURL('**/blog/route-tree');
+  await expect(page.locator('h1')).toContainText('One tree for docs and publishing');
+
+  const feed = await page.request.get(selfPage('/es/blog/feed.xml'));
+  expect(feed.ok()).toBeTruthy();
+  expect(await feed.text()).toContain('Un árbol para docs y publicación');
+});
+
+// The header lives in the layout layer GoFastr keeps across client-side
+// navigations. Without a refresh, a Spanish reader who clicked into an
+// untranslated section kept Spanish tabs, a Spanish search label, a selector
+// still aimed at the previous page, and a Spanish <html lang> over English
+// content.
+test('the header follows the page across client-side navigations', async ({ page }, testInfo) => {
+  test.skip(isMobileProject(testInfo), 'the desktop header is the surface under test');
+  const chrome = () => page.evaluate(() => ({
+    path: location.pathname,
+    lang: document.documentElement.lang,
+    tabs: [...document.querySelectorAll('.ui-site-header__links a')].map((a) => a.textContent.trim()),
+    selector: [...(document.querySelector('[data-docs-variant-select=locale]')?.options || [])].map((o) => o.value),
+    search: document.querySelector('.fastr-docs-command-trigger__label')?.textContent.trim(),
+    loads: performance.getEntriesByType('navigation').length,
+  }));
+
+  await page.goto(selfPage('/es/docs/getting-started'));
+  expect((await chrome()).tabs).toContain('Documentación');
+
+  // Same language: the selector must aim at the new page, not the old one.
+  await page.locator('.ui-site-header__links a', { hasText: 'Blog' }).first().click();
+  await page.waitForURL(/\/es\/blog\/?$/);
+  await expect.poll(async () => (await chrome()).selector).toEqual(['/blog', '/es/blog']);
+
+  // Across languages: an untranslated section is English, and so is the
+  // header around it.
+  await page.locator('.ui-site-header__links a', { hasText: 'Example API reference' }).first().click();
+  await page.waitForURL(/\/api-reference\/?$/);
+  await expect.poll(async () => (await chrome()).lang).toBe('en');
+  const english = await chrome();
+  expect(english.tabs).toContain('Documentation');
+  expect(english.tabs).not.toContain('Documentación');
+  expect(english.search).toBe('Search');
+  expect(english.selector).toEqual([]);
+  expect(english.loads).toBe(1);
+
+  // And back into Spanish through the tab, still without a full load.
+  await page.goBack();
+  await page.waitForURL(/\/es\/blog\/?$/);
+  await expect.poll(async () => (await chrome()).lang).toBe('es');
+  const spanish = await chrome();
+  expect(spanish.tabs).toContain('Documentación');
+  expect(spanish.search).toBe('Buscar');
+  expect(spanish.loads).toBe(1);
 });
 
 // The page about translation, translated, is the demonstration that matters.

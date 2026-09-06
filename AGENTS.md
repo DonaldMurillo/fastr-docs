@@ -292,10 +292,42 @@ Localizing at init is too early: the modal is not in the document until it is
 opened, so `watchPaletteForLocalization` hooks the trigger click and the input's
 focusin instead.
 
-The **blog** still is not translatable. `BlogStrings` is read when
-`MarkdownBlog` registers its routes, so the labels are fixed for the whole site.
-A translated blog needs a second collection carrying its own strings, which is a
-feature rather than a fix.
+The **blog** is a collection per language. Every label in `blog_surface.go`
+is read through `blogLabels(prefix)`, which is `uiAt(prefix).Blog`, so a
+collection registered with `DefaultLocale: "es"` renders in the Spanish
+`BlogStrings` while the English one beside it does not; `formatBlogDate` takes
+the prefix for the same reason. The generated views (archive, tags, authors,
+search, pages) carry the collection's locale as metadata, which is what makes
+`/es/blog/archive` pair with `/blog/archive` and read the right strings.
+`blogRootFor` groups a collection's screens by its prefix rather than its tree
+root, or `/es/blog`, which sits under the Spanish home, wore the docs sidebar.
+The site has both collections; a grep for `UIStrings().Blog` should stay at
+zero.
+
+### The header after a client-side navigation
+
+GoFastr's runtime keeps every layout layer it shares with the destination and
+swaps only the deepest changed slot. The header is in the outermost layer, so
+it was rendered for the first page loaded and never again: a Spanish reader who
+clicked into an untranslated section kept Spanish tabs, a Spanish search label,
+a language selector still aimed at the previous page, and `lang="es"` over
+English content.
+
+Every page therefore carries its own header in
+`<template data-fastr-docs-chrome>` inside the swapped region
+(`chromeTemplate`, appended by `pageComponent` and by the screen wrapper, which
+now wraps every screen). `syncChrome` in `runtime.go` runs first in `init()`
+on every navigation and copies the parts that change into the live header: the
+two nav lists, the selector container, the search trigger's `data-fastr-docs-*`
+attributes and label, and `<html lang>`. The selector container is rendered
+even when empty so there is always somewhere to copy into. On a full load the
+copy is a no-op.
+
+The sidebar is in the section layer, which is shared across languages by name,
+so `layoutLocaleSuffix` keys section layouts by language on a multilingual site
+(`docs-section-es`, `blog-en`). A single-language site keeps its layout names
+and the `.layout-*` classes derived from them; `styles.go` selects the blog
+layout with `[data-fui-layout^="blog"]` for that reason.
 
 One trap when adding `data-fastr-docs-search-*` attributes:
 `TestLayoutUsesNativeCommandPaletteSearch` guarded against the legacy search

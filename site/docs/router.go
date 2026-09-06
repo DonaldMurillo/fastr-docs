@@ -47,6 +47,58 @@ func NewRouter() *docs.Router {
 			Previous:          "← Anterior",
 			Next:              "Siguiente →",
 			Version:           "Versión",
+			DateFormat:        "2 Jan 2006",
+			Blog: docs.BlogStrings{
+				Title:                  "Blog",
+				Navigation:             "Navegación del blog",
+				Breadcrumb:             "Ruta de navegación",
+				AllPosts:               "Todas las entradas",
+				LatestPosts:            "Últimas entradas",
+				RecentPosts:            "Entradas recientes",
+				KeepReading:            "Sigue leyendo",
+				NoPostsYet:             "Todavía no hay entradas publicadas aquí.",
+				NothingClassified:      "Todavía no hay nada clasificado.",
+				CollectionDescription:  "Entradas publicadas en esta colección.",
+				Search:                 "Buscar",
+				SearchDescription:      "Busca entre las entradas publicadas.",
+				SearchPosts:            "Buscar entradas",
+				SearchThePublication:   "Buscar en la publicación",
+				ResultsFor:             "Resultados para “%s”",
+				NoPostsMatched:         "Ninguna entrada coincide con esa búsqueda.",
+				MatchesSummary:         "%d coincidencias",
+				Archive:                "Archivo",
+				ArchiveDescription:     "Recorre todas las entradas publicadas por año.",
+				ArchiveYear:            "Archivo de %s",
+				ArchiveYearDescription: "Entradas publicadas en %s.",
+				Tag:                    "Etiqueta",
+				Tags:                   "Etiquetas",
+				TagsDescription:        "Recorre las entradas por tema.",
+				ExploreTerms:           "Explora %s en toda la publicación.",
+				PostCount:              "%d entradas",
+				Publication:            "Publicación",
+				ReadingTime:            "%s min de lectura",
+				Featured:               "Destacada",
+				Latest:                 "Últimas",
+				Feed:                   "RSS",
+				TopicsPrefix:           "Temas: ",
+				Lede:                   "Notas de versión, ensayos y cambios de implementación.",
+				TagDescription:         "Entradas etiquetadas con %s.",
+				Authors:                "Autores",
+				AuthorsDescription:     "Recorre las entradas por autor.",
+				Author:                 "Autor",
+				AuthorDescription:      "Entradas de %s.",
+				Page:                   "Página %d",
+				PagedTitle:             "Blog · Página %d",
+				PageDescription:        "Más entradas de %s.",
+				OlderPosts:             "Entradas anteriores →",
+				NewerPosts:             "← Entradas más recientes",
+				Pagination:             "Paginación del blog",
+				PostActions:            "Acciones de la entrada",
+				Share:                  "Compartir",
+				ShareThisPost:          "Compartir esta entrada",
+				CopyLink:               "Copiar enlace",
+				LinkCopied:             "Enlace copiado",
+			},
 			NotFound: docs.NotFoundStrings{
 				Heading:       "Página no encontrada",
 				Message:       "Esta página no existe.",
@@ -433,6 +485,18 @@ func NewRouter() *docs.Router {
 		Title: "Blog", Description: "Release notes and implementation updates for fastr-docs.", Order: 5,
 		PostsPerPage: 10, RelatedPosts: 3,
 		Offline: true,
+	}); err != nil {
+		panic(err)
+	}
+	// The Spanish blog is a second collection in its own language. Its
+	// landing, archive, tags, authors and search pair with the English ones by
+	// path shape, and so does a post that keeps its file name; a post with a
+	// translated slug names its original with translation_of.
+	if err := router.MarkdownBlog("/es/blog", siteFile("content", "es", "blog"), docs.BlogConfig{
+		Title: "Blog", Description: "Notas de versión y cambios de implementación de fastr-docs.", Order: 8,
+		PostsPerPage: 10, RelatedPosts: 3,
+		DefaultLocale: "es",
+		Offline:       true,
 	}); err != nil {
 		panic(err)
 	}

@@ -1225,10 +1225,11 @@ func (r *Router) Mount(site *uiapp.App, layout *uiapp.Layout) error {
 				WithTitle(route.Title).
 				WithDescription(route.Description)
 		case KindScreen:
-			var screenComponent component.Component = route.screen.Component
-			if r.routeHasMetadata(route) {
-				screenComponent = metadataScreenComponent(r, route, route.screen.Component)
-			}
+			// Every screen is wrapped, not only those with metadata: the
+			// wrapper also carries the page's chrome template, which the
+			// runtime needs on every page to refresh the header after a
+			// client-side navigation.
+			screenComponent := metadataScreenComponent(r, route, route.screen.Component)
 			screen = uiapp.NewScreen(route.Path, screenComponent).
 				WithTitle(route.Title).
 				WithDescription(route.Description)
@@ -1237,6 +1238,12 @@ func (r *Router) Mount(site *uiapp.App, layout *uiapp.Layout) error {
 		}
 		screen.Preload = route.Preload
 		root := r.rootRoute(route)
+		// A blog collection gets its own group whatever its depth, so its
+		// pages take the blog layout and sidebar. /es/blog sits under the
+		// Spanish home; grouped by tree root it wore the docs sidebar.
+		if blogRoot := r.blogRootFor(route); blogRoot != nil {
+			root = blogRoot
+		}
 		if root == nil {
 			site.RegisterScreen(screen, layout)
 			continue
@@ -1311,9 +1318,44 @@ func (r *Router) sectionLayout(route *Route) *uiapp.Layout {
 		}
 	}
 	if route != nil && route.Path != "/" && r.isBlogPrefix(route.Path) {
-		return uiapp.NewLayout("blog").WithSidebar(&blogSidebar{router: r, prefix: route.Path})
+		return uiapp.NewLayout("blog" + r.layoutLocaleSuffix(route)).WithSidebar(&blogSidebar{router: r, prefix: route.Path})
 	}
-	return uiapp.NewLayout(sectionLayoutName(route)).WithSidebar(&docsSidebar{router: r})
+	return uiapp.NewLayout(sectionLayoutName(route) + r.layoutLocaleSuffix(route)).WithSidebar(&docsSidebar{router: r})
+}
+
+// layoutLocaleSuffix keys a section layout by the language of the pages it
+// wraps, once a site has more than one.
+//
+// GoFastr re-renders a layout layer on client-side navigation only when its
+// key changes. The docs sidebar lives in the section layer, so a Spanish page
+// reached from an English one by a content link kept the English sidebar
+// around a Spanish article. A single-language site keeps its layout names,
+// and the CSS classes derived from them.
+func (r *Router) layoutLocaleSuffix(route *Route) string {
+	if r == nil || !r.multilingual() {
+		return ""
+	}
+	if locale := r.effectiveLocale(route); locale != "" {
+		return "-" + locale
+	}
+	return ""
+}
+
+// multilingual reports whether published pages are in more than one language,
+// counting the fallback locale an unmarked page is treated as being in.
+// Locales() lists declared values only, and a site that marks its
+// translations but not its originals declares exactly one.
+func (r *Router) multilingual() bool {
+	seen := map[string]bool{}
+	for _, route := range r.Routes() {
+		if !r.variantPublished(route) {
+			continue
+		}
+		if locale := r.effectiveLocale(route); locale != "" {
+			seen[locale] = true
+		}
+	}
+	return len(seen) > 1
 }
 
 func sectionLayoutName(route *Route) string {
@@ -1324,6 +1366,16 @@ func sectionLayoutName(route *Route) string {
 		return "docs-api"
 	}
 	return "docs-section"
+}
+
+// blogRootFor returns the blog collection a route belongs to, or nil.
+func (r *Router) blogRootFor(route *Route) *Route {
+	for current := route; current != nil; current = current.Parent {
+		if r.isBlogPrefix(current.Path) {
+			return current
+		}
+	}
+	return nil
 }
 
 func (r *Router) rootRoute(route *Route) *Route {
@@ -1388,11 +1440,11 @@ type screenMetadataComponent struct {
 }
 
 func (s *screenMetadataComponent) Render() render.HTML {
-	return s.component.Render()
+	return render.Join(s.component.Render(), s.router.chromeTemplate(context.Background(), s.route.Path))
 }
 
 func (s *screenMetadataComponent) RenderCtx(ctx context.Context) render.HTML {
-	return component.RenderComponentCtx(ctx, s.component)
+	return render.Join(component.RenderComponentCtx(ctx, s.component), s.router.chromeTemplate(ctx, s.route.Path))
 }
 
 func (s *screenMetadataComponent) Actions() {
@@ -1507,6 +1559,10 @@ func (p *pageComponent) RenderCtx(ctx context.Context) render.HTML {
 }
 
 func (p *pageComponent) render(ctx context.Context) render.HTML {
+	return render.Join(p.content(ctx), p.router.chromeTemplate(ctx, p.route.Path))
+}
+
+func (p *pageComponent) content(ctx context.Context) render.HTML {
 	if p.route.page == nil {
 		return render.Text("")
 	}

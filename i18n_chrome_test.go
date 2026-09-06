@@ -165,7 +165,7 @@ func TestASingleLocaleSiteIsUnaffected(t *testing.T) {
 	if items := r.headerItems("/guide"); len(items) != 2 {
 		t.Fatalf("nav = %+v, want both sections", items)
 	}
-	if html := string(r.variantSelectors("/guide")); strings.Contains(html, "variant-select") {
+	if html := string(r.variantSelectors("/guide")); strings.Contains(html, "data-docs-variant-select") {
 		t.Fatalf("a single-locale site got a selector: %s", html)
 	}
 }

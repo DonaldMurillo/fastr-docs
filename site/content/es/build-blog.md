@@ -68,9 +68,10 @@ tamaño adecuado para el teclado y avisos en vivo para las tecnologías de apoyo
 La acción de compartir usa la Web Share API cuando el dispositivo la ofrece y,
 si no, copia la URL canónica.
 
-{{< warning title="La interfaz del blog aún no se traduce" >}}
-Las etiquetas del blog, como archivo, etiquetas o tiempo de lectura, se resuelven
-una sola vez para todo el sitio, no por página. Una entrada en español mostraría
-la interfaz en inglés. Está anotado como limitación conocida en
+{{< tip title="Un blog por idioma" >}}
+Este blog es una segunda colección: `MarkdownBlog("/es/blog", ...)` con
+`DefaultLocale: "es"`. Tiene su propio archivo, etiquetas, autores, búsqueda y
+feed, con las etiquetas en español que `WithLocaleUIStrings` aporta bajo
+`Blog`. Se empareja con el blog en inglés como cualquier otra página; ver
 [Idiomas y traducción](/es/docs/operate/i18n).
-{{< /warning >}}
+{{< /tip >}}

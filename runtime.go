@@ -577,8 +577,44 @@ const docsRuntimeJS = `(function(){
       state.observer.observe(document.body, {childList:true, subtree:true});
     }
   }
+  // The header is in the layout layer GoFastr keeps across client-side
+  // navigations, so it is rendered for the page that was loaded first. Every
+  // page carries its own header in a template inside the swapped region;
+  // this copies the parts that change into the live one: nav tabs, language
+  // and version selectors, the search trigger's language and labels, and
+  // the document language. On a full load it copies identical markup.
+  function syncChrome(){
+    var template = document.querySelector('template[data-fastr-docs-chrome]');
+    var live = document.querySelector('.fastr-docs-site-header');
+    if (!template || !template.content || !live) return;
+    var fresh = template.content;
+    ['.ui-site-header__links', '.ui-site-header__mobile-links', '.fastr-docs-variant-selectors'].forEach(function(selector){
+      var target = live.querySelector(selector);
+      var source = fresh.querySelector(selector);
+      if (target && source && target.innerHTML !== source.innerHTML) target.innerHTML = source.innerHTML;
+    });
+    var trigger = live.querySelector('.fastr-docs-command-trigger');
+    var freshTrigger = fresh.querySelector('.fastr-docs-command-trigger');
+    if (trigger && freshTrigger) {
+      Array.prototype.forEach.call(freshTrigger.attributes, function(attr){
+        if (attr.name.indexOf('data-fastr-docs-') === 0 || attr.name === 'aria-label') trigger.setAttribute(attr.name, attr.value);
+      });
+      var label = trigger.querySelector('.fastr-docs-command-trigger__label');
+      var freshLabel = freshTrigger.querySelector('.fastr-docs-command-trigger__label');
+      if (label && freshLabel) label.textContent = freshLabel.textContent;
+    }
+    var freshMenu = fresh.querySelector('.fastr-docs-mobile-nav-trigger');
+    if (freshMenu) {
+      live.querySelectorAll('.fastr-docs-mobile-nav-trigger').forEach(function(button){
+        button.setAttribute('aria-label', freshMenu.getAttribute('aria-label') || '');
+      });
+    }
+    var lang = template.getAttribute('data-fastr-docs-lang');
+    if (lang) document.documentElement.setAttribute('lang', lang);
+  }
   function init(){
     if (window.__fastrDocsTocCleanup) window.__fastrDocsTocCleanup();
+    syncChrome();
     if (window.__fastrDocsBlogSearchCleanup) window.__fastrDocsBlogSearchCleanup();
     if (window.__fastrDocsBlogShareCleanup) window.__fastrDocsBlogShareCleanup();
     document.querySelectorAll('[data-docs-toc-select]').forEach(function(el){ initTocSelect(el); });

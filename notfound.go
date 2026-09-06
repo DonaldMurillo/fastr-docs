@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/DonaldMurillo/gofastr/core/render"
@@ -24,12 +25,58 @@ type NotFoundScreen struct {
 	// Strings translates the page. Empty fields keep the English defaults, so
 	// a host that does not localize passes nothing.
 	Strings NotFoundStrings
+	// Locales translates the page per language, matched against the URL that
+	// was not found.
+	//
+	// The 404 is built once for the whole site, so unlike every other surface
+	// it has no route to read a language from. The requested path is all there
+	// is, and it is enough: a miss under /es is a Spanish reader who mistyped a
+	// Spanish URL, and answering in English strands them.
+	Locales []LocaleNotFound
+}
+
+// LocaleNotFound is the 404 for URLs beneath one language's path prefix.
+type LocaleNotFound struct {
+	// Prefix is the language's path prefix, such as "/es". The longest
+	// matching prefix wins.
+	Prefix string
+	// HomeHref is that language's home, so the recovery link does not drop the
+	// reader into another language.
+	HomeHref string
+	Strings  NotFoundStrings
 }
 
 func (s NotFoundScreen) labels() NotFoundStrings {
+	return s.labelsFor("")
+}
+
+// labelsFor resolves the labels for the URL that was not found, layering the
+// language's overrides on the site-wide ones and then the English defaults.
+func (s NotFoundScreen) labelsFor(path string) NotFoundStrings {
 	merged := defaultUIStrings.NotFound
 	overlayStrings(reflect.ValueOf(&merged).Elem(), reflect.ValueOf(s.Strings))
+	if locale := s.localeFor(path); locale != nil {
+		overlayStrings(reflect.ValueOf(&merged).Elem(), reflect.ValueOf(locale.Strings))
+	}
 	return merged
+}
+
+func (s NotFoundScreen) localeFor(path string) *LocaleNotFound {
+	path = normalizePath(path)
+	if path == "" {
+		return nil
+	}
+	var best *LocaleNotFound
+	for i := range s.Locales {
+		prefix := normalizePath(s.Locales[i].Prefix)
+		if prefix == "" || !pathActive(prefix, path) {
+			continue
+		}
+		if best == nil || len(prefix) > len(normalizePath(best.Prefix)) {
+			best = &s.Locales[i]
+		}
+	}
+	return best
 }
 
 func (s NotFoundScreen) Render() render.HTML {
@@ -45,10 +92,13 @@ func (s NotFoundScreen) RenderNotFound(path string) render.HTML {
 
 func (s NotFoundScreen) render(path string) render.HTML {
 	home := s.HomeHref
+	labels := s.labelsFor(path)
+	if locale := s.localeFor(path); locale != nil && strings.TrimSpace(locale.HomeHref) != "" {
+		home = locale.HomeHref
+	}
 	if home == "" {
 		home = "/"
 	}
-	labels := s.labels()
 	name := s.SiteName
 	if name == "" {
 		name = labels.SiteFallback
@@ -182,4 +232,32 @@ func RewriteStaticCSP(dir, policy string) error {
 		return errors.New("docs: exported site has no Content-Security-Policy metadata or header")
 	}
 	return nil
+}
+
+// NotFoundScreen builds the 404 for this Router, already translated.
+//
+// A project can construct NotFoundScreen itself, but it would have to restate
+// what the Router already knows: which languages exist, where each one's home
+// is, and what its labels are. Getting any of those wrong is invisible until
+// someone mistypes a URL.
+func (r *Router) NotFoundScreen() NotFoundScreen {
+	screen := NotFoundScreen{SiteName: r.SiteName(), Strings: r.UIStrings().NotFound}
+	if r == nil {
+		return screen
+	}
+	for locale := range r.localeUI {
+		home := r.findVariant(r.roots, nil, "", locale)
+		if home == nil {
+			continue
+		}
+		screen.Locales = append(screen.Locales, LocaleNotFound{
+			Prefix:   home.Path,
+			HomeHref: home.Path,
+			Strings:  r.UIStringsForLocale(locale).NotFound,
+		})
+	}
+	sort.Slice(screen.Locales, func(i, j int) bool {
+		return screen.Locales[i].Prefix < screen.Locales[j].Prefix
+	})
+	return screen
 }

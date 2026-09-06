@@ -107,7 +107,10 @@ type generatedSite struct {
 
 func buildSite() (*generatedSite, error) {
 	router := docsite.NewRouter()
-	notFound := fastrdocs.NotFoundScreen{SiteName: router.SiteName()}
+	// Built from the Router so the 404 answers in the language of the URL
+	// that was missed. It is the one surface with no route to read a
+	// language from.
+	notFound := router.NotFoundScreen()
 	site := uiapp.NewApp("fastr-docs").WithTheme(router.Theme()).WithLang(router.Language())
 	if err := router.Mount(site, router.Layout()); err != nil {
 		return nil, err

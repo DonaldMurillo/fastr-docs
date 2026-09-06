@@ -153,14 +153,21 @@ site is what every real one looks like, and it is the state worth demonstrating.
 | Sidebar, on-this-page, search button, dates | Yes |
 | Language selector | Yes, and it names languages rather than codes |
 | Section tabs and groups in the header and sidebar | Yes, where a translation of that section exists |
-| Command palette placeholder | No, it is mounted once for the whole site |
-| Blog archive, tags, and post chrome | No, those labels are site-wide |
+| Search modal placeholder | Yes, carried on the per-page search button |
 | Previous/next pager | Yes, labels and neighbours both |
 | Search results | Yes, narrowed to the page's language |
-| The 404 page | No, it is built once and has no route to read a locale from |
+| The 404 page | Yes, matched against the URL that was missed |
+| Blog archive, tags, and post chrome | No, those labels are resolved once for the site |
 
-The last three are limitations, not decisions, and they are written down in
-`AGENTS.md` rather than hidden here.
+Only the last is a limitation rather than a decision, and it is written down in
+`AGENTS.md` rather than hidden here. The blog reads its labels once, when
+`MarkdownBlog` registers its routes, so a translated blog needs a second
+collection with its own strings.
+
+The 404 and the search modal are both built once for the whole site, so neither
+has a route to read a language from. The 404 goes by the URL that was missed: a
+miss under `/es` is a Spanish reader who mistyped a Spanish URL. The modal's
+strings ride on the search button, which is rendered into every page.
 
 ## Translating a section, not just a page
 

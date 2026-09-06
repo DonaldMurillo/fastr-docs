@@ -156,6 +156,37 @@ const docsRuntimeJS = `(function(){
   function jsonSearchTrigger(){
     return document.querySelector('[data-fastr-docs-backend="json"]');
   }
+  // The command palette is mounted once for the whole site, so the strings
+  // inside the modal cannot be rendered per language the way the rest of the
+  // chrome is. The trigger is rendered into every page and carries them, and
+  // they are applied to the shared modal for the page being read.
+  function searchTriggerElement(){
+    return pagefindTrigger() || jsonSearchTrigger();
+  }
+  // The modal is not in the document until it is opened, so localizing once at
+  // init is too early. These fire when it appears, by click or by shortcut.
+  function watchPaletteForLocalization(){
+    if (window.__fastrDocsPaletteLocalized) return;
+    window.__fastrDocsPaletteLocalized = true;
+    document.addEventListener('click', function(event){
+      if (event.target && event.target.closest && event.target.closest('.fastr-docs-command-trigger')) {
+        requestAnimationFrame(localizePalette);
+      }
+    });
+    document.addEventListener('focusin', function(event){
+      if (event.target && event.target.id === 'fastr-docs-command-palette-input') localizePalette();
+    });
+  }
+  function localizePalette(){
+    var trigger = searchTriggerElement();
+    if (!trigger) return;
+    var placeholder = trigger.getAttribute('data-fastr-docs-search-placeholder');
+    var close = trigger.getAttribute('data-fastr-docs-search-close');
+    var input = document.getElementById('fastr-docs-command-palette-input');
+    if (input && placeholder) input.setAttribute('placeholder', placeholder);
+    var button = document.querySelector('.fastr-docs-command-palette__close');
+    if (button && close) button.setAttribute('aria-label', close);
+  }
   function pagefindList(input){
     if (!input) return null;
     var id = input.getAttribute('aria-controls');
@@ -557,8 +588,10 @@ const docsRuntimeJS = `(function(){
     syncDocsDrawerTrigger();
     initPagefindSearch();
     initJSONSearch();
+    localizePalette();
     initVariantSelectors();
     initVariantActiveLinks();
+    watchPaletteForLocalization();
     if (window.__fastrDocsRuntimeReady) return;
     window.__fastrDocsRuntimeReady = true;
     var scheduleInit = function(){ setTimeout(init, 0); };

@@ -256,6 +256,34 @@ unchanged. Neighbours are drawn from the reader's own language; walking every
 published route stepped a reader at the edge of the Spanish tree into the
 English one.
 
+### Surfaces built once for the whole site
+
+Three surfaces have no route to read a language from, and each needed a
+different answer.
+
+The **404** is handed to uihost at startup, but `RenderNotFound(path)` does
+receive the requested path per request, and that is enough:
+`NotFoundScreen.Locales` matches the URL by longest prefix.
+`Router.NotFoundScreen()` fills it in from the registered locales so a project
+does not restate what the Router already knows.
+
+The **command palette modal** is mounted once at an HTTP route, so its
+placeholder cannot be rendered per language. Its strings ride on the search
+trigger, which is per page, and the runtime applies them when the modal opens.
+Localizing at init is too early: the modal is not in the document until it is
+opened, so `watchPaletteForLocalization` hooks the trigger click and the input's
+focusin instead.
+
+The **blog** still is not translatable. `BlogStrings` is read when
+`MarkdownBlog` registers its routes, so the labels are fixed for the whole site.
+A translated blog needs a second collection carrying its own strings, which is a
+feature rather than a fix.
+
+One trap when adding `data-fastr-docs-search-*` attributes:
+`TestLayoutUsesNativeCommandPaletteSearch` guarded against the legacy search
+component with `strings.Contains(header, "fastr-docs-search")`, which the new
+placeholder attribute tripped. It matches a class token now.
+
 ## Runtime assets
 
 `runtime_assets.go` collects `docs.js`, the search index, the export manifest,

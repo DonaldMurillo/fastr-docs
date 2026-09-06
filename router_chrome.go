@@ -553,7 +553,12 @@ func (r *Router) searchTrigger(currentPath string) render.HTML {
 		// document language, which is one host-wide value and says "en" on
 		// every page of a translated site.
 		"data-fastr-docs-locale": r.searchLocale(currentPath),
-		"aria-label":             labels.OpenSearch,
+		// The palette modal is mounted once for the whole site, so it cannot be
+		// rendered per language. The runtime applies these to it for the page
+		// being read.
+		"data-fastr-docs-search-placeholder": labels.SearchPlaceholder,
+		"data-fastr-docs-search-close":       labels.CloseSearch,
+		"aria-label":                         labels.OpenSearch,
 	},
 		render.Raw(`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4.6 4.6"/></svg>`),
 		render.Tag("span", map[string]string{"class": "fastr-docs-command-trigger__label"}, render.Text(labels.Search)),

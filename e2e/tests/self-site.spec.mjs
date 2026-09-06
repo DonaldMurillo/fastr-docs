@@ -595,3 +595,38 @@ test('search results stay in the language of the page', async ({ page }) => {
   expect(english.length).toBeGreaterThan(0);
   expect(english.some((u) => u.startsWith('/es'))).toBe(false);
 });
+
+// The 404 is the one surface with no route to read a language from, so it goes
+// by the URL that was missed.
+test('a missing Spanish URL gets a Spanish 404', async ({ page }) => {
+  await page.goto(selfPage('/es/no-existe'));
+  await expect(page.locator('h1')).toContainText('no encontrada');
+  await expect(page.locator('.fastr-docs-not-found__message')).toContainText('/es/no-existe');
+  // The recovery link must not drop the reader into the English site.
+  await expect(page.locator('.fastr-docs-not-found__link')).toHaveAttribute('href', '/es');
+
+  await page.goto(selfPage('/no-such-page'));
+  await expect(page.locator('h1')).toContainText('Page not found');
+  await expect(page.locator('.fastr-docs-not-found__link')).toHaveAttribute('href', '/');
+});
+
+// The palette modal is mounted once site-wide, so its strings ride on the
+// per-page trigger and are applied when it opens.
+test('the search modal opens in the language of the page', async ({ page }) => {
+  const openPalette = async (path) => {
+    await page.goto(selfPage(path), { waitUntil: 'networkidle' });
+    await page.locator('.fastr-docs-command-trigger:visible').first().click();
+    await expect(page.locator('#fastr-docs-command-palette-input')).toBeVisible();
+    return page.evaluate(() => ({
+      placeholder: document.getElementById('fastr-docs-command-palette-input')?.getAttribute('placeholder'),
+      close: document.querySelector('.fastr-docs-command-palette__close')?.getAttribute('aria-label'),
+    }));
+  };
+  const es = await openPalette('/es/docs/build/math');
+  expect(es.placeholder).toContain('Buscar');
+  expect(es.close).toContain('Cerrar');
+
+  const en = await openPalette('/docs/build/math');
+  expect(en.placeholder).toContain('Search');
+  expect(en.close).toContain('Close');
+});

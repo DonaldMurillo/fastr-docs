@@ -15,13 +15,16 @@ func chromeLocaleSite(t *testing.T) *Router {
 		WithLocaleFallback("en"),
 		WithLocaleNames(map[string]string{"en": "English", "es": "Español"}),
 		WithLocaleUIStrings("es", UIStrings{
-			Contents:   "Contenido",
-			Home:       "Inicio",
-			OnThisPage: "En esta página",
-			Search:     "Buscar",
-			Language:   "Idioma",
-			Previous:   "← Anterior",
-			Next:       "Siguiente →",
+			Contents:          "Contenido",
+			Home:              "Inicio",
+			OnThisPage:        "En esta página",
+			Search:            "Buscar",
+			Language:          "Idioma",
+			SearchPlaceholder: "Buscar en la documentación",
+			CloseSearch:       "Cerrar la búsqueda",
+			NotFound:          NotFoundStrings{Heading: "Página no encontrada"},
+			Previous:          "← Anterior",
+			Next:              "Siguiente →",
 		}),
 	)
 	r.MustPage("/", PageConfig{Title: "Docs", Description: "Home", Source: "# Page\n", Metadata: ContentMetadata{Locale: "en"}})
@@ -377,4 +380,61 @@ func TestSearchEntriesCarryTheEffectiveLocale(t *testing.T) {
 		}
 	}
 	t.Fatal("the unmarked route was not indexed")
+}
+
+// The 404 is built once for the whole site, so unlike every other surface it
+// has no route to read a language from. The URL that was missed is all there
+// is, and answering a mistyped Spanish URL in English strands the reader.
+func TestTheNotFoundPageAnswersInTheURLsLanguage(t *testing.T) {
+	r := chromeLocaleSite(t)
+	screen := r.NotFoundScreen()
+
+	spanish := string(screen.RenderNotFound("/es/nope"))
+	if !strings.Contains(spanish, "no encontrada") {
+		t.Fatalf("a Spanish URL got an English 404: %s", spanish)
+	}
+	// The recovery link must not drop the reader into another language.
+	if !strings.Contains(spanish, `href="/es"`) {
+		t.Fatalf("the Spanish 404 links out of Spanish: %s", spanish)
+	}
+
+	english := string(screen.RenderNotFound("/nope"))
+	if !strings.Contains(english, "Page not found") || !strings.Contains(english, `href="/"`) {
+		t.Fatalf("English 404 changed: %s", english)
+	}
+}
+
+// A site with one language must be untouched, including the case where no path
+// is known at all.
+func TestTheNotFoundPageIsUnchangedWithoutLocales(t *testing.T) {
+	r := NewRouter(WithSiteName("Docs"))
+	r.MustPage("/", PageConfig{Title: "Docs", Description: "Home", Source: "# Docs\n"})
+	screen := r.NotFoundScreen()
+	if len(screen.Locales) != 0 {
+		t.Fatalf("a single-language site got locale overrides: %+v", screen.Locales)
+	}
+	for _, path := range []string{"", "/nope"} {
+		if html := string(screen.RenderNotFound(path)); !strings.Contains(html, "Page not found") {
+			t.Fatalf("RenderNotFound(%q) = %s", path, html)
+		}
+	}
+}
+
+// The command palette is mounted once for the whole site, so its strings cannot
+// be rendered per language. The trigger is per page and carries them instead.
+func TestTheSearchTriggerCarriesThePalettesStrings(t *testing.T) {
+	r := chromeLocaleSite(t)
+	spanish := string(r.searchTrigger("/es/guide"))
+	for _, want := range []string{
+		`data-fastr-docs-search-placeholder="Buscar en la documentaci`,
+		`data-fastr-docs-search-close="Cerrar`,
+	} {
+		if !strings.Contains(spanish, want) {
+			t.Fatalf("trigger missing %q: %s", want, spanish)
+		}
+	}
+	english := string(r.searchTrigger("/guide"))
+	if !strings.Contains(english, `data-fastr-docs-search-placeholder="Search documentation`) {
+		t.Fatalf("English trigger changed: %s", english)
+	}
 }

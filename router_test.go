@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -766,6 +767,8 @@ func TestLanguageDoesNotFilterRuntimeVariants(t *testing.T) {
 	}
 }
 
+var legacySearchClass = regexp.MustCompile(`class="[^"]*fastr-docs-search`)
+
 func TestLayoutUsesNativeCommandPaletteSearch(t *testing.T) {
 	r := NewRouter(WithSiteName("Acme"))
 	r.MustPage("/docs", PageConfig{Title: "Documentation", Description: "Docs", Source: "# Docs", Order: 1})
@@ -775,7 +778,10 @@ func TestLayoutUsesNativeCommandPaletteSearch(t *testing.T) {
 			t.Fatalf("native command palette header missing %q: %s", marker, header)
 		}
 	}
-	if strings.Contains(header, "fastr-docs-search") || strings.Contains(header, "ui-search-input") {
+	// Matched as a class token, not a substring: the trigger carries
+	// data-fastr-docs-search-placeholder, and a loose Contains would read that
+	// as the legacy component coming back.
+	if legacySearchClass.MatchString(header) || strings.Contains(header, "ui-search-input") {
 		t.Fatalf("legacy docs search leaked into header: %s", header)
 	}
 }

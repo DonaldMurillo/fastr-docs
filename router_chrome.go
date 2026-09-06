@@ -267,13 +267,25 @@ func (r *Router) variantSelectors(currentPath string) render.HTML {
 func (r *Router) variantSelect(label, dimension string, options []docsVariantOption, currentPath string) render.HTML {
 	items := make([]render.HTML, 0, len(options))
 	for _, option := range options {
-		attrs := map[string]string{"value": option.href, "data-docs-variant-value": option.value}
-		if normalizePath(option.href) == currentPath {
-			attrs["selected"] = ""
-		}
 		text := option.label
 		if text == "" {
 			text = option.value
+		}
+		// A phone-width header has room for a code, not a language name. The
+		// option carries both spellings and the runtime shows the one that
+		// fits (syncVariantShortLabels); a version is already short.
+		short := option.value
+		if dimension == "locale" {
+			short = strings.ToUpper(option.value)
+		}
+		attrs := map[string]string{
+			"value":                   option.href,
+			"data-docs-variant-value": option.value,
+			"data-docs-variant-label": text,
+			"data-docs-variant-short": short,
+		}
+		if normalizePath(option.href) == currentPath {
+			attrs["selected"] = ""
 		}
 		items = append(items, render.Tag("option", attrs, render.Text(text)))
 	}

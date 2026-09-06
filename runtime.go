@@ -546,7 +546,25 @@ const docsRuntimeJS = `(function(){
       window.__fastrDocsBlogShareCleanup = null;
     };
   }
+  // A phone-width header has room for a code, not a language name, so
+  // each option carries both spellings and this shows the one that fits.
+  // The <select> text is the browser's, so it has to be the option text.
+  var narrowHeader = window.matchMedia ? window.matchMedia('(max-width: 767px)') : null;
+  function syncVariantShortLabels(){
+    var narrow = !!(narrowHeader && narrowHeader.matches);
+    document.querySelectorAll('[data-docs-variant-select] option[data-docs-variant-short]').forEach(function(option){
+      var want = narrow ? option.getAttribute('data-docs-variant-short') : option.getAttribute('data-docs-variant-label');
+      if (want && option.textContent !== want) option.textContent = want;
+    });
+  }
+  if (narrowHeader && !window.__fastrDocsShortLabelsWired) {
+    window.__fastrDocsShortLabelsWired = true;
+    var onNarrowChange = function(){ syncVariantShortLabels(); };
+    if (narrowHeader.addEventListener) narrowHeader.addEventListener('change', onNarrowChange);
+    else if (narrowHeader.addListener) narrowHeader.addListener(onNarrowChange);
+  }
   function initVariantSelectors(){
+    syncVariantShortLabels();
     document.querySelectorAll('[data-docs-variant-select]').forEach(function(select){
       if (select.dataset.docsVariantReady === 'true') return;
       select.dataset.docsVariantReady = 'true';

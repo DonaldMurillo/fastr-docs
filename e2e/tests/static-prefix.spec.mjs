@@ -45,7 +45,7 @@ test('the language selector navigates below the prefix', async ({ page }) => {
   // The option holds the route path; the runtime adds the base when it
   // navigates, and it also recognised this page as the selected option.
   await expect(page.locator('[data-docs-variant-select=locale]').first()).toHaveValue('/es/docs/getting-started');
-  await page.selectOption('[data-docs-variant-select=locale]', { label: 'English' });
+  await page.selectOption('[data-docs-variant-select=locale]', { value: '/docs/getting-started' });
   await page.waitForURL('**/prefix/docs/getting-started');
   await expect(page.locator('h1')).toContainText('Getting started');
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');

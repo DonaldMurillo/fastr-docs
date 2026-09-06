@@ -87,6 +87,11 @@ func TestTheLanguageSelectorNamesLanguages(t *testing.T) {
 	if !strings.Contains(html, `data-docs-variant-value="es"`) {
 		t.Fatalf("selector lost its locale value: %s", html)
 	}
+	// Both spellings ride on the option: the name for a header with room,
+	// the code for a phone-width one, where the runtime swaps them.
+	if !strings.Contains(html, `data-docs-variant-label="Español"`) || !strings.Contains(html, `data-docs-variant-short="ES"`) {
+		t.Fatalf("selector option lacks its short and long labels: %s", html)
+	}
 	// Without WithLocaleNames it falls back to the code rather than blanking.
 	plain := NewRouter()
 	if got := plain.LocaleName("es"); got != "es" {

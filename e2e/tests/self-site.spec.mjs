@@ -409,7 +409,7 @@ test('the chrome is translated on a translated page', async ({ page }) => {
     contents: document.querySelector('.ui-sidebar__title')?.textContent?.trim(),
     search: document.querySelector('.fastr-docs-command-trigger__label')?.textContent?.trim(),
     switcherLabel: document.querySelector('.fastr-docs-variant-select__label')?.textContent?.trim(),
-    switcher: [...(document.querySelector('[data-docs-variant-select=locale]')?.options || [])].map((o) => o.textContent),
+    switcher: [...(document.querySelector('[data-docs-variant-select=locale]')?.options || [])].map((o) => o.getAttribute('data-docs-variant-label') || o.textContent),
     navTabs: [...document.querySelectorAll('.ui-site-header__links a')].map((a) => a.textContent.trim()),
   }));
   expect(es.contents).toBe('Contenido');
@@ -434,7 +434,7 @@ test('the chrome is translated on a translated page', async ({ page }) => {
 
 test('the language selector moves between translations of the same page', async ({ page }) => {
   await page.goto(selfPage('/docs/getting-started'));
-  await page.selectOption('[data-docs-variant-select=locale]', { label: 'Español' });
+  await page.selectOption('[data-docs-variant-select=locale]', { value: '/es/docs/getting-started' });
   await page.waitForURL('**/es/docs/getting-started');
   await expect(page.locator('h1')).toContainText('Primeros pasos');
   await expect(page.locator('.ui-sidebar__title')).toContainText('Contenido');
@@ -455,7 +455,7 @@ test('the Spanish tree is a complete worked example', async ({ page }) => {
     expect(response.status(), path).toBe(200);
     const state = await page.evaluate(() => ({
       sidebar: document.querySelector('.ui-sidebar__title')?.textContent?.trim(),
-      selector: [...(document.querySelector('[data-docs-variant-select=locale]')?.options || [])].map((o) => o.textContent),
+      selector: [...(document.querySelector('[data-docs-variant-select=locale]')?.options || [])].map((o) => o.getAttribute('data-docs-variant-label') || o.textContent),
     }));
     expect(state.sidebar, path).toBe('Contenido');
     // Every Spanish page has an English counterpart, so every one offers the
@@ -471,7 +471,7 @@ test('a translated slug pairs with its original through translation_of', async (
   await page.goto(selfPage('/es/ejemplos/arbol-de-rutas'));
   await expect(page.locator('h1')).toContainText('Ejemplo de árbol de rutas');
   const spanish = await page.evaluate(() => ({
-    options: [...document.querySelector('[data-docs-variant-select=locale]').options].map((o) => o.textContent),
+    options: [...document.querySelector('[data-docs-variant-select=locale]').options].map((o) => o.getAttribute('data-docs-variant-label') || o.textContent),
     hreflang: document.querySelector('link[rel="alternate"][hreflang="en"]')?.getAttribute('href'),
     nav: [...document.querySelectorAll('.ui-site-header__links a[aria-current="page"]')].map((a) => a.textContent.trim()),
   }));
@@ -479,7 +479,7 @@ test('a translated slug pairs with its original through translation_of', async (
   expect(spanish.hreflang).toBe('/examples/route-tree');
   expect(spanish.nav).toEqual(['Ejemplos']);
 
-  await page.selectOption('[data-docs-variant-select=locale]', { label: 'English' });
+  await page.selectOption('[data-docs-variant-select=locale]', { value: '/examples/route-tree' });
   await page.waitForURL('**/examples/route-tree');
   await expect(page.locator('h1')).toContainText('Route tree');
   const english = await page.evaluate(() => ({
@@ -487,7 +487,7 @@ test('a translated slug pairs with its original through translation_of', async (
   }));
   expect(english.hreflang).toBe('/es/ejemplos/arbol-de-rutas');
 
-  await page.selectOption('[data-docs-variant-select=locale]', { label: 'Español' });
+  await page.selectOption('[data-docs-variant-select=locale]', { value: '/es/ejemplos/arbol-de-rutas' });
   await page.waitForURL('**/es/ejemplos/arbol-de-rutas');
 });
 
@@ -522,7 +522,7 @@ test('the Spanish blog is a blog in Spanish', async ({ page }, testInfo) => {
   await page.goto(selfPage('/es/blog/un-arbol-para-docs-y-publicacion'));
   await expect(page.locator('h1')).toContainText('Un árbol para docs y publicación');
   await expect(page.locator('link[rel="alternate"][hreflang="en"]')).toHaveAttribute('href', '/blog/route-tree');
-  await page.selectOption('[data-docs-variant-select=locale]', { label: 'English' });
+  await page.selectOption('[data-docs-variant-select=locale]', { value: '/blog/route-tree' });
   await page.waitForURL('**/blog/route-tree');
   await expect(page.locator('h1')).toContainText('One tree for docs and publishing');
 
@@ -577,6 +577,25 @@ test('the header follows the page across client-side navigations', async ({ page
   expect(spanish.loads).toBe(1);
 });
 
+// A phone-width header has room for a code, not a language name: the
+// selector reads "ES" there and "Español" on a desktop.
+test('the language selector shortens to the code on a phone', async ({ page }, testInfo) => {
+  await page.goto(selfPage('/es/docs/getting-started'));
+  const shown = () => page.evaluate(() => {
+    const select = document.querySelector('[data-docs-variant-select=locale]');
+    return { selected: select.options[select.selectedIndex].textContent, all: [...select.options].map((o) => o.textContent) };
+  });
+  if (isMobileProject(testInfo)) {
+    await expect.poll(async () => (await shown()).selected).toBe('ES');
+    expect((await shown()).all).toEqual(['EN', 'ES']);
+    // Wide enough again, the names come back.
+    await page.setViewportSize({ width: 1024, height: 844 });
+    await expect.poll(async () => (await shown()).selected).toBe('Español');
+    return;
+  }
+  expect((await shown()).all).toEqual(['English', 'Español']);
+});
+
 // The page about translation, translated, is the demonstration that matters.
 test('the translated i18n guide reads as Spanish throughout', async ({ page }) => {
   await page.goto(selfPage('/es/docs/operate/i18n'));
@@ -623,7 +642,7 @@ test('the selector appears without annotating the original pages', async ({ page
   for (const path of ['/docs/build/themes', '/docs/operate/deploy', '/examples/route-tree']) {
     await page.goto(selfPage(path));
     const options = await page.evaluate(() =>
-      [...(document.querySelector('[data-docs-variant-select=locale]')?.options || [])].map((o) => o.textContent));
+      [...(document.querySelector('[data-docs-variant-select=locale]')?.options || [])].map((o) => o.getAttribute('data-docs-variant-label') || o.textContent));
     expect(options, path).toEqual(['English', 'Español']);
   }
 });

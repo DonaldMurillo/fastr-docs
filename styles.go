@@ -369,7 +369,7 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
   .fastr-docs-command-trigger { width: 36px; padding-inline: 0; justify-content: center; border-color: transparent; background: transparent; }
   .fastr-docs-command-trigger__label, .fastr-docs-command-trigger__hint { display: none; }
   .fastr-docs-variant-selectors { gap: 2px; }
-  .fastr-docs-variant-select select { min-width: 40px; width: 40px; padding-inline: 4px 15px; font-size: 11.5px; }
+  .fastr-docs-variant-select select { min-width: 40px; width: auto; max-width: 64px; padding-inline: 6px 16px; font-size: 11.5px; font-weight: 600; letter-spacing: .04em; }
   .layout-docs .layout-body { min-height: calc(100vh - 62px); }
   .layout-docs .layout-body > nav { flex: 0 0 auto; border-right: 0; }
   .layout-docs .ui-sidebar__inline { display: none; }

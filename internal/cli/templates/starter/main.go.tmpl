@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	docsite "{{.Module}}/docs"
@@ -229,9 +230,6 @@ func publicSiteURL() string {
 
 func rewriteRuntimeURLs(dir, base string) error {
 	base = normalizeBase(base)
-	if base == "" {
-		return nil
-	}
 	return filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -245,6 +243,7 @@ func rewriteRuntimeURLs(dir, base string) error {
 		}
 		updated := strings.ReplaceAll(string(body), `"/__fastr-docs/`, `"`+base+`/__fastr-docs/`)
 		updated = strings.ReplaceAll(updated, `data-fastr-docs-base=""`, `data-fastr-docs-base="`+base+`"`)
+		updated = markComponentStylesheets(updated)
 		updated = strings.ReplaceAll(updated, `data-fastr-docs-pagefind-path="/pagefind/"`, `data-fastr-docs-pagefind-path="`+base+`/pagefind/"`)
 		if updated == string(body) {
 			return nil
@@ -300,4 +299,22 @@ func assetURLs(router *fastrdocs.Router, names []string) []string {
 		urls = append(urls, router.AssetPrefix()+"/"+name)
 	}
 	return urls
+}
+
+// componentStylesheet matches a per-component stylesheet link the static
+// export writes, capturing the component name.
+var componentStylesheet = regexp.MustCompile(`<link rel="stylesheet" href="([^"]*/__gofastr/comp/)([a-z0-9-]+)(\.css[^"]*)">`)
+
+// markComponentStylesheets gives each exported component stylesheet link the
+// data-fui-style marker GoFastr's runtime dedupes on.
+//
+// The runtime loads a component's CSS when it finds the component in the
+// page and no link carries its marker. The static export writes the links
+// without it (GoFastr through v0.84.0), so on every page the runtime appended
+// a second copy of each component stylesheet after app.css, and the site's
+// own overrides lost the cascade: the docs sidebar stretched, the doc layout
+// collapsed. Marking the links here is what the live host's bundle link
+// already gets.
+func markComponentStylesheets(page string) string {
+	return componentStylesheet.ReplaceAllString(page, `<link rel="stylesheet" href="${1}${2}${3}" data-fui-style="${2}" id="fui-css-${2}">`)
 }

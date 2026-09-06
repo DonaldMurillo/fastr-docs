@@ -24,6 +24,21 @@ test('an export below a prefix serves every kind of page there', async ({ reques
   }
 });
 
+// GoFastr's runtime loads a component's CSS when no link carries the
+// component's marker. The export wrote the links without it, so every page
+// got a second copy of each component stylesheet after the site's own CSS,
+// and the docs overrides lost the cascade: the sidebar title stretched to
+// fill the column.
+test('a static page does not load its component stylesheets twice', async ({ page }) => {
+  await page.goto(prefixed('/docs/getting-started/'), { waitUntil: 'networkidle' });
+  const sheets = await page.evaluate(() => [...document.querySelectorAll('link[rel="stylesheet"]')].map((l) => l.getAttribute('href').split('?')[0]));
+  expect(new Set(sheets).size, sheets.join('\n')).toBe(sheets.length);
+  // The persistent sidebar is hidden on the mobile project, where the
+  // title measures 0; either way it must not be stretched.
+  const titleHeight = await page.evaluate(() => document.querySelector('.ui-sidebar__title')?.offsetHeight ?? 0);
+  expect(titleHeight).toBeLessThan(80);
+});
+
 test('the language selector navigates below the prefix', async ({ page }) => {
   await page.goto(prefixed('/es/docs/getting-started/'));
   await expect(page.locator('h1')).toContainText('Primeros pasos');

@@ -25,8 +25,12 @@ func (r *Router) wrapDocPage(route *Route, body render.HTML, headings []Heading)
 			}, render.Text(r.uiForRoute(route).EditPage)),
 		))
 	}
-	if metadata := r.docMetadata(route); metadata != "" {
-		body = render.Join(metadata, body)
+	// A landing page is not a document. Its git date is the date the hero was
+	// last edited, and "Updated" floating above a hero reads as noise.
+	if route.Metadata.PageTemplate != PageTemplateSplash {
+		if metadata := r.docMetadata(route); metadata != "" {
+			body = render.Join(metadata, body)
+		}
 	}
 	cfg := ui.DocLayoutConfig{
 		Crumbs: r.docCrumbs(route),

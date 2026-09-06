@@ -7,7 +7,7 @@ hero:
   tagline: Las páginas, las pantallas, la búsqueda, OpenAPI y el modo sin conexión salen todos del mismo Router explícito.
   actions:
     - text: Leer la documentación
-      link: /docs
+      link: /es/docs
       variant: primary
     - text: Empezar
       link: /es/docs/getting-started
@@ -21,11 +21,11 @@ interactivo. La navegación, la búsqueda, las migas de pan y la exportación no
 se desincronizan porque leen el mismo árbol.
 
 {{< cards >}}
-{{< card title="Páginas" description="Markdown con front matter, encabezados, búsqueda local e índice de contenidos." href="/docs/concepts/content" >}}
+{{< card title="Páginas" description="Markdown con front matter, encabezados, búsqueda local e índice de contenidos." href="/es/docs/concepts/content" >}}
 {{< /card >}}
-{{< card title="Pantallas" description="Componentes tipados de GoFastr para playgrounds y flujos de producto." href="/docs/build/screens" >}}
+{{< card title="Pantallas" description="Componentes tipados de GoFastr para playgrounds y flujos de producto." href="/es/docs/build/screens" >}}
 {{< /card >}}
-{{< card title="Complementos" description="Extiende el mismo router sin bifurcar la interfaz." href="/docs/build/plugins" >}}
+{{< card title="Complementos" description="Extiende el mismo router sin bifurcar la interfaz." href="/es/docs/build/plugins" >}}
 {{< /card >}}
 {{< /cards >}}
 

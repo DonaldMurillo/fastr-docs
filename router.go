@@ -996,7 +996,11 @@ func (r *Router) SearchIndex() []SearchEntry {
 		entry := SearchEntry{
 			ID: route.ID, Path: route.Path, Title: route.Title,
 			Description: route.Description, Tags: cloneStrings(route.Tags),
-			Locale: route.Metadata.Locale, Version: route.Metadata.Version,
+			// The effective locale, not the declared one. A page that declares
+			// none still belongs to the default language, and a search filter
+			// comparing raw values would drop every unmarked page, including
+			// typed screens, which have no front matter to declare one in.
+			Locale: r.effectiveLocale(route), Version: route.Metadata.Version,
 			EditURL: route.Metadata.EditURL, Canonical: route.Metadata.CanonicalURL,
 			NoIndex: route.Metadata.NoIndex, Kind: route.Kind, Order: route.Order,
 			Alternates: cloneStringMap(route.Metadata.Alternates),

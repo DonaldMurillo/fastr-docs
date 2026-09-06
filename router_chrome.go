@@ -526,6 +526,19 @@ func (r *Router) ensureCommandPalette() (render.HTML, *widget.Builder) {
 // It is deliberately not memoized with the palette. The palette modal is
 // mounted once for the whole site, so its placeholder is fixed, but the trigger
 // is rendered into every page and can carry that page's language.
+// searchLocale is the locale search results should be limited to, and is empty
+// on a site that declares no locales at all.
+func (r *Router) searchLocale(currentPath string) string {
+	if r == nil || len(r.localeFamilyLocales()) == 0 {
+		return ""
+	}
+	route := r.routeAtPath(currentPath)
+	if route == nil {
+		return ""
+	}
+	return r.effectiveLocale(route)
+}
+
 func (r *Router) searchTrigger(currentPath string) render.HTML {
 	labels := r.uiAt(currentPath)
 	return render.Tag("button", map[string]string{
@@ -536,7 +549,11 @@ func (r *Router) searchTrigger(currentPath string) render.HTML {
 		"data-fastr-docs-backend":       string(r.SearchBackend()),
 		"data-fastr-docs-pagefind-path": r.PagefindPath(),
 		"data-fastr-docs-index-path":    r.SearchIndexPath(),
-		"aria-label":                    labels.OpenSearch,
+		// The runtime filters results to this locale. It cannot read the
+		// document language, which is one host-wide value and says "en" on
+		// every page of a translated site.
+		"data-fastr-docs-locale": r.searchLocale(currentPath),
+		"aria-label":             labels.OpenSearch,
 	},
 		render.Raw(`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4.6 4.6"/></svg>`),
 		render.Tag("span", map[string]string{"class": "fastr-docs-command-trigger__label"}, render.Text(labels.Search)),

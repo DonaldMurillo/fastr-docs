@@ -155,6 +155,8 @@ site is what every real one looks like, and it is the state worth demonstrating.
 | Section tabs and groups in the header and sidebar | Yes, where a translation of that section exists |
 | Command palette placeholder | No, it is mounted once for the whole site |
 | Blog archive, tags, and post chrome | No, those labels are site-wide |
+| Previous/next pager | Yes, labels and neighbours both |
+| Search results | Yes, narrowed to the page's language |
 | The 404 page | No, it is built once and has no route to read a locale from |
 
 The last three are limitations, not decisions, and they are written down in
@@ -179,3 +181,26 @@ them is translated.
 Original pages need no annotation. When `WithLocaleFallback` names a default
 locale, a page with no `locale:` counts as being in it, so adding a language
 does not mean editing every existing file.
+
+## Search across languages
+
+One index holds every language, so results are narrowed to the page you are
+reading. A Spanish query answers with Spanish pages; following one does not
+quietly drop you back into English.
+
+Pagefind is separate, and stricter: it decides which language index a page
+belongs to by reading `<html lang>`. GoFastr writes that from a single
+site-wide value, so every page claims the same language and Pagefind builds one
+index with the wrong stemming. `WriteExportLocales` stamps each exported page
+with its route's locale after the export, before Pagefind runs:
+
+```go title="main.go"
+router.WriteExportLocales(dist)
+```
+
+With it, Pagefind reports `Discovered 2 languages: en, es` and writes a separate
+chunked index for each.
+
+This fixes the export, which is what Pagefind reads. The live server still
+serves one language attribute for the whole site, and that needs a change in
+GoFastr.

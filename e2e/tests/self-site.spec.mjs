@@ -551,3 +551,47 @@ test('the home link keeps a Spanish reader in Spanish', async ({ page }) => {
   await expect(page.locator('.ui-sidebar__title')).toContainText('Contenido');
   await expect(page.locator('h1')).toContainText('árbol de rutas');
 });
+
+// The pager under a document has to be in the reader's language, and has to
+// stay inside it. ui.DocPrevNext writes "Previous" and "Next" as literals, so
+// fastr-docs renders its own.
+test('the pager is translated and does not cross languages', async ({ page }) => {
+  await page.goto(selfPage('/es/docs/build/diagrams'));
+  const es = await page.evaluate(() => ({
+    dirs: [...document.querySelectorAll('.ui-doc-layout__pager-dir')].map((e) => e.textContent.trim()),
+    hrefs: [...document.querySelectorAll('.ui-doc-layout__prev, .ui-doc-layout__next')].map((a) => a.getAttribute('href')),
+  }));
+  expect(es.dirs).toEqual(['← Anterior', 'Siguiente →']);
+  expect(es.hrefs.every((h) => h.startsWith('/es/'))).toBe(true);
+
+  await page.goto(selfPage('/docs/build/diagrams'));
+  const en = await page.evaluate(() => ({
+    dirs: [...document.querySelectorAll('.ui-doc-layout__pager-dir')].map((e) => e.textContent.trim()),
+    hrefs: [...document.querySelectorAll('.ui-doc-layout__prev, .ui-doc-layout__next')].map((a) => a.getAttribute('href')),
+  }));
+  expect(en.dirs).toEqual(['← Previous', 'Next →']);
+  expect(en.hrefs.some((h) => h.startsWith('/es/'))).toBe(false);
+});
+
+// One index holds every language, so results are narrowed to the page being
+// read. Otherwise a Spanish query answers with English pages, and following one
+// silently leaves the translation.
+test('search results stay in the language of the page', async ({ page }) => {
+  const search = async (path) => {
+    await page.goto(selfPage(path), { waitUntil: 'networkidle' });
+    await page.locator('.fastr-docs-command-trigger:visible').first().click();
+    await page.locator('#fastr-docs-command-palette-input:visible').first().fill('router');
+    await expect.poll(async () => page.evaluate(() =>
+      document.querySelectorAll('[role="option"][data-fui-push-state]').length), { timeout: 15_000 }).toBeGreaterThan(0);
+    return page.evaluate(() =>
+      [...document.querySelectorAll('[role="option"][data-fui-push-state]')].map((o) => o.getAttribute('data-fui-push-state')));
+  };
+
+  const spanish = await search('/es/docs/build/math');
+  expect(spanish.length).toBeGreaterThan(0);
+  expect(spanish.every((u) => u === '/es' || u.startsWith('/es/'))).toBe(true);
+
+  const english = await search('/docs/build/math');
+  expect(english.length).toBeGreaterThan(0);
+  expect(english.some((u) => u.startsWith('/es'))).toBe(false);
+});

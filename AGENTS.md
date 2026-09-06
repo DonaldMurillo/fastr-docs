@@ -223,6 +223,39 @@ translated home sits among the top-level sections and cannot compete on explicit
 The test for this compares the two sidebars: same number of links, each home
 pointing inside its own language.
 
+### Search and the document language
+
+Pagefind decides which language index a page belongs to by reading
+`<html lang>`. **GoFastr writes that from one host-wide value**, so every page of
+a translated site claims the same language: Pagefind built a single English
+index and stemmed Spanish with English rules.
+
+`WriteExportLocales` stamps each exported page with its route's locale after the
+export and before Pagefind runs, which is the artifact Pagefind actually reads.
+Verified with Pagefind 1.5.2 over this site: "Discovered 2 languages: en, es",
+separate `pagefind.en_*.pf_meta` / `pagefind.es_*.pf_meta` and separate
+`en_*.pf_index` / `es_*.pf_index` chunks. Searching "traduccion" from a Spanish
+page returns 11 hits, all under `/es`; "translation" from an English page
+returns none of them.
+
+It cannot fix the live server. That needs a per-page language in GoFastr, and
+the same gap is a WCAG 3.1.1 failure on every translated page.
+
+The JSON backend is a different mechanism and needed its own fix: one index
+holds every locale, so `renderJSONResults` filters to the page's language. The
+runtime reads that from `data-fastr-docs-locale` on the search trigger rather
+than from `document.documentElement.lang`, for the same reason: the document
+language says "en" everywhere. A site that declares no locales is unfiltered.
+
+### The pager
+
+`ui.DocPrevNext` writes "← Previous" and "Next →" as literals with no config
+fields, so fastr-docs renders its own pager and passes no
+`DocLayoutConfig.Pager`. The markup mirrors GoFastr's classes, so the styling is
+unchanged. Neighbours are drawn from the reader's own language; walking every
+published route stepped a reader at the edge of the Spanish tree into the
+English one.
+
 ## Runtime assets
 
 `runtime_assets.go` collects `docs.js`, the search index, the export manifest,
@@ -366,6 +399,15 @@ contributes all its `.js`, which is right for a single-file runtime like
 
 Ticket these rather than re-discovering them:
 
+- `<html lang>` comes from one host-wide value with no per-page hook
+  (`app.EffectiveLang`, `uihost.EffectiveLang`). A multilingual site cannot
+  label each page's language, which breaks Pagefind's per-language indexing and
+  fails WCAG 3.1.1. Worked around for the static export only, in
+  `WriteExportLocales`.
+- `ui.DocPager` has no label fields; `ui.DocPrevNext` hardcodes "← Previous" and
+  "Next →", so the pager cannot be translated. fastr-docs renders its own.
+- `GroupConfig` had no locale, so a translated section could not pair with its
+  original. Worked around by carrying `Locale`/`Version` on the group route.
 - `core/markdown` does not parse fence info strings beyond the language.
 - It has no nested-list support, and flattens one into a single `<li>` joined
   by `<br>`. This is why `filetree` parses raw indentation.

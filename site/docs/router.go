@@ -44,6 +44,8 @@ func NewRouter() *docs.Router {
 			Published:         "Publicado",
 			By:                "por",
 			Language:          "Idioma",
+			Previous:          "← Anterior",
+			Next:              "Siguiente →",
 			Version:           "Versión",
 			NotFound: docs.NotFoundStrings{
 				Heading:       "Página no encontrada",

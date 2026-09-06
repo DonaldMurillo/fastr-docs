@@ -28,6 +28,10 @@ type UIStrings struct {
 	By                string
 	Language          string
 	Version           string
+	// Previous and Next label the pager under a document. They carry their own
+	// arrows because a translation may want them on the other side of the word.
+	Previous string
+	Next     string
 
 	// DateFormat is a Go time layout used for published and updated dates.
 	// The standard library has no CLDR data, so the layout is the project's
@@ -106,6 +110,8 @@ type NotFoundStrings struct {
 
 var defaultUIStrings = UIStrings{
 	Contents:           "Contents",
+	Previous:           "← Previous",
+	Next:               "Next →",
 	Home:               "Home",
 	OnThisPage:         "On this page",
 	Search:             "Search",

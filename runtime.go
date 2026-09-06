@@ -275,6 +275,26 @@ const docsRuntimeJS = `(function(){
     list.removeAttribute('data-fui-static-options');
     list.removeAttribute('hidden');
   }
+  // Search results stay in the language of the page the reader is on. The
+  // index carries every locale, so without this a Spanish reader gets English
+  // pages for a Spanish query, and each result silently leaves the translation.
+  //
+  // The locale is read from the trigger rather than from <html lang>, because
+  // the document language is one host-wide value and says "en" on every page.
+  function currentSearchLocale(){
+    var trigger = jsonSearchTrigger();
+    return (trigger && trigger.getAttribute('data-fastr-docs-locale')) || '';
+  }
+  function localeEntries(entries){
+    var list = Array.isArray(entries) ? entries : [];
+    var locale = currentSearchLocale();
+    if (!locale) return list;
+    var matching = list.filter(function(entry){
+      return String((entry && entry.locale) || '') === locale;
+    });
+    // A site with no locale metadata at all must keep working unchanged.
+    return matching.length ? matching : list;
+  }
   function initJSONSearch(){
     if (!jsonSearchTrigger() || window.fastrDocsJSONSearchReady) return;
     window.fastrDocsJSONSearchReady = true;
@@ -291,7 +311,7 @@ const docsRuntimeJS = `(function(){
       var index = jsonSearchModule();
       if (!index) return;
       index.then(function(entries){
-        if (current === requestID) renderJSONResults(list, entries, query);
+        if (current === requestID) renderJSONResults(list, localeEntries(entries), query);
       }).catch(function(){
         if (current === requestID) restorePalette(list, query);
       });

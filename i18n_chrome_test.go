@@ -20,6 +20,8 @@ func chromeLocaleSite(t *testing.T) *Router {
 			OnThisPage: "En esta página",
 			Search:     "Buscar",
 			Language:   "Idioma",
+			Previous:   "← Anterior",
+			Next:       "Siguiente →",
 		}),
 	)
 	r.MustPage("/", PageConfig{Title: "Docs", Description: "Home", Source: "# Page\n", Metadata: ContentMetadata{Locale: "en"}})
@@ -304,4 +306,75 @@ func TestOtherLanguagesHomesAreNotListed(t *testing.T) {
 			t.Fatalf("%s listed homes %v, want just %q", path, homes, wantHome)
 		}
 	}
+}
+
+// The pager used to walk every published route, so a reader at the edge of the
+// Spanish tree stepped into the English one, and the card showed an English
+// title with nothing to say the language had changed.
+func TestThePagerStaysInTheReadersLanguage(t *testing.T) {
+	r := chromeLocaleSite(t)
+	r.MustPage("/es/second", PageConfig{Title: "Segunda", Description: "es", Source: "# Segunda\n", Order: 3,
+		Metadata: ContentMetadata{Locale: "es"}})
+
+	html := string(r.docPager(r.routeAtPath("/es/guide")))
+	if strings.Contains(html, "/guide\"") || strings.Contains(html, ">Guide<") {
+		t.Fatalf("the Spanish pager points into the English tree: %s", html)
+	}
+	// Its direction labels come from that locale's strings.
+	if !strings.Contains(html, "Anterior") {
+		t.Fatalf("pager direction was not translated: %s", html)
+	}
+}
+
+func TestThePagerDirectionsAreTranslatable(t *testing.T) {
+	r := NewRouter(WithSiteName("Docs"))
+	if got := r.UIStrings().Previous; got != "← Previous" {
+		t.Fatalf("default Previous = %q", got)
+	}
+	if got := r.UIStrings().Next; got != "Next →" {
+		t.Fatalf("default Next = %q", got)
+	}
+}
+
+// The search index holds every language, so results have to be narrowed to the
+// page being read or a Spanish query answers with English pages.
+func TestSearchIsScopedToThePagesLocale(t *testing.T) {
+	r := chromeLocaleSite(t)
+	if got := r.searchLocale("/es/guide"); got != "es" {
+		t.Fatalf("search locale on a Spanish page = %q", got)
+	}
+	if got := r.searchLocale("/guide"); got != "en" {
+		t.Fatalf("search locale on an English page = %q", got)
+	}
+	// The trigger carries it, because the document language cannot: GoFastr
+	// takes that from one host-wide value.
+	if html := string(r.searchTrigger("/es/guide")); !strings.Contains(html, `data-fastr-docs-locale="es"`) {
+		t.Fatalf("the search trigger did not carry the locale: %s", html)
+	}
+}
+
+// A site that declares no locales must be left alone, filter included.
+func TestSearchIsUnscopedWithoutLocales(t *testing.T) {
+	r := NewRouter(WithSiteName("Docs"))
+	r.MustPage("/guide", PageConfig{Title: "Guide", Description: "Guide", Source: "# Guide\n"})
+	if got := r.searchLocale("/guide"); got != "" {
+		t.Fatalf("searchLocale = %q, want empty on a single-language site", got)
+	}
+}
+
+// A typed screen has no front matter, so it declares no locale. Indexed with an
+// empty one, a locale-filtered search dropped it from every result list.
+func TestSearchEntriesCarryTheEffectiveLocale(t *testing.T) {
+	r := chromeLocaleSite(t)
+	r.MustPage("/tools", PageConfig{Title: "Tools", Description: "No declared locale", Source: "# Tools\n", Order: 9})
+
+	for _, entry := range r.SearchIndex() {
+		if entry.Path == "/tools" {
+			if entry.Locale != "en" {
+				t.Fatalf("unmarked route indexed with locale %q, want the default", entry.Locale)
+			}
+			return
+		}
+	}
+	t.Fatal("the unmarked route was not indexed")
 }

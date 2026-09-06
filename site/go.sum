@@ -1,7 +1,7 @@
 github.com/DATA-DOG/go-sqlmock v1.5.2 h1:OcvFkGmslmlZibjAjaHm3L//6LiuBgolP7OputlJIzU=
 github.com/DATA-DOG/go-sqlmock v1.5.2/go.mod h1:88MAG/4G7SMwSE3CeA0ZKzrT5CiOU3OJ+JlNzwDqpNU=
-github.com/DonaldMurillo/gofastr v0.84.0 h1:5HdLQNfw98A2SPVHaGpIiWfkmR2S/er78OFgAdpudrc=
-github.com/DonaldMurillo/gofastr v0.84.0/go.mod h1:iojHDiD9LzFUgxTylCkrtWR8QBs/eMoFNJNsSLOJ3Ww=
+github.com/DonaldMurillo/gofastr v0.84.1 h1:P6gJc024DVuo2qZK+Lj/3gM8tDPGHkF7q633FscgEg0=
+github.com/DonaldMurillo/gofastr v0.84.1/go.mod h1:iojHDiD9LzFUgxTylCkrtWR8QBs/eMoFNJNsSLOJ3Ww=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/chromedp/cdproto v0.0.0-20260321001828-e3e3800016bc h1:wkN/LMi5vc60pBRWx6qpbk/aEvq3/ZVNpnMvsw8PVVU=

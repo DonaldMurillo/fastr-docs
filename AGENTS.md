@@ -353,6 +353,15 @@ path from the page compare equal. Pagefind gets `options({baseUrl})` before
 the first search. The e2e harness exports the site below `/prefix` and serves
 it from a folder of that name, so the static tests exercise the real shape.
 
+Two more things were wrong on a static host and are fixed in GoFastr v0.84.1,
+so they need nothing here now: the exported route graph kept root-relative
+paths, so the runtime never recognised a link below a base and every click
+was a full page load (#403); and the exported per-component stylesheet links
+lacked the `data-fui-style` marker the runtime dedupes on, so every static
+page loaded each component stylesheet a second time after `app.css` and the
+site's overrides lost the cascade (#401). The e2e tests on the prefixed
+export keep both pinned from this side.
+
 ## Runtime assets
 
 `runtime_assets.go` collects `docs.js`, the search index, the export manifest,

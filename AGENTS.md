@@ -111,16 +111,16 @@ Line highlighting wraps the line's own HTML, because `CodeBlock` owns the
 
 ### Fences longer than three characters
 
-GoFastr's parser reads exactly three fence characters. It takes ````md as ```
-with a language of "`md", and then the first inner ``` closes the block, so a
-Markdown example showing a fenced block inside a shortcode came out as three
-broken pieces with the closing tag stranded in its own code block. That is how
-the components page is written, so it was visibly wrong.
+A plain fence of any length passes through to GoFastr untouched. Since v0.83.0
+its parser reads the marker length and closes a block only on a run at least as
+long as the opener, so ````md holding a ``` example renders as one block.
+`extractRichCodeFences` still has to know the length: it skips to the real
+closing line so an optioned fence shown inside the example is not lifted out of
+it.
 
-`extractRichCodeFences` therefore lifts any fence whose marker is longer than
-three characters, even with no options, and renders it whole. A plain three
-character fence still passes through untouched, so existing output is
-unchanged.
+Before v0.83.0 the parser read exactly three characters, took ````md as ``` with
+a language of "`md", and let the first inner ``` close the block. fastr-docs
+lifted every longer fence itself to work around that, and no longer does.
 
 ## Translation
 
@@ -226,35 +226,36 @@ pointing inside its own language.
 ### Search and the document language
 
 Pagefind decides which language index a page belongs to by reading
-`<html lang>`. **GoFastr writes that from one host-wide value**, so every page of
-a translated site claims the same language: Pagefind built a single English
-index and stemmed Spanish with English rules.
+`<html lang>`, and a screen reader reads the same attribute to choose
+pronunciation rules (WCAG 3.1.1). `Router.LanguageFor(path)` answers per page,
+and the hosts hand it to `app.WithLangFunc`, which GoFastr added in v0.83.0.
+It resolves the route's effective locale, and for a path with no route, such as
+a 404 under `/es`, the language of the deepest route above it, so a missed
+Spanish URL still answers in Spanish. The live server and the export both carry
+it.
 
-`WriteExportLocales` stamps each exported page with its route's locale after the
-export and before Pagefind runs, which is the artifact Pagefind actually reads.
-Verified with Pagefind 1.5.2 over this site: "Discovered 2 languages: en, es",
-separate `pagefind.en_*.pf_meta` / `pagefind.es_*.pf_meta` and separate
-`en_*.pf_index` / `es_*.pf_index` chunks. Searching "traduccion" from a Spanish
-page returns 11 hits, all under `/es`; "translation" from an English page
+Verified with Pagefind 1.5.2 over this site's export: "Discovered 2 languages:
+en, es", separate `pagefind.en_*.pf_meta` / `pagefind.es_*.pf_meta` and
+separate `en_*.pf_index` / `es_*.pf_index` chunks. Searching "traduccion" from
+a Spanish page returns hits only under `/es`; "translation" from an English page
 returns none of them.
 
-It cannot fix the live server. That needs a per-page language in GoFastr, and
-the same gap is a WCAG 3.1.1 failure on every translated page.
+Before v0.83.0 GoFastr wrote one host-wide value, and `WriteExportLocales`
+rewrote the attribute per page after the export. That is gone: there is nothing
+left for it to fix.
 
 The JSON backend is a different mechanism and needed its own fix: one index
 holds every locale, so `renderJSONResults` filters to the page's language. The
-runtime reads that from `data-fastr-docs-locale` on the search trigger rather
-than from `document.documentElement.lang`, for the same reason: the document
-language says "en" everywhere. A site that declares no locales is unfiltered.
+runtime reads that from `data-fastr-docs-locale` on the search trigger, which
+is rendered into every page. A site that declares no locales is unfiltered.
 
 ### The pager
 
-`ui.DocPrevNext` writes "← Previous" and "Next →" as literals with no config
-fields, so fastr-docs renders its own pager and passes no
-`DocLayoutConfig.Pager`. The markup mirrors GoFastr's classes, so the styling is
-unchanged. Neighbours are drawn from the reader's own language; walking every
-published route stepped a reader at the edge of the Spanish tree into the
-English one.
+`docPager` builds a `ui.DocPager` for `DocLayoutConfig.Pager`, with the
+direction lines from the page's `UIStrings.Previous` and `Next` through
+`PrevDirLabel` and `NextDirLabel`, which GoFastr added in v0.83.0. Neighbours
+are drawn from the reader's own language; walking every published route stepped
+a reader at the edge of the Spanish tree into the English one.
 
 ### Surfaces built once for the whole site
 
@@ -427,23 +428,19 @@ contributes all its `.js`, which is right for a single-file runtime like
 
 Ticket these rather than re-discovering them:
 
-- `<html lang>` comes from one host-wide value with no per-page hook
-  (`app.EffectiveLang`, `uihost.EffectiveLang`). A multilingual site cannot
-  label each page's language, which breaks Pagefind's per-language indexing and
-  fails WCAG 3.1.1. Worked around for the static export only, in
-  `WriteExportLocales`.
-- `ui.DocPager` has no label fields; `ui.DocPrevNext` hardcodes "← Previous" and
-  "Next →", so the pager cannot be translated. fastr-docs renders its own.
 - `GroupConfig` had no locale, so a translated section could not pair with its
   original. Worked around by carrying `Locale`/`Version` on the group route.
-- `core/markdown` does not parse fence info strings beyond the language.
-- It has no nested-list support, and flattens one into a single `<li>` joined
-  by `<br>`. This is why `filetree` parses raw indentation.
-- It reads exactly three fence characters, so ` ````md ` becomes ``` with a
-  language of "`md" and the first inner ``` closes the block. Worked around in
-  `extractRichCodeFences`, which lifts any longer fence and renders it whole,
-  so ` ````md ` blocks are safe to write now.
+- `ui.Markdown` maps only `title=` and `showLineNumbers` from a fence's
+  options; the rest of the info string lands in `data-meta`. Line highlights
+  and `scroll` still need `extractRichCodeFences`.
+- `core/markdown` has no nested-list support, and flattens one into a single
+  `<li>` joined by `<br>`. This is why `filetree` parses raw indentation.
 - `CodeBlock` has no line-highlight, diff, word-highlight, or wrap option.
+
+Fixed upstream in v0.83.0, and the workarounds removed here: the per-page
+document language (`app.WithLangFunc`), the pager's direction labels
+(`ui.DocPager.PrevDirLabel`/`NextDirLabel`), and fences longer than three
+characters.
 - There is no `FileTree`, content `Steps`, `CardGrid`, `LinkCard`, or generic
   `ui.Tabs`; `core-ui/patterns/tabs` is the only generic tabset.
 

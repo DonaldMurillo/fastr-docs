@@ -27,13 +27,6 @@ func main() {
 		if err := server.ExportStatic(context.Background(), dir, base); err != nil {
 			panic(err)
 		}
-		// Stamp each page with the language it is written in. GoFastr takes
-		// the document language from one host-wide value, so the export
-		// labels every page the same, and Pagefind then indexes the whole
-		// site as one language.
-		if err := built.router.WriteExportLocales(dir); err != nil {
-			panic(err)
-		}
 		if err := fastrdocs.WriteStaticRSS(dir, base, "/blog/feed.xml", built.rss); err != nil {
 			panic(err)
 		}
@@ -100,7 +93,9 @@ func buildSite() (*generatedSite, error) {
 	// that was missed. It is the one surface with no route to read a
 	// language from.
 	notFound := router.NotFoundScreen()
-	site := uiapp.NewApp({{goString .SiteName}}).WithTheme(router.Theme()).WithLang(router.Language())
+	// Each page carries its own <html lang>, which Pagefind reads to choose a
+	// language index and a screen reader reads to choose pronunciation rules.
+	site := uiapp.NewApp({{goString .SiteName}}).WithTheme(router.Theme()).WithLang(router.Language()).WithLangFunc(router.LanguageFor)
 	if err := router.Mount(site, router.Layout()); err != nil {
 		return nil, err
 	}

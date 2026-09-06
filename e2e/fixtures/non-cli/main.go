@@ -190,7 +190,7 @@ func buildSite() (*builtSite, error) {
 		return nil, err
 	}
 
-	application := uiapp.NewApp("Manual Docs").WithTheme(router.Theme()).WithLang(router.Language())
+	application := uiapp.NewApp("Manual Docs").WithTheme(router.Theme()).WithLang(router.Language()).WithLangFunc(router.LanguageFor)
 	layout := router.Layout()
 	if err := router.Mount(application, layout); err != nil {
 		return nil, err

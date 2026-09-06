@@ -48,7 +48,7 @@ func extractRichCodeFences(source string) (string, []shortcodeReplacement) {
 		}
 		language, options := splitFenceInfo(info)
 		end := closingFenceIndex(lines, i+1, marker)
-		if options == "" && len(marker) == 3 {
+		if options == "" {
 			// A plain fence stays exactly as written, and the scan resumes
 			// after its closing line. Without that skip, a fence shown inside
 			// a longer ````md example block would be lifted out of the example.
@@ -56,12 +56,6 @@ func extractRichCodeFences(source string) (string, []shortcodeReplacement) {
 			i = end
 			continue
 		}
-		// A longer marker is lifted even with no options, because GoFastr's
-		// parser only ever reads three characters: it takes ````md as ``` with
-		// a language of "`md", and then the first inner ``` closes the block
-		// early. A Markdown example that shows a fenced block inside a
-		// shortcode comes out as three broken pieces. Rendering it here keeps
-		// it whole.
 		body := lines[i+1 : end]
 		fence := parseFenceOptions(language, options)
 		fence.code = strings.Join(body, "\n")

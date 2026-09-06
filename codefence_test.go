@@ -163,11 +163,13 @@ func TestMalformedFenceOptionsDoNotBreakTheDocument(t *testing.T) {
 // pieces of output.
 func TestFenceInsideALongerFenceIsContentNotAFence(t *testing.T) {
 	source := "````md\n```go title=\"main.go\" {1}\na := 1\n```\n````\n"
-	_, replacements := extractRichCodeFences(source)
-	if len(replacements) != 1 {
-		t.Fatalf("want the example lifted as one block, got %d", len(replacements))
+	// A plain fence of any length passes through to GoFastr, which reads the
+	// marker length since v0.83.0, so the inner optioned fence is never seen
+	// as a fence of its own.
+	if out, replacements := extractRichCodeFences(source); len(replacements) != 0 || out != source {
+		t.Fatalf("a plain four-backtick fence was lifted: %q -> %q (%d replacements)", source, out, len(replacements))
 	}
-	html := string(replacements[0].html)
+	html := string(renderDocsMarkdown(source, nil))
 	for _, want := range []string{"title=&quot;main.go&quot; {1}", "a := 1"} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("example lost %q: %s", want, html)

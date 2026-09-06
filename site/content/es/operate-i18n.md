@@ -103,7 +103,6 @@ La cobertura es informativa. Un sitio traducido a medias es un estado normal, no
 un build roto, así que nada de esto invalida la validación.
 
 {{< tip title="Este sitio" >}}
-De unas treinta páginas en inglés hay cinco en español. Es a propósito: enseña
-el selector, y enseña cómo se ve un sitio traducido a medias, que es como está
-todo sitio real.
+Toda la documentación está en los dos idiomas. El blog no, y la razón está
+anotada en la versión en inglés de esta página.
 {{< /tip >}}

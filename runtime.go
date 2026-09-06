@@ -310,8 +310,8 @@ const docsRuntimeJS = `(function(){
   // index carries every locale, so without this a Spanish reader gets English
   // pages for a Spanish query, and each result silently leaves the translation.
   //
-  // The locale is read from the trigger rather than from <html lang>, because
-  // the document language is one host-wide value and says "en" on every page.
+  // The locale is read from the trigger, which is rendered into every page,
+  // so the palette does not depend on what the document declares.
   function currentSearchLocale(){
     var trigger = jsonSearchTrigger();
     return (trigger && trigger.getAttribute('data-fastr-docs-locale')) || '';

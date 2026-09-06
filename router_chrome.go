@@ -549,9 +549,8 @@ func (r *Router) searchTrigger(currentPath string) render.HTML {
 		"data-fastr-docs-backend":       string(r.SearchBackend()),
 		"data-fastr-docs-pagefind-path": r.PagefindPath(),
 		"data-fastr-docs-index-path":    r.SearchIndexPath(),
-		// The runtime filters results to this locale. It cannot read the
-		// document language, which is one host-wide value and says "en" on
-		// every page of a translated site.
+		// The runtime filters results to this locale. The trigger carries it
+		// so the palette does not depend on what the document declares.
 		"data-fastr-docs-locale": r.searchLocale(currentPath),
 		// The palette modal is mounted once for the whole site, so it cannot be
 		// rendered per language. The runtime applies these to it for the page

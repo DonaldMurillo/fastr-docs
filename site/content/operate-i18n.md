@@ -144,8 +144,8 @@ broken build, so nothing here fails validation.
 
 ## What this site actually translates
 
-Five of about thirty pages are in Spanish. That is on purpose: a half-translated
-site is what every real one looks like, and it is the state worth demonstrating.
+Every documentation page is in both languages. The blog is not, and the last
+row of the table says why.
 
 | Surface | Follows the page's language |
 | --- | --- |
@@ -196,18 +196,14 @@ reading. A Spanish query answers with Spanish pages; following one does not
 quietly drop you back into English.
 
 Pagefind is separate, and stricter: it decides which language index a page
-belongs to by reading `<html lang>`. GoFastr writes that from a single
-site-wide value, so every page claims the same language and Pagefind builds one
-index with the wrong stemming. `WriteExportLocales` stamps each exported page
-with its route's locale after the export, before Pagefind runs:
+belongs to by reading `<html lang>`. `Router.LanguageFor` answers that per
+page, and the app takes it as its language function:
 
 ```go title="main.go"
-router.WriteExportLocales(dist)
+site := uiapp.NewApp("Docs").WithLang(router.Language()).WithLangFunc(router.LanguageFor)
 ```
 
 With it, Pagefind reports `Discovered 2 languages: en, es` and writes a separate
-chunked index for each.
-
-This fixes the export, which is what Pagefind reads. The live server still
-serves one language attribute for the whole site, and that needs a change in
-GoFastr.
+chunked index for each. A screen reader reads the same attribute, so a Spanish
+page is pronounced as Spanish. A missed URL under `/es` counts as Spanish too:
+the 404 is the one page with no route to read a language from.

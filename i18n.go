@@ -41,6 +41,34 @@ func (r *Router) effectiveLocale(route *Route) string {
 	return normalizeLocale(r.fallbackLocale)
 }
 
+// LanguageFor returns the language of the document served at path.
+//
+// Hand it to app.WithLangFunc, and every page carries its own <html lang>
+// instead of the host-wide one, which is what Pagefind reads to choose a
+// language index and what a screen reader reads to choose pronunciation
+// rules. A path with no route, such as a 404, takes the language of the
+// deepest route above it, so a missed URL under /es still answers in Spanish.
+// A path in no language at all is the host language.
+func (r *Router) LanguageFor(path string) string {
+	if r == nil {
+		return "en"
+	}
+	path = normalizePath(path)
+	var best *Route
+	for _, route := range r.routes {
+		if !pathActive(route.Path, path) {
+			continue
+		}
+		if best == nil || len(route.Path) > len(best.Path) {
+			best = route
+		}
+	}
+	if locale := r.effectiveLocale(best); locale != "" {
+		return locale
+	}
+	return r.Language()
+}
+
 // localeFamilyLocales maps each variant family to the locales present in it.
 // It is rebuilt whenever routes change, and deliberately ignores the locale
 // filter it exists to inform.

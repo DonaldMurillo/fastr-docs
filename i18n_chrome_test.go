@@ -3,6 +3,8 @@ package docs
 import (
 	"strings"
 	"testing"
+
+	"github.com/DonaldMurillo/gofastr/framework/ui"
 )
 
 // localeSite mirrors the shape a partly translated site has: an English tree
@@ -319,13 +321,48 @@ func TestThePagerStaysInTheReadersLanguage(t *testing.T) {
 	r.MustPage("/es/second", PageConfig{Title: "Segunda", Description: "es", Source: "# Segunda\n", Order: 3,
 		Metadata: ContentMetadata{Locale: "es"}})
 
-	html := string(r.docPager(r.routeAtPath("/es/guide")))
+	pager := r.docPager(r.routeAtPath("/es/guide"))
+	if pager == nil {
+		t.Fatal("no pager for /es/guide")
+	}
+	html := string(ui.DocPrevNext(*pager))
 	if strings.Contains(html, "/guide\"") || strings.Contains(html, ">Guide<") {
 		t.Fatalf("the Spanish pager points into the English tree: %s", html)
 	}
 	// Its direction labels come from that locale's strings.
 	if !strings.Contains(html, "Anterior") {
 		t.Fatalf("pager direction was not translated: %s", html)
+	}
+}
+
+// LanguageFor feeds app.WithLangFunc, so every page carries its own
+// <html lang>. Pagefind reads it to pick a language index, and a screen reader
+// reads it to pick pronunciation rules.
+func TestLanguageForFollowsTheRoute(t *testing.T) {
+	r := chromeLocaleSite(t)
+	cases := map[string]string{
+		"/es/guide": "es",
+		"/guide":    "en",
+		"/":         "en",
+		// A missed URL under the Spanish tree answers in Spanish: the 404 is
+		// the one page with no route of its own.
+		"/es/guide/missing": "es",
+		"/es/nope":          "es",
+		// Nothing above it says otherwise, so the host language wins.
+		"/nope": "en",
+		"":      "en",
+	}
+	for path, want := range cases {
+		if got := r.LanguageFor(path); got != want {
+			t.Errorf("LanguageFor(%q) = %q, want %q", path, got, want)
+		}
+	}
+	// With no fallback locale declared, an unmarked route is in the host
+	// language rather than in no language.
+	plain := NewRouter(WithSiteName("Docs"), WithLanguage("fr"))
+	plain.MustPage("/guide", PageConfig{Title: "Guide", Description: "x", Source: "# Guide\n"})
+	if got := plain.LanguageFor("/guide"); got != "fr" {
+		t.Fatalf("unmarked route = %q, want the host language fr", got)
 	}
 }
 
@@ -349,8 +386,8 @@ func TestSearchIsScopedToThePagesLocale(t *testing.T) {
 	if got := r.searchLocale("/guide"); got != "en" {
 		t.Fatalf("search locale on an English page = %q", got)
 	}
-	// The trigger carries it, because the document language cannot: GoFastr
-	// takes that from one host-wide value.
+	// The trigger carries it, so the palette reads the page's language without
+	// depending on what the document declares.
 	if html := string(r.searchTrigger("/es/guide")); !strings.Contains(html, `data-fastr-docs-locale="es"`) {
 		t.Fatalf("the search trigger did not carry the locale: %s", html)
 	}

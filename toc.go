@@ -28,15 +28,10 @@ func (r *Router) wrapDocPage(route *Route, body render.HTML, headings []Heading)
 	if metadata := r.docMetadata(route); metadata != "" {
 		body = render.Join(metadata, body)
 	}
-	// The pager is rendered here rather than through ui.DocLayoutConfig.Pager,
-	// because ui.DocPrevNext writes "Previous" and "Next" as literals with no
-	// way to change them. The markup mirrors it so the styling is unchanged.
-	if pager := r.docPager(route); pager != "" {
-		body = render.Join(body, pager)
-	}
 	cfg := ui.DocLayoutConfig{
 		Crumbs: r.docCrumbs(route),
 		Class:  "fastr-docs-doc-layout",
+		Pager:  r.docPager(route),
 	}
 	if route.Metadata.PageTemplate == PageTemplateSplash {
 		// A landing page drops the breadcrumb trail and widens its column. The
@@ -141,14 +136,15 @@ func (r *Router) docCrumbs(route *Route) []ui.DocCrumb {
 	return crumbs
 }
 
-// docPager renders the previous/next footer.
+// docPager builds the previous/next footer.
 //
 // Neighbours are drawn from the reader's own language. Walking every published
 // route sent a reader at the end of the Spanish tree into the English one, and
 // the card showed an English title with no hint that the language had changed.
-func (r *Router) docPager(route *Route) render.HTML {
+// The direction lines come from that language's strings.
+func (r *Router) docPager(route *Route) *ui.DocPager {
 	if route == nil || route.Path == "/" {
-		return ""
+		return nil
 	}
 	locale := r.effectiveLocale(route)
 	siblings := make([]*Route, 0, len(r.PublishedRoutes()))
@@ -165,22 +161,17 @@ func (r *Router) docPager(route *Route) render.HTML {
 		}
 	}
 	if index <= 0 {
-		return ""
+		return nil
 	}
 	labels := r.uiForRoute(route)
-	cards := []render.HTML{pagerCard("ui-doc-layout__prev", siblings[index-1].Path, labels.Previous, siblings[index-1].Title)}
-	if index+1 < len(siblings) {
-		cards = append(cards, pagerCard("ui-doc-layout__next", siblings[index+1].Path, labels.Next, siblings[index+1].Title))
+	pager := &ui.DocPager{
+		PrevHref: siblings[index-1].Path, PrevLabel: siblings[index-1].Title,
+		PrevDirLabel: labels.Previous, NextDirLabel: labels.Next,
 	}
-	return render.Tag("div", map[string]string{"class": "ui-doc-layout__foot"},
-		render.Tag("div", map[string]string{"class": "ui-doc-layout__foot-nav"}, cards...))
-}
-
-func pagerCard(class, href, direction, title string) render.HTML {
-	return render.Tag("a", map[string]string{"href": href, "class": class},
-		render.Tag("span", map[string]string{"class": "ui-doc-layout__pager-dir"}, render.Text(direction)),
-		render.Tag("span", map[string]string{"class": "ui-doc-layout__pager-ttl"}, render.Text(title)),
-	)
+	if index+1 < len(siblings) {
+		pager.NextHref, pager.NextLabel = siblings[index+1].Path, siblings[index+1].Title
+	}
+	return pager
 }
 
 func markdownHeadings(source string) []Heading {

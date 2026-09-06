@@ -68,6 +68,21 @@ test('search results below the prefix link below the prefix', async ({ page }) =
   await expect(page.locator('h1')).not.toHaveText(/no encontrada|not found/i);
 });
 
+// The runtime only takes the client-side path for links it finds in the
+// embedded route graph. The export rewrote the links for the base but not
+// the graph, so every click was a full page load with the layout rebuilt.
+test('navigation below the prefix stays client-side', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile-chromium', 'the runtime decides per link, not per viewport; the desktop header is the surface under test');
+  await page.goto(prefixed('/docs/getting-started/'), { waitUntil: 'networkidle' });
+  await page.evaluate(() => { window.__fastrDocsProbe = 1; });
+  await page.locator('nav.ui-site-header__links a').filter({ hasText: 'Blog' }).first().click();
+  await page.waitForURL(/\/prefix\/blog\/?$/);
+  await expect(page.locator('h1').filter({ hasText: 'Blog' })).toBeVisible();
+  // A full load would have reset the window.
+  expect(await page.evaluate(() => window.__fastrDocsProbe)).toBe(1);
+  expect(await page.evaluate(() => performance.getEntriesByType('navigation').length)).toBe(1);
+});
+
 test('the sidebar and header know which page is active below the prefix', async ({ page }) => {
   await page.goto(prefixed('/es/docs/getting-started/'));
   // The runtime applies both after load, so poll rather than read once.

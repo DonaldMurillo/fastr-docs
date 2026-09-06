@@ -274,6 +274,7 @@ func rewriteRuntimeURLs(dir, base string) error {
 		updated := strings.ReplaceAll(string(body), `"/__fastr-docs/`, `"`+base+`/__fastr-docs/`)
 		updated = strings.ReplaceAll(updated, `data-fastr-docs-base=""`, `data-fastr-docs-base="`+base+`"`)
 		updated = markComponentStylesheets(updated)
+		updated = prefixRouteGraph(updated, base)
 		updated = strings.ReplaceAll(updated, `data-fastr-docs-pagefind-path="/pagefind/"`, `data-fastr-docs-pagefind-path="`+base+`/pagefind/"`)
 		if updated == string(body) {
 			return nil
@@ -347,4 +348,25 @@ var componentStylesheet = regexp.MustCompile(`<link rel="stylesheet" href="([^"]
 // already gets.
 func markComponentStylesheets(page string) string {
 	return componentStylesheet.ReplaceAllString(page, `<link rel="stylesheet" href="${1}${2}${3}" data-fui-style="${2}" id="fui-css-${2}">`)
+}
+
+// routeGraphScript matches the route graph GoFastr embeds in every page,
+// which the runtime consults to decide whether a link is an app route.
+var routeGraphScript = regexp.MustCompile(`(?s)(<script type="application/json" id="gofastr-routes">)(.*?)(</script>)`)
+
+// prefixRouteGraph writes the base path into the embedded route graph.
+//
+// The export rewrites every href for the base, but the route graph keeps
+// root-relative paths (GoFastr through v0.84.0), so the runtime looked up
+// /repo/docs/guide in a graph that knew /docs/guide, found nothing, and
+// let the browser do a full page load on every click: no client-side
+// navigation, and the layout rebuilt from scratch each time.
+func prefixRouteGraph(page, base string) string {
+	if base == "" {
+		return page
+	}
+	return routeGraphScript.ReplaceAllStringFunc(page, func(block string) string {
+		m := routeGraphScript.FindStringSubmatch(block)
+		return m[1] + strings.ReplaceAll(m[2], `"path":"/`, `"path":"`+base+`/`) + m[3]
+	})
 }

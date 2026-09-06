@@ -589,6 +589,12 @@ func (r *Router) sidebarRoots(currentPath string) []*Route {
 	if active.Path != "/" && variantFamily(active) == "" {
 		if section := r.sectionForPath(active.Children, currentPath); section != nil {
 			active = section
+		} else {
+			// Standing on the locale home itself, which is the translation of
+			// "/" and so lists that language's sections, exactly as the default
+			// locale's home lists r.roots. Without this the home is both the
+			// home entry and the active section, and renders twice.
+			return append([]*Route{active}, active.Children...)
 		}
 	}
 	if active.Path == "/" {
@@ -681,13 +687,18 @@ func (r *Router) sidebarItems(routes []*Route, currentPath string) []ui.SidebarI
 		}
 		children := r.sidebarItems(route.Children, currentPath)
 		label := route.Title
-		// Every locale has a home, and each one is labelled "Home" in its own
-		// language rather than by its route title.
-		//
-		// It is also a link, never a section. A locale home such as /es owns
-		// the whole translated tree, so recursing into it would list the entire
-		// site again underneath the word "Inicio".
 		if variantFamily(route) == "" {
+			// Another language's home is not a section of this one. Left in, it
+			// appears as a second "Home" leading out of the site, dragging that
+			// language's whole tree behind it; the language selector is the
+			// affordance for switching.
+			if route != r.localeHome(currentPath) {
+				continue
+			}
+			// The home of the language being read is labelled "Home" in that
+			// language, and is a link rather than a section: a locale home owns
+			// the whole translated tree, so recursing into it would list the
+			// entire site again underneath the word "Inicio".
 			label = r.uiAt(currentPath).Home
 			children = nil
 		}

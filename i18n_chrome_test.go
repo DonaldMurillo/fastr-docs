@@ -266,3 +266,42 @@ func TestTheHomeLinkStaysInTheReadersLanguage(t *testing.T) {
 		t.Fatalf("Spanish home label = %q", got)
 	}
 }
+
+// Standing on the locale home itself, it was both the home entry and the active
+// section, so "Inicio" rendered twice.
+func TestTheLocaleHomeIsListedOnce(t *testing.T) {
+	r := chromeLocaleSite(t)
+	items := r.sidebarItems(r.sidebarRoots("/es"), "/es")
+	home := 0
+	for _, item := range items {
+		if item.Label == "Inicio" {
+			home++
+		}
+	}
+	if home != 1 {
+		t.Fatalf("the Spanish home appears %d times: %+v", home, items)
+	}
+	// It still lists that language's sections, the way "/" lists the site's.
+	if len(items) < 2 {
+		t.Fatalf("the locale home listed no sections: %+v", items)
+	}
+}
+
+// Another language's home is not a section of this one. Listed, it reads as a
+// second "Home" that leads out of the site and drags that language's whole tree
+// behind it.
+func TestOtherLanguagesHomesAreNotListed(t *testing.T) {
+	r := chromeLocaleSite(t)
+	for path, wantHome := range map[string]string{"/": "/", "/es": "/es"} {
+		items := r.sidebarItems(r.sidebarRoots(path), path)
+		homes := make([]string, 0, 2)
+		for _, item := range items {
+			if item.Label == "Home" || item.Label == "Inicio" {
+				homes = append(homes, item.Href)
+			}
+		}
+		if len(homes) != 1 || homes[0] != wantHome {
+			t.Fatalf("%s listed homes %v, want just %q", path, homes, wantHome)
+		}
+	}
+}

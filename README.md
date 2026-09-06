@@ -265,7 +265,8 @@ Labels containing `%s` or `%d` are format strings; a translation may reorder
 the surrounding words. Dropping the placeholder is tolerated rather than
 producing Go's `%!(EXTRA ...)` in the middle of a page.
 
-Dates use `DateFormat`, a Go layout. The standard library ships no CLDR data,
+Dates use `DateFormat`, a Go layout, with `Months` and `ShortMonths` naming
+the months for a layout that spells them out. The standard library ships no CLDR data,
 so the layout is the project's choice rather than something inferred from the
 locale.
 

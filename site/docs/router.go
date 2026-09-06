@@ -47,7 +47,8 @@ func NewRouter() *docs.Router {
 			Previous:          "← Anterior",
 			Next:              "Siguiente →",
 			Version:           "Versión",
-			DateFormat:        "2 Jan 2006",
+			DateFormat:        "2 de January de 2006",
+			Months:            []string{"enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"},
 			Blog: docs.BlogStrings{
 				Title:                  "Blog",
 				Navigation:             "Navegación del blog",

@@ -81,7 +81,19 @@ than printing Go's `%!(EXTRA ...)` into the page.
 
 {{< note title="Why no CLDR" >}}
 `DateFormat` is a Go time layout you choose. The standard library ships no CLDR
-data, so deriving a date format from the locale would mean inventing one.
+data, so deriving a date format from the locale would mean inventing one. Go
+also prints month names in English only, so a layout that spells the month out
+takes the names from `Months` (twelve, January first), or `ShortMonths` for
+the three-letter form:
+
+```go
+docs.WithLocaleUIStrings("es", docs.UIStrings{
+    DateFormat: "2 de January de 2006",
+    Months:     []string{"enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"},
+})
+```
+
+That prints `30 de agosto de 2026`. A numeric layout needs neither.
 {{< /note >}}
 
 ### When one build serves several languages

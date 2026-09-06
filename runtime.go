@@ -588,11 +588,32 @@ const docsRuntimeJS = `(function(){
     var live = document.querySelector('.fastr-docs-site-header');
     if (!template || !template.content || !live) return;
     var fresh = template.content;
-    ['.ui-site-header__links', '.ui-site-header__mobile-links', '.fastr-docs-variant-selectors'].forEach(function(selector){
+    // Compared by their links, not their markup: GoFastr's active-link
+    // module adds aria-current to the live anchors, so the markup always
+    // differs and a same-language navigation would wipe the active state.
+    var linksOf = function(root){
+      return Array.prototype.map.call(root.querySelectorAll('a'), function(a){ return a.getAttribute('href') + '|' + a.textContent; }).join(';');
+    };
+    var current = normalizeDocsPath(location.pathname);
+    var markActive = function(root){
+      root.querySelectorAll('a[href]').forEach(function(link){
+        var href = normalizeDocsPath(link.getAttribute('href'));
+        var active = href === current || (link.hasAttribute('data-fui-match-prefix') && current.indexOf(href + '/') === 0);
+        if (active) { link.setAttribute('aria-current', 'page'); link.classList.add('active'); }
+        else { link.removeAttribute('aria-current'); link.classList.remove('active'); }
+      });
+    };
+    ['.ui-site-header__links', '.ui-site-header__mobile-links'].forEach(function(selector){
       var target = live.querySelector(selector);
       var source = fresh.querySelector(selector);
-      if (target && source && target.innerHTML !== source.innerHTML) target.innerHTML = source.innerHTML;
+      if (target && source && linksOf(target) !== linksOf(source)) {
+        target.innerHTML = source.innerHTML;
+        markActive(target);
+      }
     });
+    var selectors = live.querySelector('.fastr-docs-variant-selectors');
+    var freshSelectors = fresh.querySelector('.fastr-docs-variant-selectors');
+    if (selectors && freshSelectors && selectors.innerHTML !== freshSelectors.innerHTML) selectors.innerHTML = freshSelectors.innerHTML;
     var trigger = live.querySelector('.fastr-docs-command-trigger');
     var freshTrigger = fresh.querySelector('.fastr-docs-command-trigger');
     if (trigger && freshTrigger) {

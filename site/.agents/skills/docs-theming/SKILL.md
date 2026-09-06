@@ -49,7 +49,7 @@ fields keep their English defaults, so translate one label at a time.
 Labels with `%s` or `%d` are format strings. Reorder the surrounding words
 freely; dropping the placeholder is tolerated rather than corrupting the page.
 
-`DateFormat` is a Go time layout. Go has no CLDR data, so the date format is
+`DateFormat` is a Go time layout; `Months` and `ShortMonths` name the months for a layout that spells them out. Go has no CLDR data, so the date format is
 the project's choice, not something derived from the locale.
 
 Translated page content is the project's job; the framework does not invent

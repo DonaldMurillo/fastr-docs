@@ -89,15 +89,24 @@ func (r *Router) docMetadata(route *Route) render.HTML {
 	}
 	labels := r.uiForRoute(route)
 	parts := make([]render.HTML, 0, 3)
+	// A date from git is an RFC 3339 timestamp; the reader gets it in the
+	// page's language and DateFormat, and the machine-readable value stays
+	// on the element.
+	display := func(raw string) string {
+		if date, ok := parseBlogDate(raw); ok {
+			return labels.formatDate(date)
+		}
+		return raw
+	}
 	if meta.DateModified != "" {
 		parts = append(parts, render.Join(
 			render.Text(labels.LastUpdated+" "),
-			render.Tag("time", map[string]string{"datetime": meta.DateModified}, render.Text(meta.DateModified)),
+			render.Tag("time", map[string]string{"datetime": meta.DateModified}, render.Text(display(meta.DateModified))),
 		))
 	} else if meta.DatePublished != "" {
 		parts = append(parts, render.Join(
 			render.Text(labels.Published+" "),
-			render.Tag("time", map[string]string{"datetime": meta.DatePublished}, render.Text(meta.DatePublished)),
+			render.Tag("time", map[string]string{"datetime": meta.DatePublished}, render.Text(display(meta.DatePublished))),
 		))
 	}
 	if len(meta.Authors) > 0 {

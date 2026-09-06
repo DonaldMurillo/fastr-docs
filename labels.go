@@ -37,6 +37,13 @@ type UIStrings struct {
 	// The standard library has no CLDR data, so the layout is the project's
 	// choice rather than something derived from the locale.
 	DateFormat string
+	// Months and ShortMonths name the months in the language, January first,
+	// for a DateFormat that spells them out. Go prints month names in English
+	// only, so "2 January 2006" gave "30 August 2026" on a Spanish page; with
+	// twelve names here the same layout prints "30 agosto 2026". A numeric
+	// layout needs neither. Twelve entries, or none.
+	Months      []string
+	ShortMonths []string
 	// VersionDescription describes a generated version route. Takes the
 	// version name.
 	VersionDescription string
@@ -238,6 +245,10 @@ func overlayStrings(target, override reflect.Value) {
 			}
 		case reflect.Struct:
 			overlayStrings(target.Field(i), field)
+		case reflect.Slice:
+			if field.Len() > 0 {
+				target.Field(i).Set(field)
+			}
 		}
 	}
 }
@@ -257,7 +268,20 @@ func (u UIStrings) formatDate(value time.Time) string {
 	if layout == "" {
 		layout = defaultUIStrings.DateFormat
 	}
-	return value.Format(layout)
+	out := value.Format(layout)
+	// Go names months in English only. Full names first, since "January"
+	// contains "Jan".
+	if len(u.Months) == 12 {
+		for i, name := range u.Months {
+			out = strings.ReplaceAll(out, time.Month(i+1).String(), name)
+		}
+	}
+	if len(u.ShortMonths) == 12 {
+		for i, name := range u.ShortMonths {
+			out = strings.ReplaceAll(out, time.Month(i + 1).String()[:3], name)
+		}
+	}
+	return out
 }
 
 // WithLocaleUIStrings translates the chrome for one locale.

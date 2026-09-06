@@ -97,7 +97,10 @@ así que puedes traducir una etiqueta cada vez en lugar de todas de golpe.
 {{< note title="Por qué no hay CLDR" >}}
 `DateFormat` es un layout de fecha de Go que eliges tú. La biblioteca estándar
 no trae datos CLDR, así que deducir el formato a partir del idioma sería
-inventárselo.
+inventárselo. Go además escribe los meses solo en inglés, así que un layout que
+los nombra toma los nombres de `Months` (doce, empezando por enero) o de
+`ShortMonths`. Esta página usa `"2 de January de 2006"` con los meses en
+español y sale `30 de agosto de 2026`.
 {{< /note >}}
 
 `WithLocaleNames` es lo que pone "Español" en el selector en lugar de "es". Go

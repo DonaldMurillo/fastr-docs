@@ -3,7 +3,7 @@ title: Una superficie de publicación propia
 description: Un blog necesita su propio flujo de lectura, herramientas de descubrimiento y enlaces duraderos.
 date: 2026-08-30
 authors: [fastr-docs]
-tags: [architecture, publishing]
+tags: [arquitectura, publicacion]
 locale: es
 ---
 

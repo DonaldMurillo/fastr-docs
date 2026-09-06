@@ -3,7 +3,7 @@ title: Un árbol para docs y publicación
 description: Por qué el archivo del blog y el feed RSS usan el mismo Router que la documentación.
 date: 2026-08-28
 authors: [fastr-docs]
-tags: [architecture, routing]
+tags: [arquitectura, rutas]
 locale: es
 translation_of: /blog/route-tree
 ---

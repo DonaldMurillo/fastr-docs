@@ -712,10 +712,10 @@ func (r *Router) wrapBlogPost(route *Route, body render.HTML, source string) ren
 	metaParts := []render.HTML{}
 	if date := r.formatBlogDate(r.blogPrefixForPost(route), meta.DatePublished); date != "" {
 		metaParts = append(metaParts, render.Tag("span", map[string]string{"class": "fastr-docs-blog-post__meta-item"},
-			render.Text(r.UIStrings().Published+" "), render.Tag("time", map[string]string{"datetime": meta.DatePublished}, render.Text(date))))
+			render.Text(r.uiAt(r.blogPrefixForPost(route)).Published+" "), render.Tag("time", map[string]string{"datetime": meta.DatePublished}, render.Text(date))))
 	}
 	if authors := r.blogAuthorLinks(route); len(authors) > 0 {
-		authorParts := []render.HTML{render.Text(r.UIStrings().By + " ")}
+		authorParts := []render.HTML{render.Text(r.uiAt(r.blogPrefixForPost(route)).By + " ")}
 		for index, author := range authors {
 			if index > 0 {
 				authorParts = append(authorParts, render.Text(", "))
@@ -726,7 +726,7 @@ func (r *Router) wrapBlogPost(route *Route, body render.HTML, source string) ren
 	}
 	if modified := r.formatBlogDate(r.blogPrefixForPost(route), meta.DateModified); modified != "" && modified != r.formatBlogDate(r.blogPrefixForPost(route), meta.DatePublished) {
 		metaParts = append(metaParts, render.Tag("span", map[string]string{"class": "fastr-docs-blog-post__meta-item"},
-			render.Text(r.UIStrings().LastUpdated+" "), render.Tag("time", map[string]string{"datetime": meta.DateModified}, render.Text(modified))))
+			render.Text(r.uiAt(r.blogPrefixForPost(route)).LastUpdated+" "), render.Tag("time", map[string]string{"datetime": meta.DateModified}, render.Text(modified))))
 	}
 	metaParts = append(metaParts, render.Text(formatLabel(r.blogLabels(r.blogPrefixForPost(route)).ReadingTime, blogReadingTime(route))))
 	titleID := blogShareTargetID(route) + "-title"
@@ -754,17 +754,17 @@ func (r *Router) wrapBlogPost(route *Route, body render.HTML, source string) ren
 			items = append(items, ui.RailItem{Anchor: heading.ID, Text: heading.Title})
 		}
 		rail := ui.AnchoredRail(ui.AnchoredRailConfig{
-			Label: r.UIStrings().OnThisPage, Items: items,
+			Label: r.uiAt(r.blogPrefixForPost(route)).OnThisPage, Items: items,
 			ObserveSelector: ".fastr-docs-blog-post__content",
 			TargetSelector:  "h2[id], h3[id]",
 			Class:           "fastr-docs-toc fastr-docs-toc--rail",
 		})
-		children = append(children, render.Tag("div", map[string]string{"class": "fastr-docs-blog-post__grid"}, article, corehtml.Aside(corehtml.AsideConfig{Label: r.UIStrings().OnThisPage, Class: "fastr-docs-blog-post__toc"}, rail, r.docsTocSelect(headings, r.UIStrings().OnThisPage))))
+		children = append(children, render.Tag("div", map[string]string{"class": "fastr-docs-blog-post__grid"}, article, corehtml.Aside(corehtml.AsideConfig{Label: r.uiAt(r.blogPrefixForPost(route)).OnThisPage, Class: "fastr-docs-blog-post__toc"}, rail, r.docsTocSelect(headings, r.uiAt(r.blogPrefixForPost(route)).OnThisPage))))
 	} else {
 		children = append(children, article)
 	}
 	if editURL := safeMetadataURL(route.Metadata.EditURL); editURL != "" {
-		children = append(children, render.Tag("p", map[string]string{"class": "fastr-docs-blog-post__edit"}, render.Tag("a", map[string]string{"href": editURL, "rel": "nofollow noopener", "target": "_blank"}, render.Text(r.UIStrings().EditPage))))
+		children = append(children, render.Tag("p", map[string]string{"class": "fastr-docs-blog-post__edit"}, render.Tag("a", map[string]string{"href": editURL, "rel": "nofollow noopener", "target": "_blank"}, render.Text(r.uiAt(r.blogPrefixForPost(route)).EditPage))))
 	}
 	if pager := r.blogPager(route); pager != nil {
 		children = append(children, ui.DocPrevNext(*pager))

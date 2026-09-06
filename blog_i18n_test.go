@@ -36,7 +36,10 @@ func bilingualBlogSite(t *testing.T) *Router {
 		WithLocaleFallback("en"),
 		WithLocaleNames(map[string]string{"en": "English", "es": "Español"}),
 		WithLocaleUIStrings("es", UIStrings{
-			DateFormat: "2 Jan 2006",
+			DateFormat: "2 de January de 2006",
+			Months:     []string{"enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"},
+			Published:  "Publicado",
+			By:         "por",
 			Previous:   "← Anterior",
 			Next:       "Siguiente →",
 			Blog: BlogStrings{
@@ -96,9 +99,17 @@ func TestBlogLabelsFollowTheCollection(t *testing.T) {
 	if !strings.Contains(landing, "Últimas entradas") || !strings.Contains(landing, "min de lectura") {
 		t.Fatalf("Spanish landing is not in Spanish: %s", landing)
 	}
-	// Dates follow the language's own format.
-	if !strings.Contains(landing, "2 Jan 2026") {
+	// Dates follow the language's own format, month names included: Go
+	// prints them in English only.
+	if !strings.Contains(landing, "2 de enero de 2026") {
 		t.Fatalf("Spanish landing did not use the Spanish date format: %s", landing)
+	}
+	// The post's own meta line reads the collection's language too. It read
+	// the Router-wide strings, so "Published" and "By" stayed English over
+	// a Spanish post.
+	post := string((&pageComponent{router: r, route: r.routeAtPath("/es/blog/segunda")}).Render())
+	if !strings.Contains(post, `Publicado <time datetime="2026-01-03">3 de enero de 2026</time>`) || strings.Contains(post, "Published") {
+		t.Fatalf("Spanish post meta is not in Spanish: %s", post)
 	}
 	english := string(r.renderBlogArchive("/blog", 1, ""))
 	if !strings.Contains(english, "Latest posts") || strings.Contains(english, "Últimas") {

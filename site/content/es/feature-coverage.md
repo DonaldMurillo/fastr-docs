@@ -24,7 +24,7 @@ pertenecen al proyecto que usa fastr-docs.
 | Composición de layouts | Layouts globales y de sección, incluidos layouts anidados dentro de otros. |
 | Navegación | `Order` explícito entre hermanas, estado de ancestro activo, migas de pan, enlaces anterior/siguiente, cajones adaptables y navegación por encabezados. |
 | Búsqueda | Índice JSON en desarrollo, exportación con Pagefind y la paleta de comandos nativa con `Ctrl+K` o `⌘K`. |
-| Localización | Metadatos de idioma, alternativas, filtros, interfaz totalmente traducible por idioma, formatos de fecha configurables, fallback a un idioma por defecto e informe de cobertura. |
+| Localización | Metadatos de idioma, emparejado por ruta o por `translation_of`, alternativas `hreflang` derivadas, filtros, interfaz totalmente traducible por idioma, formatos de fecha configurables, fallback a un idioma por defecto e informe de cobertura. |
 | Versiones | Metadatos de versión, filtros, selectores conscientes de la ruta, `MarkdownVersionedCollection` e inventario en el manifiesto. |
 | SEO y publicación | Títulos, descripciones, URLs canónicas, `noindex`, autores, fechas, imágenes sociales, redirecciones, sitemap, robots, blogs en Markdown y feeds RSS. |
 | Entrega sin conexión | Integración PWA de GoFastr y exportación estática de las rutas y recursos elegibles. |

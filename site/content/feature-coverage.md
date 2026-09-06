@@ -22,7 +22,7 @@ the project using fastr-docs.
 | Layout composition | Global and section layouts, including layouts nested inside other layouts through GoFastr. |
 | Navigation | Explicit sibling `Order`, active ancestor state, breadcrumbs, previous/next links, responsive drawers, and in-page heading navigation. |
 | Search | JSON index during development, Pagefind export support, and GoFastr's native `Ctrl+K` or `⌘K` command palette. |
-| Localization | Locale metadata, alternates, locale filters, a fully translatable UI string surface, configurable date formats, fallback to a default locale, and translation-coverage reporting. |
+| Localization | Locale metadata, pairing by path or by `translation_of`, derived `hreflang` alternates, locale filters, a fully translatable UI string surface, configurable date formats, fallback to a default locale, and translation-coverage reporting. |
 | Documentation versions | Version metadata, version filters, route-aware selectors, `MarkdownVersionedCollection`, and a version inventory in the export manifest. |
 | SEO and publishing | Titles, descriptions, canonical URLs, `noindex`, authors, published/updated dates, social images, redirects, sitemap, robots rules, Markdown blogs, and RSS feeds. |
 | Offline delivery | GoFastr PWA integration and static export of offline-eligible routes and assets. |

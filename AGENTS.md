@@ -199,6 +199,23 @@ to get a language selector is busywork, and omitting it fails silently. This is
 deliberately only about pairing; `localeAllows` decides publication and is
 untouched, so an unmarked route still serves in every locale build.
 
+Pairing is resolved on the Router, in `familyOf`, never by calling
+`variantFamily` directly. `variantFamily` is the path-shaped family, the path
+with its locale and version segments removed, and it is all a folder-for-folder
+translation needs. `ContentMetadata.TranslationOf` (`translation_of:` in front
+matter, `GroupConfig.TranslationOf` for a group) joins the named route's family
+instead, which is what a translated slug needs: `/es/ejemplos/arbol-de-rutas`
+cannot pair with `/examples/route-tree` by shape. The reference is followed
+through its target, so pointing at another translation lands in the same
+family. A reference nothing serves is kept as the family, so the page pairs
+with nothing rather than with the wrong thing, and `translationIssues` names
+it: dangling, self, or same-language references are `ContentIssues`.
+
+`alternatesFor` derives the `hreflang` map from the family: every published
+variant in another language, in both directions, under any declared
+`alternates:`. `routeHasMetadata` counts it, or a page with no metadata of its
+own would carry no head and the pairing would be invisible from that side.
+
 `headerVariant` walks the whole tree, not `Routes()`. `Routes()` returns pages
 only, and a translated section is usually a group, so a `Routes()` search found
 nothing.

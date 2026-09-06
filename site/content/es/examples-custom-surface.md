@@ -1,6 +1,7 @@
 ---
 tags: [ejemplos, pantallas, superficies]
 locale: es
+translation_of: /examples/custom-surface
 ---
 
 # Lista para una superficie propia

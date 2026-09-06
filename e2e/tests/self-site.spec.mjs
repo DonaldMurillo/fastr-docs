@@ -448,7 +448,7 @@ test('the Spanish tree is a complete worked example', async ({ page }) => {
     '/es/docs/build/diagrams', '/es/docs/build/math', '/es/docs/operate/search',
     '/es/docs/operate/offline', '/es/docs/operate/testing', '/es/docs/operate/deploy',
     '/es/docs/operate/i18n', '/es/docs/operate/assets', '/es/docs/operate/feature-coverage',
-    '/es/docs/collaborate/ai-authoring', '/es/examples/route-tree', '/es/examples/custom-surface']) {
+    '/es/docs/collaborate/ai-authoring', '/es/ejemplos/arbol-de-rutas', '/es/ejemplos/superficies-propias']) {
     const response = await page.goto(selfPage(path));
     expect(response.status(), path).toBe(200);
     const state = await page.evaluate(() => ({
@@ -460,6 +460,33 @@ test('the Spanish tree is a complete worked example', async ({ page }) => {
     // selector. A page whose original omits `locale:` silently loses it.
     expect(state.selector, path).toEqual(['English', 'Español']);
   }
+});
+
+// The examples are translated slug and all, so their paths do not mirror the
+// English ones. translation_of pairs them anyway: the selector moves between
+// the two, and each page tells search engines about the other.
+test('a translated slug pairs with its original through translation_of', async ({ page }) => {
+  await page.goto(selfPage('/es/ejemplos/arbol-de-rutas'));
+  await expect(page.locator('h1')).toContainText('Ejemplo de árbol de rutas');
+  const spanish = await page.evaluate(() => ({
+    options: [...document.querySelector('[data-docs-variant-select=locale]').options].map((o) => o.textContent),
+    hreflang: document.querySelector('link[rel="alternate"][hreflang="en"]')?.getAttribute('href'),
+    nav: [...document.querySelectorAll('.ui-site-header__links a[aria-current="page"]')].map((a) => a.textContent.trim()),
+  }));
+  expect(spanish.options).toEqual(['English', 'Español']);
+  expect(spanish.hreflang).toBe('/examples/route-tree');
+  expect(spanish.nav).toEqual(['Ejemplos']);
+
+  await page.selectOption('[data-docs-variant-select=locale]', { label: 'English' });
+  await page.waitForURL('**/examples/route-tree');
+  await expect(page.locator('h1')).toContainText('Route tree');
+  const english = await page.evaluate(() => ({
+    hreflang: document.querySelector('link[rel="alternate"][hreflang="es"]')?.getAttribute('href'),
+  }));
+  expect(english.hreflang).toBe('/es/ejemplos/arbol-de-rutas');
+
+  await page.selectOption('[data-docs-variant-select=locale]', { label: 'Español' });
+  await page.waitForURL('**/es/ejemplos/arbol-de-rutas');
 });
 
 // The page about translation, translated, is the demonstration that matters.

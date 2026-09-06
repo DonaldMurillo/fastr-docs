@@ -27,7 +27,7 @@ page-local configuration:
 
 `title`, `slug`, `description`, `excerpt`, `draft`, `noindex`, `edit_url`,
 `canonical`, `image`, `authors`, `date`, `last_updated`, `locale`, `version`,
-`alternates`, `tags`, `redirects`, `order`.
+`translation_of`, `alternates`, `tags`, `redirects`, `order`.
 
 `draft: true` removes a page from navigation, search, mounting, export, and
 RSS. After changing draft status, confirm the page is absent from all five,

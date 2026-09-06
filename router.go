@@ -145,6 +145,10 @@ type GroupConfig struct {
 	// counterpart that did not exist.
 	Locale  string
 	Version string
+	// TranslationOf names the group this one translates, for a translated
+	// section whose path does not mirror the original's. See
+	// ContentMetadata.TranslationOf.
+	TranslationOf string
 }
 
 // Route is a node in the docs route tree. Children are always returned in
@@ -727,8 +731,9 @@ func (r *Router) Group(path string, cfg GroupConfig) (*Group, error) {
 		Hidden:      cfg.Hidden,
 		Badge:       badge,
 		Metadata: ContentMetadata{
-			Locale:  strings.TrimSpace(cfg.Locale),
-			Version: strings.TrimSpace(cfg.Version),
+			Locale:        strings.TrimSpace(cfg.Locale),
+			Version:       strings.TrimSpace(cfg.Version),
+			TranslationOf: strings.TrimSpace(cfg.TranslationOf),
 		},
 	})
 	if err != nil {
@@ -1003,7 +1008,7 @@ func (r *Router) SearchIndex() []SearchEntry {
 			Locale: r.effectiveLocale(route), Version: route.Metadata.Version,
 			EditURL: route.Metadata.EditURL, Canonical: route.Metadata.CanonicalURL,
 			NoIndex: route.Metadata.NoIndex, Kind: route.Kind, Order: route.Order,
-			Alternates: cloneStringMap(route.Metadata.Alternates),
+			Alternates: r.alternatesFor(route),
 		}
 		if route.page != nil {
 			entry.Text = pageSource(route.page)
@@ -1221,8 +1226,8 @@ func (r *Router) Mount(site *uiapp.App, layout *uiapp.Layout) error {
 				WithDescription(route.Description)
 		case KindScreen:
 			var screenComponent component.Component = route.screen.Component
-			if routeHasMetadata(route) {
-				screenComponent = metadataScreenComponent(route, route.screen.Component)
+			if r.routeHasMetadata(route) {
+				screenComponent = metadataScreenComponent(r, route, route.screen.Component)
 			}
 			screen = uiapp.NewScreen(route.Path, screenComponent).
 				WithTitle(route.Title).
@@ -1377,6 +1382,7 @@ type pageComponent struct {
 }
 
 type screenMetadataComponent struct {
+	router    *Router
 	component component.Component
 	route     *Route
 }
@@ -1437,7 +1443,7 @@ func (s *screenMetadataComponent) HeadHTML() string {
 	if seo, ok := s.component.(interface{ HeadHTML() string }); ok {
 		custom = seo.HeadHTML()
 	}
-	return custom + metadataHeadHTML(s.route)
+	return custom + s.router.metadataHeadHTML(s.route)
 }
 
 func (s *screenMetadataComponent) SetParams(params map[string]string) {
@@ -1446,8 +1452,8 @@ func (s *screenMetadataComponent) SetParams(params map[string]string) {
 	}
 }
 
-func metadataScreenComponent(route *Route, original component.Component) component.Component {
-	base := &screenMetadataComponent{component: original, route: route}
+func metadataScreenComponent(r *Router, route *Route, original component.Component) component.Component {
+	base := &screenMetadataComponent{router: r, component: original, route: route}
 	loader, hasLoader := original.(uiapp.ScreenLoader)
 	provider, hasStaticPaths := original.(uiapp.StaticPathsProvider)
 	switch {
@@ -1597,14 +1603,15 @@ func (p *pageComponent) ScreenArticle() uiapp.ArticleMeta {
 // Graph, article wrapper, and JSON-LD derived from ScreenArticle; this hook
 // supplies robots, canonical/alternate links, Twitter, and article fields.
 func (p *pageComponent) HeadHTML() string {
-	return metadataHeadHTML(p.route)
+	return p.router.metadataHeadHTML(p.route)
 }
 
-func metadataHeadHTML(route *Route) string {
+func (r *Router) metadataHeadHTML(route *Route) string {
 	if route == nil {
 		return ""
 	}
 	meta := route.Metadata
+	alternates := r.alternatesFor(route)
 	var tags []string
 	title := route.Title
 	description := route.Description
@@ -1647,13 +1654,13 @@ func metadataHeadHTML(route *Route) string {
 	if meta.DateModified != "" {
 		tags = append(tags, `<meta property="article:modified_time" content="`+stdhtml.EscapeString(meta.DateModified)+`">`)
 	}
-	locales := make([]string, 0, len(meta.Alternates))
-	for locale := range meta.Alternates {
+	locales := make([]string, 0, len(alternates))
+	for locale := range alternates {
 		locales = append(locales, locale)
 	}
 	sort.Strings(locales)
 	for _, locale := range locales {
-		href := meta.Alternates[locale]
+		href := alternates[locale]
 		if cleanHref := safeMetadataURL(href); cleanHref != "" && strings.TrimSpace(locale) != "" {
 			tags = append(tags, `<link rel="alternate" hreflang="`+stdhtml.EscapeString(locale)+`" href="`+stdhtml.EscapeString(cleanHref)+`">`)
 		}
@@ -1661,12 +1668,12 @@ func metadataHeadHTML(route *Route) string {
 	return strings.Join(tags, "")
 }
 
-func routeHasMetadata(route *Route) bool {
+func (r *Router) routeHasMetadata(route *Route) bool {
 	if route == nil {
 		return false
 	}
 	meta := route.Metadata
-	return meta.Draft || meta.NoIndex || meta.EditURL != "" || meta.CanonicalURL != "" || meta.Image != "" || len(meta.Authors) > 0 || meta.DatePublished != "" || meta.DateModified != "" || meta.Locale != "" || meta.Version != "" || len(meta.Alternates) > 0
+	return meta.Draft || meta.NoIndex || meta.EditURL != "" || meta.CanonicalURL != "" || meta.Image != "" || len(meta.Authors) > 0 || meta.DatePublished != "" || meta.DateModified != "" || meta.Locale != "" || meta.Version != "" || len(r.alternatesFor(route)) > 0
 }
 
 func safeMetadataURL(raw string) string {

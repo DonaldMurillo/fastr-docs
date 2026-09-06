@@ -448,7 +448,7 @@ func TestPageMetadataEmitsSEOWithoutDuplicatingNativeArticleData(t *testing.T) {
 		Order:  1,
 	})
 
-	html := metadataHeadHTML(r.Routes()[0])
+	html := r.metadataHeadHTML(r.Routes()[0])
 	for _, marker := range []string{
 		`<meta name="twitter:title" content="Deployment guide">`,
 		`<meta name="twitter:description" content="Ship the documentation site.">`,
@@ -470,7 +470,7 @@ func TestPageMetadataEmitsSEOWithoutDuplicatingNativeArticleData(t *testing.T) {
 		Title: "Unsafe metadata", Description: "A page", Source: "# Unsafe", Order: 1,
 		Metadata: ContentMetadata{Image: "javascript:alert(1)"},
 	})
-	html = metadataHeadHTML(r.Routes()[0])
+	html = r.metadataHeadHTML(r.Routes()[0])
 	if strings.Contains(html, "javascript:") || strings.Contains(html, "og:image") {
 		t.Fatalf("unsafe image metadata was emitted: %s", html)
 	}

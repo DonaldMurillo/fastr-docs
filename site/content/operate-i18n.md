@@ -43,7 +43,9 @@ content/
 
 The `es/` directory is a convention, not a rule. Nothing reads the directory
 name; the pairing comes from `locale:` in front matter and from the `/es` path
-segment.
+segment. A page whose path does not mirror the original's, because its slug is
+translated, pairs by naming the original instead; see
+[Translating the slug too](#translating-the-slug-too).
 
 {{< warning title="Both sides need a locale" >}}
 A page with no `locale:` is not in any language, so it pairs with nothing. Set
@@ -188,6 +190,49 @@ them is translated.
 Original pages need no annotation. When `WithLocaleFallback` names a default
 locale, a page with no `locale:` counts as being in it, so adding a language
 does not mean editing every existing file.
+
+## Translating the slug too
+
+Path-shaped pairing needs the translated path to mirror the original with a
+locale segment added. That suits a tree translated folder for folder, and it is
+how most of this site pairs. It cannot pair `/es/ejemplos/arbol-de-rutas` with
+`/examples/route-tree`, because stripping `es` leaves a different path.
+
+A page whose slug is translated names its original instead:
+
+```md title="content/es/examples-route-tree.md"
+---
+locale: es
+translation_of: /examples/route-tree
+---
+```
+
+A group does the same in Go:
+
+```go title="docs/router.go"
+ejemplos := router.MustGroup("/es/ejemplos", docs.GroupConfig{
+    Title:         "Ejemplos",
+    Locale:        "es",
+    TranslationOf: "/examples",
+})
+```
+
+The page joins the original's family, so everything that reads families
+follows: the language selector, the header tab, the sidebar section, the pager,
+search results, and the coverage report. Pointing at another translation lands
+in the same family as pointing at the original, so a third language can name
+whichever page its translator worked from.
+
+Both sides get `hreflang` links to each other without an `alternates:` map,
+whichever way the pair was declared. An `alternates:` entry you do write wins
+over the derived one.
+
+`fastr-docs check` fails on a `translation_of` that points at a path nothing
+serves, at the page itself, or at a page in the same language. Each is a typo
+that would otherwise show up as a page quietly missing from the selector.
+
+Try it: the [route tree example](/es/ejemplos/arbol-de-rutas) is paired this
+way, and its selector moves to `/examples/route-tree`.
 
 ## Search across languages
 

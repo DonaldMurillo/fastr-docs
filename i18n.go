@@ -69,6 +69,69 @@ func (r *Router) LanguageFor(path string) string {
 	return r.Language()
 }
 
+// familyOf is the family a route pairs within: the routes that are the same
+// page in other languages or versions.
+//
+// Two ways to declare it, and a site can use both. A path that mirrors the
+// original's with a locale segment added, /es/docs/guide for /docs/guide,
+// pairs by shape alone, which suits a tree translated folder for folder. A
+// page whose path does not mirror, because its slug is translated or it lives
+// somewhere else, names the original in TranslationOf and joins that family.
+// The reference is followed through the target, so pointing at another
+// translation lands in the same family as pointing at the original.
+//
+// A reference to a path nothing serves is kept as the family, so the page
+// still pairs with nothing rather than with the wrong thing, and validation
+// can name it.
+func (r *Router) familyOf(route *Route) string {
+	if route == nil {
+		return ""
+	}
+	seen := map[*Route]bool{}
+	for route.Metadata.TranslationOf != "" && !seen[route] {
+		seen[route] = true
+		ref := normalizePath(route.Metadata.TranslationOf)
+		target := r.routes[ref]
+		if target == nil {
+			return strings.Trim(ref, "/")
+		}
+		route = target
+	}
+	return variantFamily(route)
+}
+
+// alternatesFor is the page's hreflang map: every declared alternate, plus one
+// entry per published variant of its family in another language. A pair
+// declared either way emits both directions, so nobody hand-maintains the
+// alternates map for a site that already knows its translations.
+func (r *Router) alternatesFor(route *Route) map[string]string {
+	if route == nil {
+		return nil
+	}
+	out := cloneStringMap(route.Metadata.Alternates)
+	family := r.familyOf(route)
+	self := r.effectiveLocale(route)
+	for _, candidate := range r.Routes() {
+		if candidate == route || !r.variantPublished(candidate) || r.familyOf(candidate) != family {
+			continue
+		}
+		if candidate.Metadata.Version != route.Metadata.Version {
+			continue
+		}
+		locale := r.effectiveLocale(candidate)
+		if locale == "" || locale == self {
+			continue
+		}
+		if out == nil {
+			out = map[string]string{}
+		}
+		if _, declared := out[locale]; !declared {
+			out[locale] = candidate.Path
+		}
+	}
+	return out
+}
+
 // localeFamilyLocales maps each variant family to the locales present in it.
 // It is rebuilt whenever routes change, and deliberately ignores the locale
 // filter it exists to inform.
@@ -91,7 +154,7 @@ func (r *Router) localeFamilyLocales() map[string]map[string]bool {
 		if locale == "" {
 			continue
 		}
-		family := variantFamily(route)
+		family := r.familyOf(route)
 		if families[family] == nil {
 			families[family] = make(map[string]bool)
 		}
@@ -113,7 +176,7 @@ func (r *Router) localeAllows(route *Route) bool {
 		return false
 	}
 	// A translation exists, so the untranslated variant stays hidden.
-	if r.localeFamilyLocales()[variantFamily(route)][r.locale] {
+	if r.localeFamilyLocales()[r.familyOf(route)][r.locale] {
 		return false
 	}
 	if r.fallbackLocale == "" {

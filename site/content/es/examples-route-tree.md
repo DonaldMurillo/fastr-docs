@@ -1,6 +1,7 @@
 ---
 tags: [ejemplos, arbol-de-rutas, navegacion]
 locale: es
+translation_of: /examples/route-tree
 ---
 
 # Ejemplo de árbol de rutas

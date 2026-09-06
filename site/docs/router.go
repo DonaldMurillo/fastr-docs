@@ -403,20 +403,25 @@ func NewRouter() *docs.Router {
 		Order:       1,
 		Offline:     true,
 	})
-	ejemplosES := router.MustGroup("/es/examples", docs.GroupConfig{
-		Title:       "Ejemplos",
-		Description: "Superficies trabajadas dentro de este mismo Router.",
-		Order:       7,
-		Locale:      "es",
+	// The examples are translated slug and all, so their paths do not mirror
+	// the English ones. The group names its original here, and each page
+	// names its own in front matter with translation_of. The rest of the
+	// Spanish tree pairs by path shape; a site can use both.
+	ejemplosES := router.MustGroup("/es/ejemplos", docs.GroupConfig{
+		Title:         "Ejemplos",
+		Description:   "Superficies trabajadas dentro de este mismo Router.",
+		Order:         7,
+		Locale:        "es",
+		TranslationOf: "/examples",
 	})
-	ejemplosES.MustPage("route-tree", docs.PageConfig{
+	ejemplosES.MustPage("arbol-de-rutas", docs.PageConfig{
 		Title:       "Ejemplo de árbol de rutas",
 		Description: "Una guía visual de cómo un solo árbol mueve el sitio.",
 		SourcePath:  siteFile("content", "es", "examples-route-tree.md"),
 		Order:       1,
 		Offline:     true,
 	})
-	ejemplosES.MustPage("custom-surface", docs.PageConfig{
+	ejemplosES.MustPage("superficies-propias", docs.PageConfig{
 		Title:       "Superficies propias",
 		Description: "Una lista para convertir una función del producto en documentación.",
 		SourcePath:  siteFile("content", "es", "examples-custom-surface.md"),

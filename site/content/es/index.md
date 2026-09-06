@@ -30,5 +30,5 @@ da a cada adaptador la misma fuente de la verdad.
 
 1. Lee [Primeros pasos](/es/docs/getting-started).
 2. Prueba el [playground tipado](/examples/playground).
-3. Revisa el [ejemplo de árbol de rutas](/es/examples/route-tree).
+3. Revisa el [ejemplo de árbol de rutas](/es/ejemplos/arbol-de-rutas).
 4. Pulsa `Ctrl+K` o `⌘K` para buscar en este sitio.

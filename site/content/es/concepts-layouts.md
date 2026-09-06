@@ -38,5 +38,5 @@ anclado en pantallas anchas. En anchos menores usa un desplegable. El scrollspy
 va marcando el encabezado actual sin alterar el desplazamiento normal del
 documento.
 
-Mira el [ejemplo de árbol de rutas](/es/examples/route-tree) para ver cómo un
+Mira el [ejemplo de árbol de rutas](/es/ejemplos/arbol-de-rutas) para ver cómo un
 solo registro produce las tres superficies de navegación.

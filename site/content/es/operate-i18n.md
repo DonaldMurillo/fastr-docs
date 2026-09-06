@@ -44,6 +44,35 @@ nada. Ponlo en el original además de en la traducción, o el selector no aparec
 y no hay ningún error que te diga por qué.
 {{< /warning >}}
 
+## Traducir también el slug
+
+El emparejamiento por ruta necesita que la ruta traducida sea la original más
+un segmento de idioma. Sirve para un árbol traducido carpeta por carpeta, que
+es como se empareja casi todo este sitio. No puede emparejar
+`/es/ejemplos/arbol-de-rutas` con `/examples/route-tree`, porque al quitar
+`es` queda otra ruta.
+
+Una página con el slug traducido nombra su original:
+
+```md title="content/es/examples-route-tree.md"
+---
+locale: es
+translation_of: /examples/route-tree
+---
+```
+
+Un grupo hace lo mismo en Go con `TranslationOf: "/examples"`. La página entra
+en la familia del original, así que la sigue todo lo que lee familias: el
+selector de idioma, la pestaña de la cabecera, la sección de la barra lateral,
+el paginador, los resultados de búsqueda y el informe de cobertura. Las dos
+páginas reciben enlaces `hreflang` la una a la otra sin escribir `alternates:`.
+
+`fastr-docs check` falla si `translation_of` apunta a una ruta que nadie
+sirve, a la propia página o a una página del mismo idioma.
+
+Pruébalo: el [ejemplo de árbol de rutas](/es/ejemplos/arbol-de-rutas) está
+emparejado así, y su selector lleva a `/examples/route-tree`.
+
 Pruébalo con el selector de arriba. En una página sin traducción, como
 [Math](/docs/build/math), el selector no aparece: no hay nada a lo que cambiar.
 

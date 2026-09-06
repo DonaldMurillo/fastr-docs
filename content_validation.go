@@ -5,6 +5,7 @@ import (
 	"net/url"
 	pathpkg "path"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -46,6 +47,7 @@ func (r *Router) ContentIssues() []ContentIssue {
 		return nil
 	}
 	var issues []ContentIssue
+	issues = append(issues, r.translationIssues()...)
 	for _, route := range r.Routes() {
 		if route == nil || route.page == nil || route.page.Body != nil {
 			continue
@@ -79,6 +81,43 @@ func (r *Router) ContentIssues() []ContentIssue {
 				issues = append(issues, base)
 			}
 		}
+	}
+	return issues
+}
+
+// translationIssues reports every TranslationOf that cannot pair: a path
+// nothing serves, the page itself, or a page in the same language, which is a
+// duplicate rather than a translation. Each is written by hand and fails
+// silently otherwise, with the page simply missing from the selector.
+func (r *Router) translationIssues() []ContentIssue {
+	var issues []ContentIssue
+	paths := make([]string, 0, len(r.routes))
+	for path := range r.routes {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		route := r.routes[path]
+		ref := strings.TrimSpace(route.Metadata.TranslationOf)
+		if ref == "" {
+			continue
+		}
+		issue := ContentIssue{RoutePath: route.Path, Link: ref}
+		if route.page != nil {
+			issue.SourcePath = route.page.SourcePath
+		}
+		target := r.routes[normalizePath(ref)]
+		switch {
+		case target == nil:
+			issue.Message = fmt.Sprintf("translation_of points at %q, which no route serves", ref)
+		case target == route:
+			issue.Message = "translation_of points at the page itself"
+		case r.effectiveLocale(target) == r.effectiveLocale(route):
+			issue.Message = fmt.Sprintf("translation_of points at %q, which is in the same language (%q); a translation needs its own locale", ref, r.effectiveLocale(route))
+		default:
+			continue
+		}
+		issues = append(issues, issue)
 	}
 	return issues
 }

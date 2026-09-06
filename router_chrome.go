@@ -105,13 +105,13 @@ func (r *Router) headerVariantActiveScript() render.HTML {
 		if target == nil || (target.Metadata.Locale == "" && target.Metadata.Version == "") {
 			continue
 		}
-		family := variantFamily(target)
+		family := r.familyOf(target)
 		if family == "" {
 			continue
 		}
 		cfg.Links[target.Path] = family
 		for _, candidate := range r.Routes() {
-			if r.variantPublished(candidate) && variantFamily(candidate) == family {
+			if r.variantPublished(candidate) && r.familyOf(candidate) == family {
 				cfg.Routes[candidate.Path] = family
 			}
 		}
@@ -178,13 +178,13 @@ func (r *Router) headerVariantActiveConfig() render.HTML {
 		if target == nil || (target.Metadata.Locale == "" && target.Metadata.Version == "") {
 			continue
 		}
-		family := variantFamily(target)
+		family := r.familyOf(target)
 		if family == "" {
 			continue
 		}
 		links[target.Path] = family
 		for _, candidate := range r.Routes() {
-			if r.variantPublished(candidate) && variantFamily(candidate) == family {
+			if r.variantPublished(candidate) && r.familyOf(candidate) == family {
 				routes[candidate.Path] = family
 			}
 		}
@@ -259,7 +259,7 @@ func (r *Router) variantSelect(label, dimension string, options []docsVariantOpt
 func (r *Router) variantOptions(current *Route, dimension string) []docsVariantOption {
 	values := make(map[string]bool)
 	for _, route := range r.Routes() {
-		if !r.variantPublished(route) || variantFamily(route) != variantFamily(current) {
+		if !r.variantPublished(route) || r.familyOf(route) != r.familyOf(current) {
 			continue
 		}
 		value := r.effectiveLocale(route)
@@ -295,7 +295,7 @@ func (r *Router) variantTarget(current *Route, dimension, value string) *Route {
 	bestScore := -1
 	var best *Route
 	for _, candidate := range r.Routes() {
-		if !r.variantPublished(candidate) || variantFamily(candidate) != variantFamily(current) {
+		if !r.variantPublished(candidate) || r.familyOf(candidate) != r.familyOf(current) {
 			continue
 		}
 		candidateValue := r.effectiveLocale(candidate)
@@ -339,6 +339,9 @@ func (r *Router) variantPublished(route *Route) bool {
 	return route != nil && route.Kind != KindGroup && !route.Hidden && (!route.Metadata.Draft || r.includeDrafts || route.includeDrafts)
 }
 
+// variantFamily is the path-shaped family: the route's path with its locale
+// and version segments removed. Callers want familyOf, which also honours
+// TranslationOf; this is the fallback it uses.
 func variantFamily(route *Route) string {
 	if route == nil {
 		return ""
@@ -401,7 +404,7 @@ func (r *Router) headerItems(currentPath string) []ui.SiteHeaderLink {
 		if !r.routeVisible(route) {
 			continue
 		}
-		family := variantFamily(route)
+		family := r.familyOf(route)
 		// The home route is not a tab, but its family still has to be claimed
 		// here, or a translated home lands in the nav as one.
 		if route.Path == "/" {
@@ -434,7 +437,7 @@ func (r *Router) headerVariant(route *Route, locale string) *Route {
 	if locale == "" || r.effectiveLocale(route) == locale {
 		return route
 	}
-	family := variantFamily(route)
+	family := r.familyOf(route)
 	// The whole tree, not Routes(): that returns pages only, and a translated
 	// section is usually a group. /es/examples is a group, so a Routes() search
 	// found nothing and the tab stayed in the source language.
@@ -449,7 +452,7 @@ func (r *Router) findVariant(routes []*Route, exclude *Route, family, locale str
 		if candidate == exclude || !r.routeVisible(candidate) {
 			continue
 		}
-		if variantFamily(candidate) == family && r.effectiveLocale(candidate) == locale {
+		if r.familyOf(candidate) == family && r.effectiveLocale(candidate) == locale {
 			return candidate
 		}
 		if match := r.findVariant(candidate.Children, exclude, family, locale); match != nil {
@@ -607,7 +610,7 @@ func (r *Router) sidebarRoots(currentPath string) []*Route {
 	// extra level that the default locale does not have, so the reader gets
 	// "Espanol > Documentacion > ..." where an English reader gets
 	// "Documentation > ...". Descend past it to the section actually being read.
-	if active.Path != "/" && variantFamily(active) == "" {
+	if active.Path != "/" && r.familyOf(active) == "" {
 		if section := r.sectionForPath(active.Children, currentPath); section != nil {
 			active = section
 		} else {
@@ -670,9 +673,9 @@ func (r *Router) localeHome(currentPath string) *Route {
 // Explicit Order decides the rest, but a translated home cannot compete on it:
 // /es sits among the site's top-level sections and would sort wherever its
 // number falls, landing "Inicio" under the section it introduces.
-func homeFirst(routes []*Route) []*Route {
+func (r *Router) homeFirst(routes []*Route) []*Route {
 	for i, route := range routes {
-		if variantFamily(route) != "" {
+		if r.familyOf(route) != "" {
 			continue
 		}
 		if i == 0 {
@@ -702,13 +705,13 @@ func (r *Router) rootForPath(currentPath string) *Route {
 
 func (r *Router) sidebarItems(routes []*Route, currentPath string) []ui.SidebarItem {
 	items := make([]ui.SidebarItem, 0, len(routes))
-	for _, route := range homeFirst(r.sorted(routes)) {
+	for _, route := range r.homeFirst(r.sorted(routes)) {
 		if !r.routeVisible(route) {
 			continue
 		}
 		children := r.sidebarItems(route.Children, currentPath)
 		label := route.Title
-		if variantFamily(route) == "" {
+		if r.familyOf(route) == "" {
 			// Another language's home is not a section of this one. Left in, it
 			// appears as a second "Home" leading out of the site, dragging that
 			// language's whole tree behind it; the language selector is the

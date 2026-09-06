@@ -17,20 +17,27 @@ import (
 // typed screens, search, SEO, drafts, versions, and localized content.
 // Markdown pages can provide the same fields in a YAML front matter block.
 type ContentMetadata struct {
-	Title         string            `json:"title,omitempty" yaml:"title,omitempty"`
-	Slug          string            `json:"slug,omitempty" yaml:"slug,omitempty"`
-	Description   string            `json:"description,omitempty" yaml:"description,omitempty"`
-	Excerpt       string            `json:"excerpt,omitempty" yaml:"excerpt,omitempty"`
-	Draft         bool              `json:"draft,omitempty" yaml:"draft,omitempty"`
-	NoIndex       bool              `json:"noIndex,omitempty" yaml:"noindex,omitempty"`
-	EditURL       string            `json:"editUrl,omitempty" yaml:"edit_url,omitempty"`
-	CanonicalURL  string            `json:"canonicalUrl,omitempty" yaml:"canonical,omitempty"`
-	Image         string            `json:"image,omitempty" yaml:"image,omitempty"`
-	Authors       []string          `json:"authors,omitempty" yaml:"authors,omitempty"`
-	DatePublished string            `json:"datePublished,omitempty" yaml:"date,omitempty"`
-	DateModified  string            `json:"dateModified,omitempty" yaml:"last_updated,omitempty"`
-	Locale        string            `json:"locale,omitempty" yaml:"locale,omitempty"`
-	Version       string            `json:"version,omitempty" yaml:"version,omitempty"`
+	Title         string   `json:"title,omitempty" yaml:"title,omitempty"`
+	Slug          string   `json:"slug,omitempty" yaml:"slug,omitempty"`
+	Description   string   `json:"description,omitempty" yaml:"description,omitempty"`
+	Excerpt       string   `json:"excerpt,omitempty" yaml:"excerpt,omitempty"`
+	Draft         bool     `json:"draft,omitempty" yaml:"draft,omitempty"`
+	NoIndex       bool     `json:"noIndex,omitempty" yaml:"noindex,omitempty"`
+	EditURL       string   `json:"editUrl,omitempty" yaml:"edit_url,omitempty"`
+	CanonicalURL  string   `json:"canonicalUrl,omitempty" yaml:"canonical,omitempty"`
+	Image         string   `json:"image,omitempty" yaml:"image,omitempty"`
+	Authors       []string `json:"authors,omitempty" yaml:"authors,omitempty"`
+	DatePublished string   `json:"datePublished,omitempty" yaml:"date,omitempty"`
+	DateModified  string   `json:"dateModified,omitempty" yaml:"last_updated,omitempty"`
+	Locale        string   `json:"locale,omitempty" yaml:"locale,omitempty"`
+	Version       string   `json:"version,omitempty" yaml:"version,omitempty"`
+	// TranslationOf names the route this page translates, so the two pair as
+	// variants of one family whatever their paths are. Without it a
+	// translation pairs by path shape alone: /es/docs/guide is the Spanish
+	// /docs/guide because stripping the locale segment leaves the same path.
+	// A translated slug such as /es/docs/guia breaks that, and this is how it
+	// says which page it is.
+	TranslationOf string            `json:"translationOf,omitempty" yaml:"translation_of,omitempty"`
 	Alternates    map[string]string `json:"alternates,omitempty" yaml:"alternates,omitempty"`
 	Tags          []string          `json:"tags,omitempty" yaml:"tags,omitempty"`
 	Redirects     []string          `json:"redirects,omitempty" yaml:"redirects,omitempty"`
@@ -436,6 +443,7 @@ type frontMatter struct {
 	DateModified  string            `yaml:"last_updated"`
 	Locale        string            `yaml:"locale"`
 	Version       string            `yaml:"version"`
+	TranslationOf string            `yaml:"translation_of"`
 	Alternates    map[string]string `yaml:"alternates"`
 	Tags          stringList        `yaml:"tags"`
 	Redirects     stringList        `yaml:"redirects"`
@@ -478,7 +486,8 @@ func (f frontMatter) metadata() ContentMetadata {
 		NoIndex: f.NoIndex || f.NoIndexSnake, EditURL: f.EditURL,
 		CanonicalURL: canonical, Image: f.Image, Authors: append([]string(nil), f.Authors...),
 		DatePublished: f.DatePublished, DateModified: f.DateModified,
-		Locale: f.Locale, Version: f.Version, Alternates: cloneStringMap(f.Alternates), Tags: append([]string(nil), f.Tags...),
+		Locale: f.Locale, Version: f.Version, TranslationOf: f.TranslationOf,
+		Alternates: cloneStringMap(f.Alternates), Tags: append([]string(nil), f.Tags...),
 		Redirects: append([]string(nil), f.Redirects...), Order: f.Order,
 		PageTemplate: strings.ToLower(strings.TrimSpace(f.Template)), Hero: f.Hero.metadata(),
 	}
@@ -542,6 +551,9 @@ func mergeContentMetadata(base, override ContentMetadata) ContentMetadata {
 	}
 	if override.Version != "" {
 		merged.Version = override.Version
+	}
+	if override.TranslationOf != "" {
+		merged.TranslationOf = override.TranslationOf
 	}
 	if len(override.Alternates) > 0 {
 		merged.Alternates = cloneStringMap(override.Alternates)

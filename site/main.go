@@ -274,6 +274,7 @@ func rewriteRuntimeURLs(dir, base string) error {
 			return err
 		}
 		updated := strings.ReplaceAll(string(body), `"/__fastr-docs/`, `"`+base+`/__fastr-docs/`)
+		updated = strings.ReplaceAll(updated, `data-fastr-docs-base=""`, `data-fastr-docs-base="`+base+`"`)
 		updated = strings.ReplaceAll(updated, `data-fastr-docs-pagefind-path="/pagefind/"`, `data-fastr-docs-pagefind-path="`+base+`/pagefind/"`)
 		if updated == string(body) {
 			return nil

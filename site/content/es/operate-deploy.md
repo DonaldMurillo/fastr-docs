@@ -38,8 +38,21 @@ fastr-docs export . --out dist --base /docs
 ```
 
 La exportación reescribe las URLs del runtime, de la búsqueda y de OpenAPI para
-la base elegida. Sirve el resultado como sitio estático o ponlo detrás del host
-de GoFastr.
+la base elegida, y graba la base en cada página para que el selector de idioma,
+los resultados de búsqueda y el estado activo de la barra lateral funcionen
+también debajo de ella. Sirve el resultado como sitio estático o ponlo detrás
+del host de GoFastr.
+
+## GitHub Pages
+
+Un repositorio llamado `<usuario>.github.io` se sirve en la raíz de ese
+dominio. Cualquier otro es una página de proyecto bajo
+`https://<usuario>.github.io/<repo>/`, que es el caso de la subruta de arriba.
+El flujo de `.github/workflows/pages.yml` cubre los dos: deduce la base del
+nombre del repositorio, exporta, pasa Pagefind sobre el resultado y publica con
+`actions/deploy-pages`. Activa Pages en el repositorio con GitHub Actions como
+origen y haz push. Un dominio propio deja la base vacía otra vez; no cambia
+nada más.
 
 {{< tip title="El idioma no cambia el despliegue" >}}
 Un sitio traducido se exporta igual que uno monolingüe: las páginas en español

@@ -583,6 +583,12 @@ func (r *Router) searchTrigger(currentPath string) render.HTML {
 		"data-fastr-docs-backend":       string(r.SearchBackend()),
 		"data-fastr-docs-pagefind-path": r.PagefindPath(),
 		"data-fastr-docs-index-path":    r.SearchIndexPath(),
+		// The path prefix the site is served under, empty on the live host.
+		// A static export below a prefix stamps it in (RewriteStaticBase),
+		// and the runtime strips it when matching a route and adds it when
+		// navigating to one: route paths in the page are root-relative,
+		// location.pathname is not.
+		"data-fastr-docs-base": "",
 		// The runtime filters results to this locale. The trigger carries it
 		// so the palette does not depend on what the document declares.
 		"data-fastr-docs-locale": r.searchLocale(currentPath),

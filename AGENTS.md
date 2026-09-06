@@ -334,6 +334,25 @@ One trap when adding `data-fastr-docs-search-*` attributes:
 component with `strings.Contains(header, "fastr-docs-search")`, which the new
 placeholder attribute tripped. It matches a class token now.
 
+## Serving below a path prefix
+
+Route paths inside a page are root-relative (`/es/docs/guide`), and the
+export rewrites the URL attributes GoFastr knows about. Everything the runtime
+does with a path is not an attribute: the language selector navigates to an
+`<option value>`, the drawer trigger and sidebar compare `data-fastr-docs-*`
+route paths against `location.pathname`, JSON search results are built from
+`entry.path`, and Pagefind's result URLs are relative to the folder it
+indexed. On a GitHub project page every one of those was off by the
+repository name.
+
+The base is stamped into `data-fastr-docs-base` on the search trigger by the
+export's `rewriteRuntimeURLs` (site and starter), and the runtime has three
+helpers around it: `docsBase()`, `withBase(path)` for navigation, and
+`normalizeDocsPath(path)`, which strips it so a path from the location and a
+path from the page compare equal. Pagefind gets `options({baseUrl})` before
+the first search. The e2e harness exports the site below `/prefix` and serves
+it from a folder of that name, so the static tests exercise the real shape.
+
 ## Runtime assets
 
 `runtime_assets.go` collects `docs.js`, the search index, the export manifest,

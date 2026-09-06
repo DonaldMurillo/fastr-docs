@@ -53,9 +53,31 @@ const docsRuntimeJS = `(function(){
       window.__fastrDocsTocCleanup = null;
     };
   }
+  // docsBase is the path prefix the site is served under: empty on the live
+  // host, "/repo" for a GitHub project page or any export below a prefix.
+  // Route paths in the page are root-relative; location.pathname is not.
+  function docsBase(){
+    var carrier = document.querySelector('[data-fastr-docs-base]');
+    var base = (carrier && carrier.getAttribute('data-fastr-docs-base')) || '';
+    base = base.replace(/\/+$/, '');
+    return base && base.charAt(0) === '/' ? base : '';
+  }
+  // withBase turns a route path into the URL to navigate to.
+  function withBase(path){
+    var base = docsBase();
+    if (!base || !path || path.charAt(0) !== '/') return path;
+    if (path === base || path.indexOf(base + '/') === 0) return path;
+    return base + path;
+  }
+  // normalizeDocsPath turns a URL path into the route path it serves, with
+  // the base and any trailing slash removed, so a path from location and a
+  // path from the page compare equal.
   function normalizeDocsPath(value){
     var path = String(value || '/').split(/[?#]/, 1)[0] || '/';
-    return path.length > 1 ? path.replace(/\/+$/, '') : path;
+    path = path.length > 1 ? path.replace(/\/+$/, '') : path;
+    var base = docsBase();
+    if (base && (path === base || path.indexOf(base + '/') === 0)) path = path.slice(base.length) || '/';
+    return path;
   }
   function syncDocsDrawerTrigger(){
     var currentPath = normalizeDocsPath(location.pathname);
@@ -89,6 +111,12 @@ const docsRuntimeJS = `(function(){
       var linkPath = '';
       try { linkPath = normalizeDocsPath(new URL(href || '', document.baseURI).pathname); } catch (_) {}
       var active = !!linkPath && linkPath === currentPath;
+      // This runtime owns the sidebar's active state, and compares route
+      // paths with the base and any trailing slash removed. GoFastr's
+      // active-link module compares raw hrefs, so on a static host, where
+      // the URL ends in a slash and the link does not, it would clear what
+      // was just set; the skip attribute is its hands-off marker.
+      link.setAttribute('data-fui-activelink-skip', '');
       if (active) activeLink = link;
       if (active) {
         link.setAttribute('aria-current', 'page');
@@ -199,7 +227,14 @@ const docsRuntimeJS = `(function(){
     var base = trigger.getAttribute('data-fastr-docs-pagefind-path') || '/pagefind/';
     var href = new URL(base.replace(/\/$/, '') + '/pagefind.js', document.baseURI).href;
     window.fastrDocsPagefind = import(href).then(function(module){
-      return module.default || module;
+      var pagefind = module.default || module;
+      // Pagefind's result URLs are relative to the folder it indexed, which
+      // is the site root, so an export served below a prefix tells it.
+      var base = docsBase();
+      if (base && typeof pagefind.options === 'function') {
+        return Promise.resolve(pagefind.options({ baseUrl: base + '/' })).then(function(){ return pagefind; });
+      }
+      return pagefind;
     });
     return window.fastrDocsPagefind;
   }
@@ -298,7 +333,7 @@ const docsRuntimeJS = `(function(){
     }
     list.innerHTML = ranked.map(function(result, index){
       var entry = result.entry || {};
-      var url = String(entry.path || '#');
+      var url = withBase(String(entry.path || '#'));
       return '<li role="option" id="fastr-docs-command-palette-list-opt-json-' + index + '" data-value="' + escapeHTML(result.title) + '" data-fui-push-state="' + escapeHTML(url) + '">' +
         '<span class="combobox__opt-label">' + escapeHTML(result.title) + '</span>' +
         '<span class="combobox__opt-meta">' + escapeHTML(jsonSearchExcerpt(entry) || url) + '</span></li>';
@@ -515,9 +550,9 @@ const docsRuntimeJS = `(function(){
     document.querySelectorAll('[data-docs-variant-select]').forEach(function(select){
       if (select.dataset.docsVariantReady === 'true') return;
       select.dataset.docsVariantReady = 'true';
-      var currentPath = select.getAttribute('data-docs-current-path') || location.pathname;
+      var currentPath = normalizeDocsPath(select.getAttribute('data-docs-current-path') || location.pathname);
       Array.prototype.forEach.call(select.options, function(option){
-        if (option.value === currentPath || option.value.replace(/\/$/, '') === location.pathname.replace(/\/$/, '')) {
+        if (normalizeDocsPath(option.value) === currentPath || normalizeDocsPath(option.value) === normalizeDocsPath(location.pathname)) {
           select.value = option.value;
         }
       });
@@ -526,8 +561,9 @@ const docsRuntimeJS = `(function(){
         if (!destination) return;
         // Variant changes can alter the mounted content slice and the
         // document language, so rebuild the shell from the destination URL
-        // instead of keeping a stale selector inside an SPA layout.
-        location.href = destination;
+        // instead of keeping a stale selector inside an SPA layout. The
+        // option holds a route path; the base is added here.
+        location.href = withBase(destination);
       });
     });
   }
@@ -540,10 +576,7 @@ const docsRuntimeJS = `(function(){
 
     var state = window.fastrDocsVariantActive = window.fastrDocsVariantActive || {};
     state.config = config;
-    state.normalize = function(value){
-      var path = String(value || '/').split(/[?#]/, 1)[0] || '/';
-      return path.length > 1 ? path.replace(/\/+$/, '') : path;
-    };
+    state.normalize = normalizeDocsPath;
     state.update = function(path){
       var family = config.routes[state.normalize(path)] || '';
       document.querySelectorAll('header nav a').forEach(function(link){

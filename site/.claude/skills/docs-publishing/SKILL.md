@@ -57,7 +57,10 @@ Do not trust an exit code alone. Inspect `dist` for `sitemap.xml`,
 nested route. Confirm the search index and any Pagefind bundle are present.
 
 If the export is served under a path prefix, pass `--base` and check that the
-emitted asset URLs carry it.
+emitted asset URLs carry it and that every page has `data-fastr-docs-base` set
+to it; the runtime reads that to navigate and match routes below the prefix.
+A GitHub project page is this case, and `.github/workflows/pages.yml` derives
+the base from the repository name.
 
 ## Content security policy
 

@@ -26,6 +26,7 @@ export default async function globalTeardown() {
   stop(runtime.manualPid);
   stop(runtime.manualStaticPid);
   stop(runtime.selfPid);
+  stop(runtime.selfPrefixPid);
   await fs.rm(runtime.target, { recursive: true, force: true });
   await fs.rm(runtimePath, { force: true });
 }

@@ -15,6 +15,7 @@ const manualPort = 4178;
 const manualStaticPort = 4179;
 const selfSitePort = 4180;
 const devPort = 4181;
+const selfPrefixPort = 4182;
 const docsLocale = 'pt-BR';
 let goCommand = 'go';
 
@@ -98,6 +99,7 @@ export default async function globalSetup() {
   let manual;
   let manualStatic;
   let selfSite;
+  let selfPrefixStatic;
   let dev;
   try {
     run(goCommand, ['run', './cmd/fastr-docs', 'init', target, '--name', 'E2E Docs', '--module', 'example.com/e2e-docs'], repoRoot);
@@ -165,6 +167,26 @@ export default async function globalSetup() {
     });
     await waitFor(`http://127.0.0.1:${selfSitePort}/`);
 
+    // The same site exported below a prefix, the shape of a GitHub project
+    // page, served from a folder whose name is the prefix so the URLs carry
+    // it. Pagefind indexes the prefixed folder, so its result URLs are
+    // root-relative and the runtime has to add the base itself.
+    const selfPrefix = '/prefix';
+    const selfPrefixRoot = path.join(target, 'self-prefix');
+    const selfPrefixDist = path.join(selfPrefixRoot, 'prefix');
+    run(selfBinary, ['--export', selfPrefixDist, '--export-base', selfPrefix], selfRoot, {
+      API_SERVER_URL: `http://127.0.0.1:${apiPort}/v1`,
+      PUBLIC_SITE_URL: `http://127.0.0.1:${selfPrefixPort}${selfPrefix}`,
+      DOCS_SEARCH_BACKEND: 'pagefind',
+    });
+    if (process.platform === 'win32') {
+      run(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `npx --no-install pagefind --site "${selfPrefixDist}"`], e2eRoot);
+    } else {
+      run(pagefindBin, ['--site', selfPrefixDist], e2eRoot);
+    }
+    selfPrefixStatic = start(process.execPath, [path.join(here, 'static-server.mjs'), selfPrefixRoot], e2eRoot, { PORT: String(selfPrefixPort) });
+    await waitFor(`http://127.0.0.1:${selfPrefixPort}${selfPrefix}/`);
+
     await fs.writeFile(runtimePath, JSON.stringify({
       target,
       dist,
@@ -179,6 +201,9 @@ export default async function globalSetup() {
       manualURL: `http://127.0.0.1:${manualPort}`,
       manualStaticURL: `http://127.0.0.1:${manualStaticPort}`,
       selfURL: `http://127.0.0.1:${selfSitePort}`,
+      selfPrefixURL: `http://127.0.0.1:${selfPrefixPort}`,
+      selfPrefix,
+      selfPrefixPid: selfPrefixStatic.pid,
       manualPid: manual.pid,
       manualStaticPid: manualStatic.pid,
       selfPid: selfSite.pid,
@@ -191,6 +216,7 @@ export default async function globalSetup() {
     stop(manual);
     stop(manualStatic);
     stop(selfSite);
+    stop(selfPrefixStatic);
     await fs.rm(target, { recursive: true, force: true });
     throw error;
   }

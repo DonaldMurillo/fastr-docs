@@ -79,6 +79,8 @@ func (s NotFoundScreen) localeFor(path string) *LocaleNotFound {
 	return best
 }
 
+// Render draws the 404 without a request path; the host uses it when no
+// path-specific variant is available.
 func (s NotFoundScreen) Render() render.HTML {
 	return s.render("")
 }

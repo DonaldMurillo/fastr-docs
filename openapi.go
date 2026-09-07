@@ -22,6 +22,7 @@ type OpenAPIPlugin struct {
 	Order       int
 }
 
+// Name identifies the plugin in diagnostics.
 func (p OpenAPIPlugin) Name() string { return "openapi" }
 
 // Apply validates the OpenAPI document, creates a generated reference page,

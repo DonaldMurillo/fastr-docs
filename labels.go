@@ -14,24 +14,49 @@ import (
 // Fields holding a %s or %d are format strings. Translations may reorder the
 // surrounding words but must keep the same verbs.
 type UIStrings struct {
+	// Contents titles the sidebar rail above the route tree. One word;
+	// the English default is "Contents".
 	Contents string
-	Home     string
+	// Home labels the sidebar link to the site root, rendered in the
+	// language of the page being read. One word.
+	Home string
 	// Sections labels the section select at the top of the mobile drawer,
 	// where the whole site's navigation lives because the header tabs are
 	// hidden below md.
-	Sections          string
-	OnThisPage        string
-	Search            string
+	Sections string
+	// OnThisPage heads the in-page heading rail on wide viewports and the
+	// section select that replaces it below md.
+	OnThisPage string
+	// Search is the visible label of the header search trigger. One word.
+	Search string
+	// SearchPlaceholder is the command palette input placeholder. An
+	// ellipsis is conventional; keep it if your language does.
 	SearchPlaceholder string
-	OpenSearch        string
-	CloseSearch       string
-	OpenNavigation    string
-	EditPage          string
-	LastUpdated       string
-	Published         string
-	By                string
-	Language          string
-	Version           string
+	// OpenSearch is the aria-label of the search trigger. Imperative, not
+	// rendered visually.
+	OpenSearch string
+	// CloseSearch is the aria-label of the palette close button.
+	// Imperative, not rendered visually.
+	CloseSearch string
+	// OpenNavigation is the aria-label of the mobile navigation trigger,
+	// the hamburger in the phone header. Imperative, not rendered visually.
+	OpenNavigation string
+	// EditPage is the text of the edit link under a document. Imperative;
+	EditPage string
+	// LastUpdated prefixes the modified date under a document. One word
+	// or short phrase, capitalized as your language prefixes metadata.
+	LastUpdated string
+	// Published prefixes the date on a blog post. One word.
+	Published string
+	// By joins a post and its authors in the byline. Lowercase in English
+	// ("By ..."); follow your language byline convention.
+	By string
+	// Language is the aria-label of the language selector. Not rendered
+	// visually.
+	Language string
+	// Version is the aria-label of the version selector. Not rendered
+	// visually.
+	Version string
 	// Previous and Next label the pager under a document. They carry their own
 	// arrows because a translation may want them on the other side of the word.
 	Previous string
@@ -52,71 +77,157 @@ type UIStrings struct {
 	// version name.
 	VersionDescription string
 
-	Blog     BlogStrings
+	// Blog nests the publication labels, resolved per collection through the
+	// collection's own locale.
+	Blog BlogStrings
+	// NotFound nests the branded 404 labels.
 	NotFound NotFoundStrings
 }
 
 // BlogStrings are the labels for the publication surface: route titles for the
 // generated views, and the chrome around posts.
 type BlogStrings struct {
-	Title                  string
-	Navigation             string
-	Breadcrumb             string
-	AllPosts               string
-	LatestPosts            string
-	RecentPosts            string
-	KeepReading            string
-	NoPostsYet             string
-	NothingClassified      string
-	CollectionDescription  string
-	Search                 string
-	SearchDescription      string
-	SearchPosts            string
-	SearchThePublication   string
-	ResultsFor             string
-	NoPostsMatched         string
-	MatchesSummary         string
-	Archive                string
-	ArchiveDescription     string
-	ArchiveYear            string
+	// Title names the collection in its sidebar rail. One word; the English
+	// default is "Blog".
+	Title string
+	// Navigation is the aria-label of the collection sidebar. Not rendered
+	// visually.
+	Navigation string
+	// Breadcrumb is the root crumb of the collection trail. One word.
+	Breadcrumb string
+	// AllPosts labels the link to the collection root.
+	AllPosts string
+	// LatestPosts heads the collection root when it lists the newest posts.
+	LatestPosts string
+	// RecentPosts titles the sidebar group of recent posts.
+	RecentPosts string
+	// KeepReading is the continue-reading link after a truncated post.
+	// Imperative.
+	KeepReading string
+	// NoPostsYet is the line an empty collection renders. Full sentence.
+	NoPostsYet string
+	// NothingClassified is the line a tag or author page renders when it
+	// has no posts. Full sentence.
+	NothingClassified string
+	// CollectionDescription is the meta description of generated views.
+	// Format string taking the collection title as %s.
+	CollectionDescription string
+	// Search titles the collection search view. One word.
+	Search string
+	// SearchDescription is the meta description of the search view.
+	// Format string taking the collection title as %s.
+	SearchDescription string
+	// SearchPosts is the visible heading over search results.
+	SearchPosts string
+	// SearchThePublication is the search input placeholder. Ellipsis is
+	// conventional.
+	SearchThePublication string
+	// ResultsFor heads results with the query. Format string taking the query
+	// as %s.
+	ResultsFor string
+	// NoPostsMatched is the empty-results line. Full sentence; the English
+	// default names no query.
+	NoPostsMatched string
+	// MatchesSummary counts results for screen readers and the live filter.
+	// Format string taking the count as %d; it also rides a data attribute
+	// the client-side filter re-renders, so the %d must survive.
+	MatchesSummary string
+	// Archive titles the archive view. One word.
+	Archive string
+	// ArchiveDescription is the meta description of the archive view.
+	// Format string taking the collection title as %s.
+	ArchiveDescription string
+	// ArchiveYear heads one year in the archive. Format string taking the
+	// year as %s.
+	ArchiveYear string
+	// ArchiveYearDescription is the meta description of one year. Format
+	// string taking the year as %d.
 	ArchiveYearDescription string
-	Tag                    string
-	Tags                   string
-	TagsDescription        string
-	ExploreTerms           string
-	PostCount              string
-	Publication            string
-	ReadingTime            string
-	Featured               string
-	Latest                 string
-	Feed                   string
-	TopicsPrefix           string
-	Lede                   string
-	TagDescription         string
-	Authors                string
-	AuthorsDescription     string
-	Author                 string
-	AuthorDescription      string
-	Page                   string
-	PagedTitle             string
-	PageDescription        string
-	OlderPosts             string
-	NewerPosts             string
-	Pagination             string
-	PostActions            string
-	Share                  string
-	ShareThisPost          string
-	CopyLink               string
-	LinkCopied             string
+	// Tag heads one tag page. One word.
+	Tag string
+	// Tags titles the tag index. One word.
+	Tags string
+	// TagsDescription is the meta description of the tag index. Format
+	// string taking the collection title as %s.
+	TagsDescription string
+	// ExploreTerms is the lede of the tag index. Format string taking a
+	// summary of the terms as %s.
+	ExploreTerms string
+	// PostCount counts a term's or author's posts. Format string taking the
+	// count as %d.
+	PostCount string
+	// Publication names the publication in generated copy where "blog"
+	// reads wrong for the project.
+	Publication string
+	// ReadingTime estimates a post's length. Format string taking the minute
+	// count as %s.
+	ReadingTime string
+	// Featured labels the featured posts group. One word.
+	Featured string
+	// Latest labels the newest-posts group. One word.
+	Latest string
+	// Feed labels the link to the collection's RSS feed. One word.
+	Feed string
+	// TopicsPrefix introduces a post's topics for screen readers. Not
+	// rendered visually; sentence fragment.
+	TopicsPrefix string
+	// Lede is the intro line of the collection's post list.
+	Lede string
+	// TagDescription is the meta description of one tag page. Format string
+	// taking the term as %s.
+	TagDescription string
+	// Authors titles the author index. One word.
+	Authors string
+	// AuthorsDescription is the meta description of the author index.
+	// Format string taking the collection title as %s.
+	AuthorsDescription string
+	// Author heads one author page. One word.
+	Author string
+	// AuthorDescription is the meta description of one author page. Format
+	// string taking the name as %s.
+	AuthorDescription string
+	// Page is the word "Page" in a numbered page title. One word.
+	Page string
+	// PagedTitle titles a numbered page of the collection. Format string
+	// taking the page number as %d.
+	PagedTitle string
+	// PageDescription is the meta description of a numbered page. Format
+	// string taking the collection title as %s.
+	PageDescription string
+	// OlderPosts labels the link to older pages of the feed. Comparative.
+	OlderPosts string
+	// NewerPosts labels the link to newer pages of the feed. Comparative.
+	NewerPosts string
+	// Pagination is the aria-label of the pager between pages. Not
+	// rendered visually.
+	Pagination string
+	// PostActions heads the share actions under a post.
+	PostActions string
+	// Share is the short share heading. One word.
+	Share string
+	// ShareThisPost is the full share heading. Imperative.
+	ShareThisPost string
+	// CopyLink is the copy-link button. Imperative.
+	CopyLink string
+	// LinkCopied is the transient confirmation after copying; announced to
+	// screen readers. Past participle.
+	LinkCopied string
 }
 
 // NotFoundStrings are the labels on the branded 404 page.
 type NotFoundStrings struct {
-	Heading       string
-	Message       string
+	// Heading is the 404 page title. Short and capitalized.
+	Heading string
+	// Message is the static body line of the 404. Full sentence.
+	Message string
+	// MessageForURL is the body line naming the missed address. Format
+	// string taking the requested path as %s.
 	MessageForURL string
-	BackTo        string
-	SiteFallback  string
+	// BackTo labels the way back into the site. Format string taking the
+	// site name as %s.
+	BackTo string
+	// SiteFallback is the link text of the fallback to the site root.
+	SiteFallback string
 }
 
 var defaultUIStrings = UIStrings{

@@ -17,35 +17,66 @@ import (
 // typed screens, search, SEO, drafts, versions, and localized content.
 // Markdown pages can provide the same fields in a YAML front matter block.
 type ContentMetadata struct {
-	Title         string   `json:"title,omitempty" yaml:"title,omitempty"`
-	Slug          string   `json:"slug,omitempty" yaml:"slug,omitempty"`
-	Description   string   `json:"description,omitempty" yaml:"description,omitempty"`
-	Excerpt       string   `json:"excerpt,omitempty" yaml:"excerpt,omitempty"`
-	Draft         bool     `json:"draft,omitempty" yaml:"draft,omitempty"`
-	NoIndex       bool     `json:"noIndex,omitempty" yaml:"noindex,omitempty"`
-	EditURL       string   `json:"editUrl,omitempty" yaml:"edit_url,omitempty"`
-	CanonicalURL  string   `json:"canonicalUrl,omitempty" yaml:"canonical,omitempty"`
-	Image         string   `json:"image,omitempty" yaml:"image,omitempty"`
-	Authors       []string `json:"authors,omitempty" yaml:"authors,omitempty"`
-	DatePublished string   `json:"datePublished,omitempty" yaml:"date,omitempty"`
-	DateModified  string   `json:"dateModified,omitempty" yaml:"last_updated,omitempty"`
-	Locale        string   `json:"locale,omitempty" yaml:"locale,omitempty"`
-	Version       string   `json:"version,omitempty" yaml:"version,omitempty"`
+	// Title overrides the page heading and nav label. Front matter wins
+	// over the file name, which is the fallback.
+	Title string `json:"title,omitempty" yaml:"title,omitempty"`
+	// Slug overrides the last segment of the route path. The page pairs
+	// with its original through TranslationOf, because the paths no longer
+	// mirror each other.
+	Slug string `json:"slug,omitempty" yaml:"slug,omitempty"`
+	// Description fills the meta description and the search entry.
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+	// Excerpt is the summary shown in cards and the blog feed.
+	Excerpt string `json:"excerpt,omitempty" yaml:"excerpt,omitempty"`
+	// Draft withholds the page from every build unless drafts are
+	// explicitly included.
+	Draft bool `json:"draft,omitempty" yaml:"draft,omitempty"`
+	// NoIndex asks search engines not to index the page.
+	NoIndex bool `json:"noIndex,omitempty" yaml:"noindex,omitempty"`
+	// EditURL is the "Edit this page" link target.
+	EditURL string `json:"editUrl,omitempty" yaml:"edit_url,omitempty"`
+	// CanonicalURL overrides the canonical link, for pages mirrored
+	// from another address.
+	CanonicalURL string `json:"canonicalUrl,omitempty" yaml:"canonical,omitempty"`
+	// Image is the social preview image.
+	Image string `json:"image,omitempty" yaml:"image,omitempty"`
+	// Authors names the byline of a post.
+	Authors []string `json:"authors,omitempty" yaml:"authors,omitempty"`
+	// DatePublished sets the publish date shown and fed to RSS.
+	DatePublished string `json:"datePublished,omitempty" yaml:"date,omitempty"`
+	// DateModified sets the "Updated" date.
+	DateModified string `json:"dateModified,omitempty" yaml:"last_updated,omitempty"`
+	// Locale declares the page language as a BCP 47 tag. It pairs the page
+	// with its translations, feeds the language selector, and decides which
+	// language search indexes it under; publication itself is governed by the
+	// build locale filter, and an unmarked page still serves in every build.
+	Locale string `json:"locale,omitempty" yaml:"locale,omitempty"`
+	// Version marks the page as one variant of a versioned family, so
+	// v1 and v2 of the same guide coexist and the version selector can
+	// aim at both.
+	Version string `json:"version,omitempty" yaml:"version,omitempty"`
 	// TranslationOf names the route this page translates, so the two pair as
 	// variants of one family whatever their paths are. Without it a
 	// translation pairs by path shape alone: /es/docs/guide is the Spanish
 	// /docs/guide because stripping the locale segment leaves the same path.
 	// A translated slug such as /es/docs/guia breaks that, and this is how it
 	// says which page it is.
-	TranslationOf string            `json:"translationOf,omitempty" yaml:"translation_of,omitempty"`
-	Alternates    map[string]string `json:"alternates,omitempty" yaml:"alternates,omitempty"`
-	Tags          []string          `json:"tags,omitempty" yaml:"tags,omitempty"`
-	Redirects     []string          `json:"redirects,omitempty" yaml:"redirects,omitempty"`
-	Order         int               `json:"order,omitempty" yaml:"order,omitempty"`
+	TranslationOf string `json:"translationOf,omitempty" yaml:"translation_of,omitempty"`
+	// Alternates names the canonical hreflang targets by hand, for a
+	// family whose pairing cannot be derived from paths. Keys are language
+	// tags, values are route paths.
+	Alternates map[string]string `json:"alternates,omitempty" yaml:"alternates,omitempty"`
+	// Tags are free-form labels used by blog tag views.
+	Tags []string `json:"tags,omitempty" yaml:"tags,omitempty"`
+	// Redirects lists old paths that should 301 to this page.
+	Redirects []string `json:"redirects,omitempty" yaml:"redirects,omitempty"`
+	// Order sorts the page among its siblings; lower comes first.
+	Order int `json:"order,omitempty" yaml:"order,omitempty"`
 	// PageTemplate selects the page shell. Empty is the standard
 	// documentation page; PageTemplateSplash is the landing-page shell.
-	PageTemplate string    `json:"template,omitempty" yaml:"template,omitempty"`
-	Hero         *PageHero `json:"hero,omitempty" yaml:"hero,omitempty"`
+	PageTemplate string `json:"template,omitempty" yaml:"template,omitempty"`
+	// Hero is the front-matter hero of a splash page.
+	Hero *PageHero `json:"hero,omitempty" yaml:"hero,omitempty"`
 }
 
 // PageTemplateSplash renders a landing page: a hero from front matter, no

@@ -21,6 +21,7 @@ type ContentIssue struct {
 	Message    string
 }
 
+// Error renders the issue with its location, for Validate's aggregated error.
 func (i ContentIssue) Error() string {
 	location := i.RoutePath
 	if i.SourcePath != "" {

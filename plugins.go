@@ -18,8 +18,11 @@ type MarkdownCollectionPlugin struct {
 	Config CollectionConfig
 }
 
+// Name identifies the plugin in diagnostics.
 func (p MarkdownCollectionPlugin) Name() string { return "markdown-collection" }
 
+// Apply mounts the collection's Markdown tree onto the Router, from disk
+// or from the embedded FS.
 func (p MarkdownCollectionPlugin) Apply(r *Router) error {
 	if r == nil {
 		return errors.New("router is nil")
@@ -46,8 +49,11 @@ type MarkdownComponentsPlugin struct {
 	Components map[string]MarkdownComponent
 }
 
+// Name identifies the plugin in diagnostics.
 func (p MarkdownComponentsPlugin) Name() string { return "markdown-components" }
 
+// Apply registers every shortcode component in the map under its own name,
+// retiring any earlier meaning the name had.
 func (p MarkdownComponentsPlugin) Apply(r *Router) error {
 	if r == nil {
 		return errors.New("router is nil")

@@ -24,6 +24,9 @@ type ExportManifest struct {
 	Redirects     []ManifestRedirect `json:"redirects,omitempty"`
 }
 
+// ManifestRoute is one published route in the export manifest, carrying the
+// fields a static host or AI consumer needs: where it is, what it is called,
+// which language and version it serves, and how it may be fetched.
 type ManifestRoute struct {
 	ID          string    `json:"id"`
 	Path        string    `json:"path"`
@@ -39,6 +42,7 @@ type ManifestRoute struct {
 	BlogIndex   bool      `json:"blogIndex,omitempty"`
 }
 
+// ManifestRedirect is one source-to-target pair of the export's redirects.
 type ManifestRedirect struct {
 	From string `json:"from"`
 	To   string `json:"to"`

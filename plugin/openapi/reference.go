@@ -152,6 +152,8 @@ type Reference struct {
 	Strings     Strings
 }
 
+// Render draws the whole reference surface: header and meta, the endpoint
+// filter, the operation index and cards, and the request console.
 func (r *Reference) Render() render.HTML {
 	attrs := map[string]string{
 		"class":                  "fastr-openapi-reference",

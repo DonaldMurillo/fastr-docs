@@ -62,6 +62,11 @@ type Plugin struct {
 
 func (Plugin) Name() string { return "openapi" }
 
+// Apply validates the OpenAPI document, registers the reference as a screen
+// with this mount's locale and surface labels, and allows the contract's
+// server origin for the browser request console. Spec wins over SpecPath,
+// and every unset field falls back to the document's own info, then to
+// framework defaults.
 func (p Plugin) Apply(r *docs.Router) error {
 	if r == nil {
 		return errors.New("router is nil")

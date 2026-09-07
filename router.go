@@ -78,27 +78,44 @@ func normalizeNavBadge(badge NavBadge) (NavBadge, error) {
 // Source is Markdown when Body is nil. Body is useful when a page needs a
 // custom GoFastr component-like render function but is still a docs page.
 type PageConfig struct {
-	Title       string
+	// Title is the page heading and nav label.
+	Title string
+	// Description is the page's meta description and search entry.
 	Description string
-	Source      string
-	SourcePath  string
-	Body        func() render.HTML
+	// Source is the Markdown body as a string, for pages authored in Go.
+	Source string
+	// SourcePath reads the Markdown body from a file; relative to the
+	// project, resolved by the caller.
+	SourcePath string
+	// Body supplies the rendered HTML directly, bypassing Markdown
+	// entirely.
+	Body func() render.HTML
 	// ContextBody is the request-aware form of Body. It is useful for
 	// server-rendered aggregate views such as a blog search page. During
 	// static export it receives a background context and should render the
 	// canonical, query-free view.
 	ContextBody func(context.Context) render.HTML
-	SearchText  string
+	// SearchText overrides the text fed to the search index; empty uses
+	// the rendered content.
+	SearchText string
 	// Preload asks GoFastr to prefetch this route on hover, visibility, or
 	// idle. Leave empty to keep the route opt-in and never prefetched.
-	Preload    string
+	Preload string
+	// DisableTOC drops the heading rail and its mobile select.
 	DisableTOC bool
-	Order      int
-	Offline    bool
-	Hidden     bool
-	Tags       []string
-	Metadata   ContentMetadata
-	Badge      NavBadge
+	// Order sorts the page among its siblings; lower comes first.
+	Order int
+	// Offline marks the page precacheable by the service worker.
+	Offline bool
+	// Hidden keeps the page out of navigation while it still serves.
+	Hidden bool
+	// Tags label the page for blog tag views.
+	Tags []string
+	// Metadata is the page's front-matter equivalent: locale, version,
+	// translation pairing, redirects, and the rest.
+	Metadata ContentMetadata
+	// Badge pins a small badge beside the page in sidebars and drawers.
+	Badge NavBadge
 	// Components exposes typed GoFastr renderers to Markdown through the
 	// {{< name key="value" >}} shortcode syntax. Components are rendered
 	// server-side and may contain nested Markdown content.
@@ -112,30 +129,52 @@ type PageConfig struct {
 // ScreenConfig registers an arbitrary typed GoFastr component in the same
 // documentation tree as Markdown pages.
 type ScreenConfig struct {
-	Title       string
+	// Title is the screen heading and nav label.
+	Title string
+	// Description is the screen's meta description.
 	Description string
-	Component   component.Component
-	SearchText  string
+	// Component renders the screen's body; it owns everything inside the
+	// content column.
+	Component component.Component
+	// SearchText is what the search index stores for the screen; screens
+	// have no Markdown to derive it from.
+	SearchText string
 	// Preload asks GoFastr to prefetch this route on hover, visibility, or
 	// idle. Leave empty to keep the route opt-in and never prefetched.
-	Preload  string
-	Plugin   string
-	Order    int
-	Offline  bool
-	Hidden   bool
-	Tags     []string
+	Preload string
+	// Plugin names the plugin that contributed the screen, surfaced for
+	// provenance.
+	Plugin string
+	// Order sorts the screen among its siblings; lower comes first.
+	Order int
+	// Offline marks the screen precacheable by the service worker.
+	Offline bool
+	// Hidden keeps the screen out of navigation while it still serves.
+	Hidden bool
+	// Tags label the screen for blog tag views.
+	Tags []string
+	// Metadata carries locale and version for the screen, the same fields
+	// front matter would give a page; a translated plugin mount sets it so its
+	// section pairs with the original.
 	Metadata ContentMetadata
-	Badge    NavBadge
+	// Badge pins a small badge beside the screen in sidebars and drawers.
+	Badge NavBadge
 }
 
 // GroupConfig describes a navigation group. Groups are metadata-only routes;
 // their children are mounted as the actual GoFastr screens.
 type GroupConfig struct {
-	Title       string
+	// Title is the group's label in navigation and search.
+	Title string
+	// Description is the group's meta description.
 	Description string
-	Order       int
-	Hidden      bool
-	Badge       NavBadge
+	// Order sorts the group among its siblings; lower comes first.
+	Order int
+	// Hidden keeps the group out of navigation without unregistering its
+	// pages.
+	Hidden bool
+	// Badge pins a small badge beside the group in sidebars and drawers.
+	Badge NavBadge
 	// Locale and Version place the group in a translated or versioned slice of
 	// the site.
 	//
@@ -241,6 +280,9 @@ type SearchProvider interface {
 // generated starter and by ExportStatic.
 const defaultSearchIndexPath = "/__fastr-docs/search.json"
 
+// SearchBackend selects how the command palette answers on this site: the
+// JSON index the Router builds, or a Pagefind index built over the export.
+// WithSearchBackend sets it.
 type SearchBackend string
 
 const (
@@ -636,6 +678,9 @@ func (r *Router) vocabulary(components map[string]MarkdownComponent, containers 
 	}
 }
 
+// MarkdownComponents returns a copy of the registered Markdown components by
+// name, so callers can inspect or compose them without being able to mutate
+// the Router's registry.
 func (r *Router) MarkdownComponents() map[string]MarkdownComponent {
 	if r == nil || len(r.markdownComponents) == 0 {
 		return nil

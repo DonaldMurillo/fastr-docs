@@ -22,16 +22,33 @@ import (
 // index.md becomes the archive route at prefix. Every other Markdown file
 // becomes a post route under that prefix.
 type BlogConfig struct {
-	Title          string
-	Description    string
-	Order          int
+	// Title names the collection in navigation and feeds.
+	Title string
+	// Description is the collection's meta description.
+	Description string
+	// Order positions the collection among the site sections.
+	Order int
+	// PostOrderStart is the Order given to the first post, so posts sort
+	// after the collection's own views; zero uses Order + 1.
 	PostOrderStart int
-	Offline        bool
-	IncludeDrafts  bool
-	DefaultLocale  string
+	// Offline marks every generated view precacheable by the service
+	// worker.
+	Offline bool
+	// IncludeDrafts publishes posts whose front matter marks them as
+	// drafts.
+	IncludeDrafts bool
+	// DefaultLocale is the language the collection's views and unmarked
+	// posts count as, so a Spanish collection reads the Spanish labels.
+	DefaultLocale string
+	// DefaultVersion is the version the collection serves when a post
+	// declares none.
 	DefaultVersion string
-	LocalePrefix   bool
-	VersionPrefix  bool
+	// LocalePrefix pairs the collection's generated views with their
+	// translations by path shape, the way /es/blog pairs with /blog.
+	LocalePrefix bool
+	// VersionPrefix pairs the collection's views with their versioned
+	// variants by path shape.
+	VersionPrefix bool
 	// PostsPerPage controls archive pagination. Zero uses the built-in
 	// default of 10.
 	PostsPerPage int
@@ -450,11 +467,19 @@ func parseBlogDate(raw string) (time.Time, bool) {
 
 // RSSConfig controls the RSS projection of a blog route collection.
 type RSSConfig struct {
-	Prefix      string
-	Title       string
+	// Prefix names the collection whose published posts feed this
+	// channel.
+	Prefix string
+	// Title is the channel title; empty uses the collection's.
+	Title string
+	// Description is the channel description; empty uses the
+	// collection's.
 	Description string
-	SiteURL     string
-	Limit       int
+	// SiteURL is the absolute origin of the site, needed for valid
+	// RSS link elements on a static export.
+	SiteURL string
+	// Limit caps the item count; zero includes every published post.
+	Limit int
 }
 
 // RSSXML returns a valid RSS 2.0 document for the published posts beneath

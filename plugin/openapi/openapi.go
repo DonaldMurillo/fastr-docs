@@ -38,10 +38,16 @@ func (Plugin) RuntimeAssets() (map[string][]byte, error) {
 
 // Plugin is a small forwarding adapter with a stable extension-package API.
 type Plugin struct {
-	SpecPath    string
-	Spec        []byte
-	Path        string
-	Title       string
+	// SpecPath reads the OpenAPI document from a file; Spec wins when
+	// both are set.
+	SpecPath string
+	// Spec is the OpenAPI document as bytes, for embedded contracts.
+	Spec []byte
+	// Path mounts the reference; defaults to /api-reference.
+	Path string
+	// Title overrides the document's info.title in navigation.
+	Title string
+	// Description overrides the document's info.description.
 	Description string
 	// ServerURL overrides the first OpenAPI servers entry. This is useful for
 	// staging/production deployments where the same contract is rendered from
@@ -56,8 +62,11 @@ type Plugin struct {
 	// falls back to DefaultStrings, so a translation can land a label at a
 	// time.
 	Strings Strings
-	Order   int
-	Badge   docs.NavBadge
+	// Order positions the reference among the site sections.
+	Order int
+	// Badge pins a small badge beside the reference in sidebars and
+	// drawers.
+	Badge docs.NavBadge
 }
 
 func (Plugin) Name() string { return "openapi" }
@@ -258,9 +267,12 @@ type rawMediaTypeValue struct {
 
 // Schema is a normalized component schema used by Reference.
 type Schema struct {
-	Type        string `json:"type"`
+	// Type is the schema's JSON type, such as "object".
+	Type string `json:"type"`
+	// Description is the schema's documentation string.
 	Description string `json:"description"`
-	Properties  map[string]struct {
+	// Properties maps each property name to its schema.
+	Properties map[string]struct {
 		Type        string `json:"type"`
 		Description string `json:"description"`
 	} `json:"properties"`
@@ -269,26 +281,41 @@ type Schema struct {
 // Operation is the normalized operation model used by Reference.
 type Operation struct {
 	Method, Path, Summary, Description, OperationID string
-	Parameters                                      []string
-	ParameterSpecs                                  []Parameter
-	RequestBody                                     bool
-	RequestBodyRequired                             bool
-	RequestBodyContentType                          string
-	RequestBodyExample                              string
-	Response                                        string
+	// Parameters are the input names shown in the operation card.
+	Parameters []string
+	// ParameterSpecs drive the request console's input fields.
+	ParameterSpecs []Parameter
+	// RequestBody says the operation expects a body.
+	RequestBody bool
+	// RequestBodyRequired says the contract demands the body.
+	RequestBodyRequired bool
+	// RequestBodyContentType is the body's media type.
+	RequestBodyContentType string
+	// RequestBodyExample seeds the console's body editor.
+	RequestBodyExample string
+	// Response is the declared success response description.
+	Response string
 }
 
 // Parameter is the normalized request input contract shown by Reference.
 // In is one of path, query, header, or cookie; unsupported parameter kinds are
 // retained in the reference but are not sent by the browser console.
 type Parameter struct {
-	Name        string
-	In          string
+	// Name is the parameter as the contract spells it.
+	Name string
+	// In is where the parameter travels: path, query, header, or
+	// cookie.
+	In string
+	// Description documents the parameter.
 	Description string
-	Type        string
-	Default     string
-	Example     string
-	Required    bool
+	// Type is the parameter's JSON type.
+	Type string
+	// Default is the contract's default value.
+	Default string
+	// Example seeds the console's input.
+	Example string
+	// Required says the request fails without it.
+	Required bool
 }
 
 func (d document) version() string {

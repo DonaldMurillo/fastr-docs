@@ -20,8 +20,11 @@ import (
 // make the source contract explicit. When omitted, immediate child
 // directories are discovered in sorted order.
 type VersionedCollectionConfig struct {
-	Current    string
-	Versions   []string
+	// Current names the version the unversioned paths serve.
+	Current string
+	// Versions lists the snapshots to mount, oldest first.
+	Versions []string
+	// Collection configures every snapshot's pages.
 	Collection CollectionConfig
 }
 

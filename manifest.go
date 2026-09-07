@@ -11,39 +11,70 @@ import (
 // static runtime assets. Hosting adapters can use it to build redirects,
 // preloads, or edge metadata without parsing rendered HTML.
 type ExportManifest struct {
-	Schema        string             `json:"schema"`
-	SiteName      string             `json:"siteName"`
-	BasePath      string             `json:"basePath,omitempty"`
-	SearchIndex   string             `json:"searchIndex"`
-	SearchBackend SearchBackend      `json:"searchBackend"`
-	SearchPath    string             `json:"searchPath,omitempty"`
-	AssetsPrefix  string             `json:"assetsPrefix"`
-	Locales       []string           `json:"locales,omitempty"`
-	Versions      []string           `json:"versions,omitempty"`
-	Routes        []ManifestRoute    `json:"routes"`
-	Redirects     []ManifestRedirect `json:"redirects,omitempty"`
+	// Schema is the manifest schema version, for consumers that
+	// check it before reading.
+	Schema string `json:"schema"`
+	// SiteName is the site the manifest describes.
+	SiteName string `json:"siteName"`
+	// BasePath is the prefix the export serves under, empty at the
+	// root of a domain.
+	BasePath string `json:"basePath,omitempty"`
+	// SearchIndex is the URL of the search index the runtime fetches.
+	SearchIndex string `json:"searchIndex"`
+	// SearchBackend names the backend answering searches, json or
+	// pagefind.
+	SearchBackend SearchBackend `json:"searchBackend"`
+	// SearchPath is the URL of the Pagefind bundle when that is the
+	// backend.
+	SearchPath string `json:"searchPath,omitempty"`
+	// AssetsPrefix is where the runtime assets are served from.
+	AssetsPrefix string `json:"assetsPrefix"`
+	// Locales lists the languages the build serves.
+	Locales []string `json:"locales,omitempty"`
+	// Versions lists the route versions present in the tree.
+	Versions []string `json:"versions,omitempty"`
+	// Routes lists every published route with its language, version,
+	// and fetch metadata.
+	Routes []ManifestRoute `json:"routes"`
+	// Redirects lists the source-to-target pairs the export writes.
+	Redirects []ManifestRedirect `json:"redirects,omitempty"`
 }
 
 // ManifestRoute is one published route in the export manifest, carrying the
 // fields a static host or AI consumer needs: where it is, what it is called,
 // which language and version it serves, and how it may be fetched.
 type ManifestRoute struct {
-	ID          string    `json:"id"`
-	Path        string    `json:"path"`
-	Title       string    `json:"title"`
-	Description string    `json:"description,omitempty"`
-	Kind        RouteKind `json:"kind"`
-	Locale      string    `json:"locale,omitempty"`
-	Version     string    `json:"version,omitempty"`
-	Tags        []string  `json:"tags,omitempty"`
-	Offline     bool      `json:"offline,omitempty"`
-	NoIndex     bool      `json:"noIndex,omitempty"`
-	Blog        bool      `json:"blog,omitempty"`
-	BlogIndex   bool      `json:"blogIndex,omitempty"`
+	// ID is the stable route identifier.
+	ID string `json:"id"`
+	// Path is the route path relative to the deployment base.
+	Path string `json:"path"`
+	// Title is the route heading and nav label.
+	Title string `json:"title"`
+	// Description is the route's meta description.
+	Description string `json:"description,omitempty"`
+	// Kind says whether the route is a page, screen, or group.
+	Kind RouteKind `json:"kind"`
+	// Locale is the language the route serves, empty for unmarked
+	// routes.
+	Locale string `json:"locale,omitempty"`
+	// Version is the route's version variant, empty when the site
+	// is not versioned.
+	Version string `json:"version,omitempty"`
+	// Tags label the route for tag views.
+	Tags []string `json:"tags,omitempty"`
+	// Offline says the service worker precaches the route.
+	Offline bool `json:"offline,omitempty"`
+	// NoIndex asks search engines to skip the route.
+	NoIndex bool `json:"noIndex,omitempty"`
+	// Blog says the route belongs to a publication collection.
+	Blog bool `json:"blog,omitempty"`
+	// BlogIndex marks a collection's generated landing view.
+	BlogIndex bool `json:"blogIndex,omitempty"`
 }
 
 // ManifestRedirect is one source-to-target pair of the export's redirects.
 type ManifestRedirect struct {
+	// From is the requested path; To is where it lands.
 	From string `json:"from"`
 	To   string `json:"to"`
 }

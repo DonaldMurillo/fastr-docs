@@ -12,8 +12,11 @@ import (
 
 // Heading is a Markdown heading exposed to a page table of contents.
 type Heading struct {
-	ID    string
+	// ID is the anchor fragment the heading renders with.
+	ID string
+	// Title is the heading text.
 	Title string
+	// Level is 1 to 6; the rail and select carry the 2s and 3s.
 	Level int
 }
 

@@ -54,8 +54,11 @@ const (
 // Badges are presentation metadata only: they do not affect URLs, search,
 // ordering, active state, or route visibility.
 type NavBadge struct {
+	// Label is the badge text; it also titles the badge for
+	// hover discovery.
 	Label string
-	Tone  NavBadgeTone
+	// Tone selects the badge color.
+	Tone NavBadgeTone
 }
 
 func normalizeNavBadge(badge NavBadge) (NavBadge, error) {
@@ -194,26 +197,47 @@ type GroupConfig struct {
 // Route is a node in the docs route tree. Children are always returned in
 // explicit order, with registration order as the stable tie-breaker.
 type Route struct {
-	ID          string
-	Path        string
-	Title       string
+	// ID is the stable identifier derived from the path.
+	ID string
+	// Path is the route path, root-relative.
+	Path string
+	// Title is the nav label and page heading.
+	Title string
+	// Description is the meta description.
 	Description string
-	Kind        RouteKind
-	Order       int
-	Hidden      bool
-	Offline     bool
-	Tags        []string
-	Plugin      string
-	SearchText  string
-	Preload     string
-	Metadata    ContentMetadata
-	Badge       NavBadge
+	// Kind separates pages, screens, and metadata-only groups.
+	Kind RouteKind
+	// Order sorts the route among its siblings.
+	Order int
+	// Hidden keeps the route out of navigation while it still serves.
+	Hidden bool
+	// Offline marks the route precacheable by the service worker.
+	Offline bool
+	// Tags label the route for tag views.
+	Tags []string
+	// Plugin names the plugin that contributed the route, empty for
+	// project-owned routes.
+	Plugin string
+	// SearchText is what the search index stores; empty derives it
+	// from the rendered content.
+	SearchText string
+	// Preload asks GoFastr to prefetch the route on hover or idle.
+	Preload string
+	// Metadata carries locale, version, pairing, and redirects.
+	Metadata ContentMetadata
+	// Badge pins a small badge beside the route in sidebars and
+	// drawers.
+	Badge NavBadge
 	// Blog marks a route as a post or archive entry created by MarkdownBlog.
 	// BlogIndex distinguishes the archive route from individual posts.
-	Blog      bool
+	Blog bool
+	// BlogIndex marks a publication collection's generated landing.
 	BlogIndex bool
-	Parent    *Route
-	Children  []*Route
+	// Parent links up the tree; nil at the root.
+	Parent *Route
+	// Children are the nested routes, in explicit order with
+	// registration order as tie-breaker.
+	Children []*Route
 
 	// includeDrafts is set by a content collection that explicitly opts into
 	// draft previews. It keeps that choice local to the collection instead of
@@ -227,43 +251,71 @@ type Route struct {
 // NavItem is a flattened, render-agnostic navigation item. Consumers can use
 // it to render a sidebar, breadcrumbs, mobile navigation, or an API index.
 type NavItem struct {
-	ID       string
-	Path     string
-	Title    string
-	Kind     RouteKind
-	Depth    int
-	Active   bool
+	// ID mirrors Route.ID for the flattened view.
+	ID string
+	// Path is the route path, root-relative.
+	Path string
+	// Title is the nav label.
+	Title string
+	// Kind separates pages, screens, and groups.
+	Kind RouteKind
+	// Depth is the nesting level, zero at the top.
+	Depth int
+	// Active says this item is the current page.
+	Active bool
+	// Children are the nested items.
 	Children int
-	Badge    NavBadge
+	// Badge pins a small badge beside the item.
+	Badge NavBadge
 }
 
 // SearchEntry is the portable local-search record produced by the Router.
 // A static indexer such as Pagefind can consume these records without knowing
 // anything about GoFastr.
 type SearchEntry struct {
-	ID          string            `json:"id"`
-	Path        string            `json:"path"`
-	Title       string            `json:"title"`
-	Description string            `json:"description"`
-	Text        string            `json:"text"`
-	Tags        []string          `json:"tags,omitempty"`
-	Locale      string            `json:"locale,omitempty"`
-	Version     string            `json:"version,omitempty"`
-	EditURL     string            `json:"editUrl,omitempty"`
-	Canonical   string            `json:"canonical,omitempty"`
-	NoIndex     bool              `json:"noIndex,omitempty"`
-	Kind        RouteKind         `json:"kind,omitempty"`
-	Order       int               `json:"order,omitempty"`
-	Headings    []string          `json:"headings,omitempty"`
-	Alternates  map[string]string `json:"alternates,omitempty"`
+	// ID is the stable record identifier.
+	ID string `json:"id"`
+	// Path is the page the entry points at.
+	Path string `json:"path"`
+	// Title heads the result.
+	Title string `json:"title"`
+	// Description is the result's summary line.
+	Description string `json:"description"`
+	// Text is the searchable body the index matches against.
+	Text string `json:"text"`
+	// Tags join the searchable text.
+	Tags []string `json:"tags,omitempty"`
+	// Locale is the page's language; the JSON backend filters
+	// results to the reader's language with it.
+	Locale string `json:"locale,omitempty"`
+	// Version is the page's version variant.
+	Version string `json:"version,omitempty"`
+	// EditURL links the result to its source.
+	EditURL string `json:"editUrl,omitempty"`
+	// Canonical is the page's canonical URL.
+	Canonical string `json:"canonical,omitempty"`
+	// NoIndex says the page asked search engines to skip it.
+	NoIndex bool `json:"noIndex,omitempty"`
+	// Kind separates pages, screens, and groups.
+	Kind RouteKind `json:"kind,omitempty"`
+	// Order breaks score ties the way the tree does.
+	Order int `json:"order,omitempty"`
+	// Headings carry the page's table of contents into the entry.
+	Headings []string `json:"headings,omitempty"`
+	// Alternates maps language tags to the entry's translations, the
+	// hreflang pairs derived from the route tree.
+	Alternates map[string]string `json:"alternates,omitempty"`
 }
 
 // SearchResult is a ranked local-search result. The Router's built-in search
 // is deliberately small and dependency-free, while SearchIndexJSON remains a
 // portable hand-off point for Pagefind or another static indexer.
 type SearchResult struct {
-	Entry   SearchEntry
-	Score   int
+	// Entry is the matched record.
+	Entry SearchEntry
+	// Score ranks the result; higher wins.
+	Score int
+	// Matches are the terms that hit, for highlighting.
 	Matches []string
 }
 
@@ -386,7 +438,11 @@ type Option func(*Router)
 // section factory receives the top-level route that owns the active layout.
 // Returning nil uses the built-in shell for that level.
 type LayoutConfig struct {
-	Global  func(*Router) *uiapp.Layout
+	// Global builds the outermost layout wrapped around every
+	// section; nil uses the built-in docs shell.
+	Global func(*Router) *uiapp.Layout
+	// Section builds the layout wrapping one top-level section;
+	// nil keeps the built-in section shell with its sidebar.
 	Section func(*Router, *Route) *uiapp.Layout
 }
 

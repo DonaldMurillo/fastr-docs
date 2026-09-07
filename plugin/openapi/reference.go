@@ -143,13 +143,22 @@ func (s Strings) withDefaults() Strings {
 // Plugin. It is intentionally a normal GoFastr component, so projects can
 // replace it, wrap it, or add actions without changing the Router contract.
 type Reference struct {
-	Title       string
+	// Title heads the reference page.
+	Title string
+	// Description is the page's intro line.
 	Description string
-	Version     string
-	ServerURL   string
-	Operations  []Operation
-	Schemas     map[string]Schema
-	Strings     Strings
+	// Version is the document's OpenAPI version, shown in the meta row.
+	Version string
+	// ServerURL is where the request console sends; empty shows the
+	// no-server note.
+	ServerURL string
+	// Operations are the document's operations, in document order.
+	Operations []Operation
+	// Schemas are the document's component schemas.
+	Schemas map[string]Schema
+	// Strings labels the surface; the zero value falls back to
+	// DefaultStrings field by field.
+	Strings Strings
 }
 
 // Render draws the whole reference surface: header and meta, the endpoint

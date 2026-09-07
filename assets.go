@@ -13,8 +13,13 @@ import (
 // AssetConfig mounts a project's public fs.FS through GoFastr's hardened
 // static handler. It works with embed.FS, os.DirFS, or any other fs.FS.
 type AssetConfig struct {
-	FS     fs.FS
+	// FS serves the public assets; a project points it at its own
+	// embedded or on-disk tree.
+	FS fs.FS
+	// Prefix is the URL path the assets answer under.
 	Prefix string
+	// MaxAge sets the assets' cache duration; zero uses the built-in
+	// default.
 	MaxAge time.Duration
 }
 

@@ -24,9 +24,12 @@ type MarkdownComponent func(props map[string]string, body render.HTML) render.HT
 // that child's own rendered output, so a child may itself be a component or
 // another container.
 type MarkdownChild struct {
-	Name  string
+	// Name is the nested shortcode as written.
+	Name string
+	// Props are the nested shortcode's attributes.
 	Props map[string]string
-	Body  render.HTML
+	// Body is the nested shortcode's inner text.
+	Body render.HTML
 }
 
 // MarkdownContainer renders a shortcode that needs its nested shortcodes as

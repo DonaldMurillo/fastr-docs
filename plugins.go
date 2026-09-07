@@ -11,10 +11,17 @@ import (
 // routes. It is the reusable content plugin behind generated projects and is
 // intentionally independent of the CLI.
 type MarkdownCollectionPlugin struct {
-	Path   string
-	Dir    string
-	FS     fs.FS
-	Root   string
+	// Path is the route prefix the collection mounts under.
+	Path string
+	// Dir is the disk directory of the collection; FS replaces it.
+	Dir string
+	// FS serves the collection from an embedded filesystem instead
+	// of disk.
+	FS fs.FS
+	// Root is the subdirectory of FS the collection lives in.
+	Root string
+	// Config carries the collection's ordering, locale, and view
+	// settings.
 	Config CollectionConfig
 }
 
@@ -46,6 +53,8 @@ func (p MarkdownCollectionPlugin) Apply(r *Router) error {
 // Markdown shortcodes. It lets a plugin own both its component implementation
 // and the authoring contract without requiring pages to repeat a map.
 type MarkdownComponentsPlugin struct {
+	// Components maps each shortcode name to its implementation;
+	// applying the plugin retires any earlier meaning the names had.
 	Components map[string]MarkdownComponent
 }
 

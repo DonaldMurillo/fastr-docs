@@ -35,8 +35,11 @@ type ThemeOverrides = uitheme.Overrides
 // for project-specific components and small layout adjustments. Keep it in
 // source control and treat it as trusted CSS.
 type ThemeConfig struct {
-	Template  Template
+	// Template is the starting point; one of ThemeTemplates.
+	Template Template
+	// Overrides replace individual theme variables.
 	Overrides ThemeOverrides
+	// CustomCSS is appended after the theme, for brand rules.
 	CustomCSS string
 }
 

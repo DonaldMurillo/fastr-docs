@@ -20,7 +20,9 @@ import (
 // site's header, theme, and recovery link instead of falling back to a bare
 // server response.
 type NotFoundScreen struct {
+	// SiteName is drawn on the branded 404.
 	SiteName string
+	// HomeHref is the way back into the site.
 	HomeHref string
 	// Strings translates the page. Empty fields keep the English defaults, so
 	// a host that does not localize passes nothing.
@@ -43,7 +45,9 @@ type LocaleNotFound struct {
 	// HomeHref is that language's home, so the recovery link does not drop the
 	// reader into another language.
 	HomeHref string
-	Strings  NotFoundStrings
+	// Strings holds the 404 labels for one language; a screen serving
+	// several languages carries one per locale.
+	Strings NotFoundStrings
 }
 
 func (s NotFoundScreen) labels() NotFoundStrings {

@@ -14,12 +14,19 @@ import (
 // contract; a richer renderer can later replace the generated Markdown while
 // keeping this registration surface stable.
 type OpenAPIPlugin struct {
-	SpecPath    string
-	Spec        []byte
-	Path        string
-	Title       string
+	// SpecPath reads the OpenAPI document from a file; Spec wins when
+	// both are set.
+	SpecPath string
+	// Spec is the OpenAPI document as bytes, for embedded contracts.
+	Spec []byte
+	// Path mounts the reference; defaults to /api-reference.
+	Path string
+	// Title overrides the document's info.title in navigation.
+	Title string
+	// Description overrides the document's info.description.
 	Description string
-	Order       int
+	// Order positions the reference among the site sections.
+	Order int
 }
 
 // Name identifies the plugin in diagnostics.

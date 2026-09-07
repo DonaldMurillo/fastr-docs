@@ -86,16 +86,23 @@ const PageTemplateSplash = "splash"
 // PageHero is the front-matter-driven hero of a splash page, so a landing page
 // does not require writing a typed screen.
 type PageHero struct {
-	Eyebrow string           `json:"eyebrow,omitempty" yaml:"eyebrow,omitempty"`
-	Title   string           `json:"title,omitempty" yaml:"title,omitempty"`
-	Tagline string           `json:"tagline,omitempty" yaml:"tagline,omitempty"`
+	// Eyebrow is the small line above the hero title.
+	Eyebrow string `json:"eyebrow,omitempty" yaml:"eyebrow,omitempty"`
+	// Title is the hero heading.
+	Title string `json:"title,omitempty" yaml:"title,omitempty"`
+	// Tagline is the supporting line under the title.
+	Tagline string `json:"tagline,omitempty" yaml:"tagline,omitempty"`
+	// Actions are the call-to-action buttons, in order.
 	Actions []PageHeroAction `json:"actions,omitempty" yaml:"actions,omitempty"`
 }
 
 // PageHeroAction is one call-to-action button in a hero.
 type PageHeroAction struct {
-	Text    string `json:"text,omitempty" yaml:"text,omitempty"`
-	Link    string `json:"link,omitempty" yaml:"link,omitempty"`
+	// Text is the button label.
+	Text string `json:"text,omitempty" yaml:"text,omitempty"`
+	// Link is the button target.
+	Link string `json:"link,omitempty" yaml:"link,omitempty"`
+	// Variant selects the button style.
 	Variant string `json:"variant,omitempty" yaml:"variant,omitempty"`
 }
 
@@ -103,8 +110,10 @@ type PageHeroAction struct {
 // from Body. Keeping the two values together prevents search, TOC, and render
 // paths from disagreeing about what the reader actually sees.
 type MarkdownDocument struct {
+	// Metadata is the parsed front matter.
 	Metadata ContentMetadata
-	Body     string
+	// Body is the Markdown with the front matter removed.
+	Body string
 }
 
 // ParseMarkdown parses an optional YAML front matter block. A document
@@ -151,15 +160,26 @@ func LoadMarkdownFile(path string) (MarkdownDocument, error) {
 // override its order in front matter. Drafts remain registered for validation
 // and preview, but IncludeDrafts or WithIncludeDrafts makes them publishable.
 type CollectionConfig struct {
-	OrderStart     int
-	Offline        bool
-	IncludeDrafts  bool
-	DefaultLocale  string
+	// OrderStart is the Order given to the first page in the
+	// collection; zero derives one.
+	OrderStart int
+	// Offline marks the collection's pages precacheable.
+	Offline bool
+	// IncludeDrafts publishes pages whose front matter marks them as
+	// drafts.
+	IncludeDrafts bool
+	// DefaultLocale is the language unmarked pages in the collection
+	// count as.
+	DefaultLocale string
+	// DefaultVersion is the version pages serve when they declare
+	// none.
 	DefaultVersion string
 	// LocalePrefix and VersionPrefix make non-default slices addressable at
 	// /<prefix>/<locale>/... and /<prefix>/<version>/..., allowing several
 	// localized/versioned documents to coexist in one Router.
-	LocalePrefix  bool
+	LocalePrefix bool
+	// VersionPrefix pairs the collection's pages with their versioned
+	// variants by path shape.
 	VersionPrefix bool
 }
 

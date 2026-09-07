@@ -10,11 +10,19 @@ import (
 // needs. Empty fields intentionally fall back to the framework-neutral mark
 // and the Router's site name.
 type BrandConfig struct {
-	Name        string
-	LogoURL     string
-	LogoAlt     string
-	FaviconURL  string
-	ThemeColor  string
+	// Name is the site name in the header, footer, and PWA.
+	Name string
+	// LogoURL is the header logo image; empty falls back to the text
+	// mark.
+	LogoURL string
+	// LogoAlt is the logo's alt text.
+	LogoAlt string
+	// FaviconURL is the bookmark and tab icon.
+	FaviconURL string
+	// ThemeColor tints the browser and OS chrome around the page.
+	ThemeColor string
+	// AccentColor overrides the theme's accent for brand-specific
+	// highlights.
 	AccentColor string
 }
 

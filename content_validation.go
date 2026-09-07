@@ -13,12 +13,18 @@ import (
 // Router reports these during strict validation so a broken link can be fixed
 // in the file that authored it instead of being discovered after deployment.
 type ContentIssue struct {
+	// RoutePath is the page the issue belongs to; SourcePath names the
+	// file when the issue came from content.
 	RoutePath  string
 	SourcePath string
-	Link       string
-	Line       int
-	Column     int
-	Message    string
+	// Link is the offending anchor, for issues found by link checking.
+	Link string
+	// Line and Column locate the issue inside the source file; zero
+	// when unknown.
+	Line   int
+	Column int
+	// Message describes the issue in one line.
+	Message string
 }
 
 // Error renders the issue with its location, for Validate's aggregated error.

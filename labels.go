@@ -14,8 +14,12 @@ import (
 // Fields holding a %s or %d are format strings. Translations may reorder the
 // surrounding words but must keep the same verbs.
 type UIStrings struct {
-	Contents          string
-	Home              string
+	Contents string
+	Home     string
+	// Sections labels the section select at the top of the mobile drawer,
+	// where the whole site's navigation lives because the header tabs are
+	// hidden below md.
+	Sections          string
 	OnThisPage        string
 	Search            string
 	SearchPlaceholder string
@@ -120,6 +124,7 @@ var defaultUIStrings = UIStrings{
 	Previous:           "← Previous",
 	Next:               "Next →",
 	Home:               "Home",
+	Sections:           "Sections",
 	OnThisPage:         "On this page",
 	Search:             "Search",
 	SearchPlaceholder:  "Search documentation…",

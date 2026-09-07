@@ -88,7 +88,22 @@ const docsRuntimeJS = `(function(){
         prefix = normalizeDocsPath(prefix);
         if ((currentPath === prefix || currentPath.indexOf(prefix + '/') === 0) && prefix.length > matchingPrefix.length) matchingPrefix = prefix;
       });
+      // Each language owns a drawer with its own tree, so the trigger aims
+      // at the drawer of the page's language first: the map keys are locale
+      // home paths, longest match wins, and a blog prefix still overrides
+      // because a collection's prefix is longer than its locale home.
       var drawer = trigger.getAttribute('data-fastr-docs-global-drawer');
+      var localeMappings = (trigger.getAttribute('data-fastr-docs-locale-drawers') || '').split(';').filter(Boolean);
+      var matchingHome = '';
+      localeMappings.forEach(function(mapping){
+        var separator = mapping.indexOf('=');
+        if (separator < 0) return;
+        var home = normalizeDocsPath(mapping.slice(0, separator));
+        if ((currentPath === home || currentPath.indexOf(home + '/') === 0) && home.length > matchingHome.length){
+          matchingHome = home;
+          drawer = mapping.slice(separator + 1);
+        }
+      });
       if (matchingPrefix){
         drawer = trigger.getAttribute('data-fastr-docs-blog-drawer') || drawer;
         var mappings = (trigger.getAttribute('data-fastr-docs-blog-drawers') || '').split(';').filter(Boolean);
@@ -101,6 +116,66 @@ const docsRuntimeJS = `(function(){
       }
       if (drawer) trigger.setAttribute('data-fui-open', drawer);
     });
+  }
+  // The section select at the top of a drawer jumps between top-level
+  // sections, which replaces the header tabs a phone no longer shows. The
+  // drawer's markup is per locale rather than per page, so the selected
+  // option is stamped here from the current path, on load and after every
+  // client-side navigation.
+  function syncSectionSelect(select){
+    var currentPath = normalizeDocsPath(location.pathname);
+    var best = '';
+    Array.prototype.forEach.call(select.options, function(option){
+      var value = option.value || '';
+      if (value.charAt(0) !== '/') return;
+      // The home option is "/" itself, which never matches a
+      // segment-boundary prefix check, so it is special-cased: every
+      // route path starts with it.
+      var active = value === '/' ? currentPath.charAt(0) === '/' : (currentPath === value || currentPath.indexOf(value + '/') === 0);
+      if (active && value.length > best.length) best = value;
+    });
+    if (best) select.value = best;
+  }
+  function syncSectionSelects(){
+    document.querySelectorAll('select[data-fastr-docs-section-select]').forEach(syncSectionSelect);
+  }
+  function bindSectionSelect(select){
+    if (select.dataset.docsSectionReady === 'true') return;
+    select.dataset.docsSectionReady = 'true';
+    select.addEventListener('change', function(){
+      var path = select.value;
+      // A leading slash admits only same-origin paths, and a second slash
+      // or backslash is rejected so a scheme-relative URL cannot ride in
+      // through a project-registered route path.
+      if (!path || path.charAt(0) !== '/' || path.charAt(1) === '/' || path.charAt(1) === '\\') return;
+      var anchor = document.createElement('a');
+      anchor.href = withBase(path);
+      anchor.hidden = true;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    });
+    syncSectionSelect(select);
+  }
+  function initSectionSelects(){
+    document.querySelectorAll('select[data-fastr-docs-section-select]').forEach(bindSectionSelect);
+  }
+  // The drawer widget enters the DOM only when it is first opened, so the
+  // selects are bound as they arrive; after that they persist across
+  // client-side navigations and init() re-syncs their values per page.
+  function watchSectionSelects(){
+    if (window.__fastrDocsSectionSelectObserver) return;
+    var observer = new MutationObserver(function(mutations){
+      mutations.forEach(function(mutation){
+        Array.prototype.forEach.call(mutation.addedNodes, function(node){
+          if (!node.querySelectorAll) return;
+          if (node.matches && node.matches('select[data-fastr-docs-section-select]')) bindSectionSelect(node);
+          node.querySelectorAll('select[data-fastr-docs-section-select]').forEach(bindSectionSelect);
+        });
+      });
+    });
+    observer.observe(document.documentElement, {childList: true, subtree: true});
+    window.__fastrDocsSectionSelectObserver = observer;
   }
   function syncDocsSidebar(sidebar){
     if (!sidebar) return;
@@ -154,7 +229,10 @@ const docsRuntimeJS = `(function(){
     });
   }
   function syncDocsSidebars(){
-    document.querySelectorAll('.ui-sidebar--persistent, [data-fui-widget="fastr-docs-sections"]').forEach(syncDocsSidebar);
+    // The attribute prefix matches every locale's drawer: the suffixed
+    // fastr-docs-sections-es owns the same active-link state as the
+    // default one, or a translated drawer keeps whatever the server baked.
+    document.querySelectorAll('.ui-sidebar--persistent, [data-fui-widget^="fastr-docs-sections"]').forEach(syncDocsSidebar);
   }
   function initSidebarState(){
     syncDocsSidebars();
@@ -694,6 +772,9 @@ const docsRuntimeJS = `(function(){
     initBlogShare();
     initSidebarState();
     syncDocsDrawerTrigger();
+    syncSectionSelects();
+    initSectionSelects();
+    watchSectionSelects();
     initPagefindSearch();
     initJSONSearch();
     localizePalette();

@@ -276,7 +276,7 @@ a reader at the edge of the Spanish tree into the English one.
 
 ### Surfaces built once for the whole site
 
-Three surfaces have no route to read a language from, and each needed a
+Four surfaces have no route to read a language from, and each needed a
 different answer.
 
 The **404** is handed to uihost at startup, but `RenderNotFound(path)` does
@@ -303,6 +303,21 @@ search, pages) carry the collection's locale as metadata, which is what makes
 root, or `/es/blog`, which sits under the Spanish home, wore the docs sidebar.
 The site has both collections; a grep for `UIStrings().Blog` should stay at
 zero.
+
+The **docs drawer** is mounted per language, because a widget's body is fixed
+at mount time and one English drawer would serve every page the English tree.
+`localeDrawerHomes` yields one home route per language, each mounting
+`docsDrawerName(locale)` (`fastr-docs-sections` for the default, a suffixed
+name for the rest), built from `drawerRoots`: the locale's home plus its
+top-level sections, where the desktop rail narrows to the section being read.
+The header trigger carries `data-fastr-docs-locale-drawers`, a
+home-path-to-drawer map shaped like the blog one, and
+`syncDocsDrawerTrigger` re-aims it per page. Each drawer also carries a
+section select above its tree (`docsSectionSelect`, `Sections` in
+`UIStrings`): below md the header tabs are hidden and the drawer is the only
+navigation left. The drawer widget enters the DOM only when first opened, so
+`watchSectionSelects` binds the selects through a MutationObserver rather
+than at init, and `init` re-syncs the selected option on every navigation.
 
 ### The header after a client-side navigation
 
@@ -513,6 +528,9 @@ Ticket these rather than re-discovering them:
 - `core/markdown` has no nested-list support, and flattens one into a single
   `<li>` joined by `<br>`. This is why `filetree` parses raw indentation.
 - `CodeBlock` has no line-highlight, diff, word-highlight, or wrap option.
+- `ui.MountSidebar` cannot host content above the nav inside its drawer body
+  (`SidebarConfig` has only `Footer`), so `MountNavigation` builds the drawer
+  from `preset.Drawer` directly and slots `navigationDrawerBody` in (#405).
 
 Fixed upstream in v0.83.0, and the workarounds removed here: the per-page
 document language (`app.WithLangFunc`), the pager's direction labels

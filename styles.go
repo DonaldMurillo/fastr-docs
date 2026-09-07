@@ -99,6 +99,11 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
 .layout-docs .ui-sidebar__title { display: flex; align-items: center; gap: 7px; padding: 26px 8px 9px; margin: 0; color: var(--docs-muted); font-size: 11.5px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
 .layout-docs .ui-sidebar__title::before { width: 14px; height: 1px; background: var(--docs-orange); content: ""; }
 .layout-docs .ui-sidebar__nav { margin-top: 8px; }
+/* The section select sits above the nav inside the drawer, where it stands
+   in for the header tabs a phone does not show. */
+.fastr-docs-drawer-sections { padding: 14px 10px 4px; border-bottom: 1px solid var(--docs-line); }
+.fastr-docs-drawer-sections .ui-select__label { display: block; margin: 0 0 6px; color: var(--docs-faint); font-family: var(--font-mono, monospace); font-size: 11px; font-weight: 650; letter-spacing: .11em; text-transform: uppercase; }
+.fastr-docs-drawer-sections .ui-select__input { display: block; width: 100%; box-sizing: border-box; min-height: 34px; padding: 7px 34px 7px 10px; border-color: var(--docs-line); border-radius: 6px; color: var(--docs-ink); background-color: var(--docs-paper); }
 .layout-docs .ui-sidebar__list, .layout-docs .ui-sidebar__sublist { gap: 6px; }
 .layout-docs .ui-sidebar__sublist { margin-top: 5px; margin-inline-start: 18px; padding-left: 0; border-left: 1px solid var(--docs-line-strong); }
 .layout-docs .ui-sidebar__link { min-height: 40px; padding: 10px; border-radius: 8px; color: var(--docs-muted); font-size: 12px; line-height: 1.25; transition: .16s ease; }
@@ -396,7 +401,9 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
   .fastr-docs-doc-layout .ui-doc-layout__content { margin-top: 10px; }
   .fastr-docs-doc-layout .ui-markdown { padding-top: 18px; }
   .layout-docs .ui-markdown h1 { font-size: 41px; }
-  .layout-docs .ui-markdown h2 { margin-top: 45px; scroll-margin-top: 144px; font-size: 23px; }
+  /* 62px sticky header + 85.5px sticky TOC select = 147.5px of chrome at
+     phone width; 144px parked the top of every h2 under the select. */
+  .layout-docs .ui-markdown h2 { margin-top: 45px; scroll-margin-top: 160px; font-size: 23px; }
   .layout-docs .ui-doc-layout__foot-nav { grid-template-columns: 1fr; }
   .layout-docs .ui-doc-layout__next { text-align: left; }
 }

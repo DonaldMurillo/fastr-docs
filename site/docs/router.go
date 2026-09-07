@@ -33,6 +33,7 @@ func NewRouter() *docs.Router {
 		docs.WithLocaleUIStrings("es", docs.UIStrings{
 			Contents:          "Contenido",
 			Home:              "Inicio",
+			Sections:          "Secciones",
 			OnThisPage:        "En esta página",
 			Search:            "Buscar",
 			SearchPlaceholder: "Buscar en la documentación",

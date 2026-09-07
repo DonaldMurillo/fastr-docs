@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	uiapp "github.com/DonaldMurillo/gofastr/core-ui/app"
+	"github.com/DonaldMurillo/gofastr/core-ui/html"
 	"github.com/DonaldMurillo/gofastr/core-ui/widget"
 	"github.com/DonaldMurillo/gofastr/core/render"
 	"github.com/DonaldMurillo/gofastr/framework/ui"
@@ -39,6 +40,9 @@ func (h *docsHeader) render(currentPath string) render.HTML {
 func (h *docsHeader) siteHeader(currentPath string) render.HTML {
 	searchTrigger := h.router.searchTrigger(currentPath)
 	labels := h.router.uiAt(currentPath)
+	// Both trigger buttons carry the same drawer map; it is computed once
+	// because it walks the route tree per locale.
+	localeDrawers := h.router.localeDrawerNames()
 	drawerName := "fastr-docs-sections"
 	// The collection, not the tree root: /es/blog sits under the Spanish
 	// home, and its trigger must open the Spanish blog's drawer.
@@ -47,14 +51,15 @@ func (h *docsHeader) siteHeader(currentPath string) render.HTML {
 	}
 	brand := render.Join(
 		render.Tag("button", map[string]string{
-			"class":                         "fastr-docs-mobile-nav-trigger",
-			"type":                          "button",
-			"data-fui-open":                 drawerName,
-			"data-fastr-docs-global-drawer": "fastr-docs-sections",
-			"data-fastr-docs-blog-drawer":   "fastr-docs-blog-sections",
-			"data-fastr-docs-blog-prefixes": h.router.blogPrefixes(),
-			"data-fastr-docs-blog-drawers":  h.router.blogDrawerNames(),
-			"aria-label":                    labels.OpenNavigation,
+			"class":                          "fastr-docs-mobile-nav-trigger",
+			"type":                           "button",
+			"data-fui-open":                  drawerName,
+			"data-fastr-docs-global-drawer":  "fastr-docs-sections",
+			"data-fastr-docs-blog-drawer":    "fastr-docs-blog-sections",
+			"data-fastr-docs-blog-prefixes":  h.router.blogPrefixes(),
+			"data-fastr-docs-blog-drawers":   h.router.blogDrawerNames(),
+			"data-fastr-docs-locale-drawers": localeDrawers,
+			"aria-label":                     labels.OpenNavigation,
 		}, render.Raw(`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>`)),
 		render.Tag("a", map[string]string{"href": "/", "class": "fastr-docs-brand", "aria-label": h.router.SiteName() + " home"},
 			h.brandMark(),
@@ -72,14 +77,15 @@ func (h *docsHeader) siteHeader(currentPath string) render.HTML {
 		Brand: brand,
 		MobileBrand: render.Join(
 			render.Tag("button", map[string]string{
-				"class":                         "fastr-docs-mobile-nav-trigger",
-				"type":                          "button",
-				"data-fui-open":                 drawerName,
-				"data-fastr-docs-global-drawer": "fastr-docs-sections",
-				"data-fastr-docs-blog-drawer":   "fastr-docs-blog-sections",
-				"data-fastr-docs-blog-prefixes": h.router.blogPrefixes(),
-				"data-fastr-docs-blog-drawers":  h.router.blogDrawerNames(),
-				"aria-label":                    labels.OpenNavigation,
+				"class":                          "fastr-docs-mobile-nav-trigger",
+				"type":                           "button",
+				"data-fui-open":                  drawerName,
+				"data-fastr-docs-global-drawer":  "fastr-docs-sections",
+				"data-fastr-docs-blog-drawer":    "fastr-docs-blog-sections",
+				"data-fastr-docs-blog-prefixes":  h.router.blogPrefixes(),
+				"data-fastr-docs-blog-drawers":   h.router.blogDrawerNames(),
+				"data-fastr-docs-locale-drawers": localeDrawers,
+				"aria-label":                     labels.OpenNavigation,
 			}, render.Raw(`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>`)),
 			render.Tag("a", map[string]string{"href": "/", "class": "fastr-docs-brand fastr-docs-brand--mobile", "aria-label": h.router.SiteName() + " home"},
 				h.brandMark(),
@@ -640,6 +646,166 @@ func (r *Router) sidebarConfig(currentPath string) ui.SidebarConfig {
 		DrawerName:            "fastr-docs-sections",
 		SuppressDrawerTrigger: true,
 	}
+}
+
+// docsDrawerName is the widget name for one locale's drawer. The default
+// locale keeps the short name (public selectors and the service worker
+// precache depend on it); every other locale derives one, the way
+// blogDrawerName does for a collection.
+func docsDrawerName(locale string) string {
+	value := strings.TrimSpace(locale)
+	if value == "" {
+		return "fastr-docs-sections"
+	}
+	value = strings.NewReplacer("/", "-", "_", "-", ".", "-").Replace(value)
+	return "fastr-docs-sections-" + value
+}
+
+// localeDrawerHomes lists the home routes behind the mounted drawers: the
+// default drawer's home first (nil when the site registers no route at "/"),
+// then one home per additional locale, sorted. The first entry owns the
+// pinned fastr-docs-sections name whatever locales the project declares, so
+// callers decide the drawer name by position, not by comparing locale
+// spellings. A drawer is mounted per home because a widget's body is fixed
+// at mount time: one drawer for the whole site would hand a translated
+// reader the default locale's tree with a home link leading out of their
+// language. A locale with no home route has no drawer; its pages fall back
+// to the default locale's, which is the state before per-locale drawers
+// existed.
+func (r *Router) localeDrawerHomes() []*Route {
+	if r == nil {
+		return nil
+	}
+	defaultHome := r.routes["/"]
+	seen := make(map[string]bool, 4)
+	locales := make([]string, 0, 4)
+	for _, family := range r.localeFamilyLocales() {
+		for locale := range family {
+			locale = normalizeLocale(locale)
+			if locale == "" || locale == normalizeLocale(r.fallbackLocale) || seen[locale] {
+				continue
+			}
+			seen[locale] = true
+			locales = append(locales, locale)
+		}
+	}
+	sort.Strings(locales)
+	homes := []*Route{defaultHome}
+	drawers := map[string]bool{docsDrawerName(""): true}
+	for _, locale := range locales {
+		home := r.findVariant(r.roots, nil, "", locale)
+		if home == nil || home == defaultHome {
+			continue
+		}
+		// Two spellings of one locale can fold to the same drawer name
+		// ("pt-BR" and "pt_BR"); the second mount would silently replace
+		// the first, so the first sorted spelling wins.
+		drawer := docsDrawerName(locale)
+		if drawers[drawer] {
+			continue
+		}
+		drawers[drawer] = true
+		homes = append(homes, home)
+	}
+	return homes
+}
+
+// localeDrawerNames maps each non-default locale's home path to its drawer
+// name, as semicolon-separated prefix=drawer pairs. The runtime re-aims the
+// trigger per page with it, the same shape as the blog drawer map.
+func (r *Router) localeDrawerNames() string {
+	homes := r.localeDrawerHomes()
+	if len(homes) < 2 {
+		return ""
+	}
+	pairs := make([]string, 0, len(homes)-1)
+	for _, home := range homes[1:] {
+		pairs = append(pairs, home.Path+"="+docsDrawerName(r.effectiveLocale(home)))
+	}
+	return strings.Join(pairs, ";")
+}
+
+// drawerRoots is the whole navigation tree for one locale's drawer. The
+// desktop rail narrows to the section being read (sidebarRoots); the drawer
+// is the only navigation a phone has, so it carries the locale's home plus
+// every top-level section of that locale.
+func (r *Router) drawerRoots(home *Route) []*Route {
+	if home == nil || home.Path == "/" || len(home.Children) == 0 {
+		return r.roots
+	}
+	return append([]*Route{home}, home.Children...)
+}
+
+// docsDrawerConfig builds the sidebar config for one locale's drawer. The
+// inline rail keeps sidebarConfig, which narrows to the active section; this
+// is the drawer's whole-language twin.
+func (r *Router) docsDrawerConfig(home *Route, drawer string) ui.SidebarConfig {
+	currentPath := ""
+	if home != nil && home.Path != "/" {
+		currentPath = home.Path
+	}
+	return ui.SidebarConfig{
+		Title:                 r.uiAt(currentPath).Contents,
+		Items:                 r.sidebarItems(r.drawerRoots(home), currentPath),
+		DrawerName:            drawer,
+		SuppressDrawerTrigger: true,
+	}
+}
+
+// docsSectionSelect renders the dropdown at the top of a drawer: the home of
+// the drawer's language plus every section, aimed and labelled the way the
+// header tabs are. The tabs are hidden below md and the drawer is the only
+// navigation left, so this is what lets a reader jump between sections
+// without scrolling the whole tree to find the next collapsed group.
+func (r *Router) docsSectionSelect(currentPath, id string) render.HTML {
+	labels := r.uiAt(currentPath)
+	options := make([]ui.SelectOption, 0, 8)
+	if home := r.localeHome(currentPath); home != nil {
+		options = append(options, ui.SelectOption{Value: home.Path, Text: labels.Home})
+	}
+	for _, item := range r.headerItems(currentPath) {
+		options = append(options, ui.SelectOption{Value: item.Href, Text: item.Label})
+	}
+	return ui.Select(ui.SelectConfig{
+		Name:    "docs-section",
+		ID:      id,
+		Label:   labels.Sections,
+		Options: options,
+		Class:   "fastr-docs-section-select",
+		ExtraAttrs: html.Attrs{
+			"data-fastr-docs-section-select": "true",
+		},
+	})
+}
+
+// navigationDrawerBody is a drawer widget's content: the section select
+// above the sidebar tree. ui.MountSidebar offers no way to put anything
+// above the nav inside the drawer body (gofastr #405), so MountNavigation
+// mounts the drawer from preset.Drawer directly and slots this in.
+type navigationDrawerBody struct {
+	cfg      ui.SidebarConfig
+	sections render.HTML
+}
+
+func (b navigationDrawerBody) Render() render.HTML {
+	return render.Join(
+		render.Tag("div", map[string]string{"class": "fastr-docs-drawer-sections"}, b.sections),
+		// The drawer-body class is the styling contract gofastr's own
+		// drawer slot uses; styles.go keys a block of drawer styling on
+		// it. ui.SidebarBody supplies the nav and the component style
+		// marker, and its own wrapper class is unstyled.
+		render.Tag("div", map[string]string{"class": "ui-sidebar ui-sidebar--drawer-body"}, ui.SidebarBody(b.cfg)),
+	)
+}
+
+// docsDrawerBody renders one locale's drawer content: the section select and
+// the whole tree for that language.
+func (r *Router) docsDrawerBody(home *Route, drawer string) render.HTML {
+	currentPath := ""
+	if home != nil && home.Path != "/" {
+		currentPath = home.Path
+	}
+	return navigationDrawerBody{cfg: r.docsDrawerConfig(home, drawer), sections: r.docsSectionSelect(currentPath, drawer+"-section")}.Render()
 }
 
 // sidebarRoots keeps the persistent contents rail scoped to the active

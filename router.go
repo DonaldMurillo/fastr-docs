@@ -20,6 +20,7 @@ import (
 	uiapp "github.com/DonaldMurillo/gofastr/core-ui/app"
 	"github.com/DonaldMurillo/gofastr/core-ui/component"
 	"github.com/DonaldMurillo/gofastr/core-ui/widget"
+	"github.com/DonaldMurillo/gofastr/core-ui/widget/preset"
 	"github.com/DonaldMurillo/gofastr/core/render"
 	gofastrRouter "github.com/DonaldMurillo/gofastr/core/router"
 	"github.com/DonaldMurillo/gofastr/framework/ui"
@@ -1262,11 +1263,17 @@ func (r *Router) Mount(site *uiapp.App, layout *uiapp.Layout) error {
 	return nil
 }
 
-// MountNavigation mounts the framework-owned mobile docs Sidebar drawer.
+// MountNavigation mounts the framework-owned mobile docs Sidebar drawers.
 // Call it on the GoFastr HTTP router after creating the UI host and before
 // starting or exporting the application. The route tree remains owned by
 // this Router; GoFastr owns drawer focus, escape handling, backdrop, and
 // scroll locking.
+//
+// One drawer is mounted per language, because a widget's body is fixed at
+// mount time and a single drawer would serve every page the default
+// locale's tree. Each drawer also carries a section select above the tree:
+// below md the header tabs are hidden and the drawer is the only
+// navigation left.
 func (r *Router) MountNavigation(httpRouter *gofastrRouter.Router) error {
 	if httpRouter == nil {
 		return errors.New("docs: MountNavigation requires a GoFastr router")
@@ -1274,12 +1281,41 @@ func (r *Router) MountNavigation(httpRouter *gofastrRouter.Router) error {
 	if r.navigationMounted {
 		return nil
 	}
-	ui.MountSidebar(routerMounter{router: httpRouter}, r.sidebarConfig(""))
+	mounter := routerMounter{router: httpRouter}
+	for i, home := range r.localeDrawerHomes() {
+		// The first entry is the default drawer whatever the project
+		// declared: the header trigger's global-drawer fallback aims at
+		// the pinned short name, so it must exist on every site, home
+		// page or none, fallback locale declared or not. Every later
+		// entry derives its name from its locale.
+		drawer := docsDrawerName("")
+		if i > 0 {
+			drawer = docsDrawerName(r.effectiveLocale(home))
+		}
+		currentPath := ""
+		if home != nil && home.Path != "/" {
+			currentPath = home.Path
+		}
+		mountNavigationDrawer(mounter, r.docsDrawerConfig(home, drawer), r.docsSectionSelect(currentPath, drawer+"-section"))
+	}
 	for _, prefix := range r.blogPrefixesList() {
-		ui.MountSidebar(routerMounter{router: httpRouter}, (&blogSidebar{router: r, prefix: prefix}).config("", blogDrawerName(prefix)))
+		cfg := (&blogSidebar{router: r, prefix: prefix}).config("", blogDrawerName(prefix))
+		mountNavigationDrawer(mounter, cfg, r.docsSectionSelect(prefix, cfg.DrawerName+"-section"))
 	}
 	r.navigationMounted = true
 	return nil
+}
+
+// mountNavigationDrawer mounts one drawer widget with the section select
+// above the sidebar tree. It is what ui.MountSidebar builds, minus its
+// fixed body slot: SidebarConfig has no way to put content above the nav
+// (gofastr #405), so the body is navigationDrawerBody instead.
+func mountNavigationDrawer(mount ui.WidgetMounter, cfg ui.SidebarConfig, sections render.HTML) {
+	b := preset.Drawer(cfg.DrawerName).
+		Hidden().
+		Slot("body", navigationDrawerBody{cfg: cfg, sections: sections})
+	def := b.Build()
+	mount.MountWidget(&def)
 }
 
 // MountCommandPalette mounts GoFastr's native command/search surface. The

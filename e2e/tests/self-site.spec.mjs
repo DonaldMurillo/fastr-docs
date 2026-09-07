@@ -686,6 +686,43 @@ test('the home link keeps a Spanish reader in Spanish', async ({ page }) => {
   await expect(page.locator('h1')).toContainText('árbol de rutas');
 });
 
+// Below md the sidebar lives in a drawer that is mounted once for the whole
+// site, so a Spanish page needs the Spanish drawer: Spanish tree, Spanish
+// home link, and a section select whose options are the Spanish tabs.
+test('the mobile drawer speaks the language of the page', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo), 'the inline sidebar covers desktop');
+  await page.goto(selfPage('/es/docs/getting-started'));
+
+  const trigger = page.locator('.fastr-docs-mobile-nav-trigger:visible').first();
+  await expect(trigger).toHaveAttribute('data-fui-open', 'fastr-docs-sections-es');
+  await trigger.click();
+
+  const drawer = page.locator('[data-fui-widget="fastr-docs-sections-es"]');
+  await expect(drawer).toBeVisible();
+  await expect(drawer.locator('.ui-sidebar__title')).toHaveText('Contenido');
+  await expect(drawer.getByRole('link', { name: 'Inicio', exact: true })).toHaveAttribute('href', '/es');
+  const navHrefs = await drawer.locator('a.ui-sidebar__link').evaluateAll((links) => links.map((a) => a.getAttribute('href')));
+  expect(navHrefs.length).toBeGreaterThan(0);
+  for (const href of navHrefs) expect(href.startsWith('/es'), href).toBe(true);
+  // The runtime syncs a locale drawer the same as the default one: the page
+  // being read is marked current, and the locale home is not still carrying
+  // the active state the server baked for the drawer's own home path.
+  await expect(drawer.getByRole('link', { name: 'Primeros pasos', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(drawer.getByRole('link', { name: 'Inicio', exact: true })).not.toHaveAttribute('aria-current', 'page');
+
+  const select = drawer.locator('select[data-fastr-docs-section-select]');
+  await expect(select).toBeVisible();
+  const options = await select.locator('option').evaluateAll((opts) => opts.map((o) => ({ value: o.value, text: o.textContent.trim() })));
+  expect(options).toContainEqual({ value: '/es', text: 'Inicio' });
+  expect(options).toContainEqual({ value: '/es/docs', text: 'Documentación' });
+  await expect(select).toHaveValue('/es/docs');
+
+  // Jumping home through the select stays in Spanish.
+  await select.selectOption('/es');
+  await expect(page).toHaveURL(/\/es\/?$/);
+  await expect(page.locator('h1')).toContainText('árbol de rutas');
+});
+
 // The pager under a document has to be in the reader's language, and has to
 // stay inside it. ui.DocPrevNext writes "Previous" and "Next" as literals, so
 // fastr-docs renders its own.

@@ -621,6 +621,40 @@ func NewRouter() *docs.Router {
 	}); err != nil {
 		panic(err)
 	}
+	if err := router.Use(openapi.Plugin{
+		SpecPath:    contractFileES(),
+		Path:        "/es/api-reference",
+		Title:       "Referencia de la API de ejemplo",
+		Description: "El mismo contrato pequeño, traducido: cada montura del plugin declara su idioma y sus etiquetas.",
+		Locale:      "es",
+		Order:       3,
+		Badge:       docs.NavBadge{Label: "Demo", Tone: docs.NavBadgeToneNeutral},
+		Strings: openapi.Strings{
+			Eyebrow:           "Referencia OpenAPI",
+			OperationsLabel:   "operaciones",
+			SchemasLabel:      "esquemas",
+			NoServer:          "Sin servidor configurado",
+			FilterPlaceholder: "Filtrar endpoints…",
+			TryRequest:        "Prueba una petición",
+			ConsoleNoServer:   "Sin URL de servidor OpenAPI configurada.",
+			OperationLabel:    "Operación",
+			SendRequest:       "Enviar la petición",
+			ResponsePrompt:    "Elige una operación y envía una petición.",
+			NoOperations:      "Este contrato no tiene operaciones.",
+			CORSNote:          "Las peticiones salen del navegador y necesitan que el servidor de la API permita CORS.",
+			NoInputs:          "Esta operación no tiene entradas.",
+			OperationIDPrefix: "ID de operación: ",
+			ParametersLabel:   "Parámetros",
+			RequestBodyLabel:  "Cuerpo de la petición",
+			RequestBodyNote:   "El contrato exige cuerpo de petición.",
+			ResponseLabel:     "Respuesta",
+			ValuePlaceholder:  "Valor",
+			ParameterWord:     "parámetro",
+			RequiredWord:      "obligatorio",
+		},
+	}); err != nil {
+		panic(err)
+	}
 	return router
 }
 

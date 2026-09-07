@@ -555,26 +555,27 @@ test('the header follows the page across client-side navigations', async ({ page
   await page.waitForURL(/\/es\/blog\/?$/);
   await expect.poll(async () => (await chrome()).selector).toEqual(['/blog', '/es/blog']);
 
-  // Across languages: an untranslated section is English, and so is the
-  // header around it.
-  await page.locator('.ui-site-header__links a', { hasText: 'Example API reference' }).first().click();
-  await page.waitForURL(/\/api-reference\/?$/);
-  await expect.poll(async () => (await chrome()).lang).toBe('en');
+  // Across languages: every top-level section is translated now, so the
+  // untranslated-tab crossing this test used no longer exists as a real
+  // flow. The language selector's crossing is a full load by design, so it
+  // is asserted as a plain navigation: the English page must wear the
+  // English header server-side. (The header-follows-swap mechanism itself
+  // is covered by the same-language legs above, which copy tabs, selector,
+  // and search label through the same syncChrome path.)
+  await page.locator('.ui-site-header__links a', { hasText: 'Referencia de la API de ejemplo' }).first().click();
+  await page.waitForURL(/\/es\/api-reference\/?$/);
+  await expect.poll(async () => (await chrome()).selector).toEqual(['/api-reference', '/es/api-reference']);
+  await page.selectOption('[data-docs-variant-select=locale]', { value: '/api-reference' });
+  // The selector's change handler assigns location.href, so the commit can
+  // land between any two protocol calls here; waitForFunction reinstalls
+  // itself across that swap where a plain evaluate would be destroyed.
+  await page.waitForFunction(() => location.pathname === '/api-reference' && document.readyState === 'complete');
   const english = await chrome();
+  expect(english.lang).toBe('en');
   expect(english.tabs).toContain('Documentation');
   expect(english.tabs).not.toContain('Documentación');
   expect(english.search).toBe('Search');
-  expect(english.selector).toEqual([]);
-  expect(english.loads).toBe(1);
-
-  // And back into Spanish through the tab, still without a full load.
-  await page.goBack();
-  await page.waitForURL(/\/es\/blog\/?$/);
-  await expect.poll(async () => (await chrome()).lang).toBe('es');
-  const spanish = await chrome();
-  expect(spanish.tabs).toContain('Documentación');
-  expect(spanish.search).toBe('Buscar');
-  expect(spanish.loads).toBe(1);
+  expect(english.selector).toEqual(['/api-reference', '/es/api-reference']);
 });
 
 // A phone-width header has room for a code, not a language name: the
@@ -721,6 +722,26 @@ test('the mobile drawer speaks the language of the page', async ({ page }, testI
   await select.selectOption('/es');
   await expect(page).toHaveURL(/\/es\/?$/);
   await expect(page.locator('h1')).toContainText('árbol de rutas');
+});
+
+// The API reference is a plugin mount, so its translation is a second mount
+// of the same plugin: Spanish route, Spanish surface labels, Spanish spec
+// content, paired with the English original.
+test('the API reference is translated with its section', async ({ page }) => {
+  await page.goto(selfPage('/es/api-reference'));
+  await expect(page.locator('h1')).toContainText('Referencia de la API de ejemplo');
+  await expect(page.getByText('Prueba una petición', { exact: true })).toBeVisible();
+  await expect(page.getByText('Enviar la petición', { exact: true })).toBeVisible();
+  await expect(page.locator('.fastr-openapi-operation__summary').first()).toHaveText('Listar proyectos');
+  await expect(page.locator('link[rel="alternate"][hreflang="en"]')).toHaveAttribute('href', '/api-reference');
+  // The header tab swaps with the reader's language like every other section.
+  const nav = await page.evaluate(() => [...document.querySelectorAll('.ui-site-header__links a')].map((a) => a.textContent.trim()));
+  expect(nav).toContain('Referencia de la API de ejemplo');
+  // The language selector crosses back to the English original.
+  await expect(page.locator('[data-docs-variant-select=locale]').first()).toHaveValue('/es/api-reference');
+  await page.selectOption('[data-docs-variant-select=locale]', { value: '/api-reference' });
+  await page.waitForURL('**/api-reference');
+  await expect(page.locator('h1')).toContainText('Example API reference');
 });
 
 // The pager under a document has to be in the reader's language, and has to

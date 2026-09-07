@@ -141,3 +141,52 @@ paths:
 		t.Fatalf("YAML route = %#v", routes)
 	}
 }
+
+// A translated mount declares its language so the route pairs with the
+// original section, and carries its own surface labels: the plugin's chrome
+// is otherwise English whatever the spec says.
+func TestTranslatedMountCarriesLocaleAndStrings(t *testing.T) {
+	spec := []byte(`{"openapi":"3.1.0","info":{"title":"API de contenido de ejemplo","description":"Un contrato pequeño."},"paths":{"/v1/projects":{"get":{"summary":"Listar proyectos","operationId":"listProjects","responses":{"200":{"description":"ok"}}}}}}`)
+	router := docs.NewRouter()
+	if err := router.Use(Plugin{
+		Spec:        spec,
+		Path:        "/es/api-reference",
+		Title:       "Referencia de la API de ejemplo",
+		Description: "Un contrato pequeño.",
+		Locale:      "es",
+		// A label at a time: the fields left empty keep the English
+		// defaults, the way a partly translated site behaves.
+		Strings: Strings{
+			Eyebrow:      "Referencia OpenAPI",
+			TryRequest:   "Prueba una petición",
+			SendRequest:  "Enviar la petición",
+			NoOperations: "Este contrato no tiene operaciones.",
+		},
+	}); err != nil {
+		t.Fatalf("Use() error = %v", err)
+	}
+	routes := router.Routes()
+	if len(routes) != 1 || routes[0].Metadata.Locale != "es" {
+		t.Fatalf("translated route metadata = %#v, want locale es", routes)
+	}
+	if got := router.LanguageFor("/es/api-reference"); got != "es" {
+		t.Fatalf("LanguageFor = %q, want es", got)
+	}
+	site := uiapp.NewApp("Docs")
+	if err := router.Mount(site, router.Layout()); err != nil {
+		t.Fatalf("Mount() error = %v", err)
+	}
+	html, err := site.RenderPage(context.Background(), "/es/api-reference")
+	if err != nil {
+		t.Fatalf("RenderPage() error = %v", err)
+	}
+	for _, want := range []string{"Referencia OpenAPI", "Prueba una petición", "Enviar la petición"} {
+		if !strings.Contains(string(html), want) {
+			t.Fatalf("translated reference missing %q", want)
+		}
+	}
+	// An empty field keeps the default rather than rendering blank.
+	if !strings.Contains(string(html), "Filter endpoints…") {
+		t.Fatal("untranslated field lost the English default")
+	}
+}

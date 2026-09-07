@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -65,8 +66,15 @@ func (r *Router) RuntimeAssets(exportBase string) (map[string][]byte, error) {
 			if clean == "" || clean == "." || strings.HasPrefix(clean, "..") {
 				return nil, fmt.Errorf("docs: plugin %q contributed an unsafe asset path %q", plugin.Name(), name)
 			}
-			if _, taken := assets[clean]; taken {
-				return nil, fmt.Errorf("docs: plugin %q asset %q collides with an existing file", plugin.Name(), clean)
+			if existing, taken := assets[clean]; taken {
+				// The same plugin mounted twice (a reference and its
+				// translation) contributes the same file twice; identical
+				// bytes are one file, and only genuinely different
+				// content is a collision.
+				if !bytes.Equal(existing, body) {
+					return nil, fmt.Errorf("docs: plugin %q asset %q collides with an existing file", plugin.Name(), clean)
+				}
+				continue
 			}
 			assets[clean] = body
 		}

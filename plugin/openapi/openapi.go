@@ -47,8 +47,17 @@ type Plugin struct {
 	// staging/production deployments where the same contract is rendered from
 	// different docs hosts. Empty uses the contract's resolved default server.
 	ServerURL string
-	Order     int
-	Badge     docs.NavBadge
+	// Locale declares the language of this mount's route, so a translated
+	// reference at /es/api-reference pairs with the original section and the
+	// header tab follows the reader's language. Empty leaves the route
+	// unmarked, which the default locale build serves everywhere.
+	Locale string
+	// Strings carries the surface labels for this mount. Every empty field
+	// falls back to DefaultStrings, so a translation can land a label at a
+	// time.
+	Strings Strings
+	Order   int
+	Badge   docs.NavBadge
 }
 
 func (Plugin) Name() string { return "openapi" }
@@ -106,12 +115,14 @@ func (p Plugin) Apply(r *docs.Router) error {
 	return r.Screen(path, docs.ScreenConfig{
 		Title:       title,
 		Description: description,
-		Component:   &Reference{Title: title, Description: description, Version: spec.version(), ServerURL: serverURL, Operations: operations, Schemas: spec.Components.Schemas},
-		SearchText:  spec.searchText(operations),
-		Plugin:      "openapi",
-		Order:       order,
-		Offline:     true,
-		Badge:       p.Badge,
+		Component: &Reference{Title: title, Description: description, Version: spec.version(), ServerURL: serverURL,
+			Operations: operations, Schemas: spec.Components.Schemas, Strings: p.Strings.withDefaults()},
+		SearchText: spec.searchText(operations),
+		Plugin:     "openapi",
+		Order:      order,
+		Offline:    true,
+		Badge:      p.Badge,
+		Metadata:   docs.ContentMetadata{Locale: strings.TrimSpace(p.Locale)},
 	})
 }
 

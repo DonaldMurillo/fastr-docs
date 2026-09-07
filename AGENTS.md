@@ -183,6 +183,14 @@ claims its family, or a translated home lands in the nav as one. Tab labels stay
 in the language they were registered in: translating a route title is the
 project's call.
 
+A plugin mount is translated by mounting the plugin a second time: the
+OpenAPI reference at `/es/api-reference` is another `openapi.Plugin` with
+`Locale: "es"`, a Spanish spec file, and `Strings` for its surface labels,
+which fall back to `DefaultStrings` a field at a time. The mirrored path
+pairs the two sections by shape, so no `TranslationOf` is needed, and the
+duplicate runtime asset is deduplicated in `RuntimeAssets` when the bytes
+match.
+
 ## Pairing a translation with its original
 
 Three things had to be true before a translated section could replace the

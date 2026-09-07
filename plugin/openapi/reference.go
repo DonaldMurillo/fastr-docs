@@ -8,6 +8,137 @@ import (
 	"github.com/DonaldMurillo/gofastr/framework/ui"
 )
 
+// Strings are the labels the reference surface renders. A translated mount
+// supplies its own; every empty field falls back to the English default, so
+// a translation can land a label at a time the way UIStrings does.
+type Strings struct {
+	// Eyebrow is the small label above the title. Title case in English
+	// ("OpenAPI reference"); translate in the style your language uses for
+	// eyebrow labels.
+	Eyebrow string
+	// OperationsLabel is the unit word after the operation count in the meta
+	// row, rendered as "3 operations". Lowercase in English because it
+	// follows the number; follow your language's convention for counted
+	// nouns.
+	OperationsLabel string
+	// SchemasLabel is the unit word after the schema count, "2 schemas".
+	// Same casing rule as OperationsLabel.
+	SchemasLabel string
+	// NoServer fills the meta row when the contract declares no server and
+	// none was overridden. Sentence case.
+	NoServer string
+	// FilterPlaceholder is the endpoint filter's placeholder. An ellipsis
+	// is conventional; keep it if your language does too.
+	FilterPlaceholder string
+	// TryRequest heads the request console. Sentence case, imperative in
+	// English.
+	TryRequest string
+	// ConsoleNoServer is the console paragraph shown instead of a server
+	// URL when none resolved. Sentence case.
+	ConsoleNoServer string
+	// OperationLabel captions the console's operation dropdown.
+	OperationLabel string
+	// SendRequest is the console button. Imperative.
+	SendRequest string
+	// ResponsePrompt is the response pane's initial text and describes the
+	// action, not the pane. Full sentence, capitalized.
+	ResponsePrompt string
+	// NoOperations replaces the console controls when the contract has no
+	// operations. Full sentence, capitalized.
+	NoOperations string
+	// CORSNote is the footnote under the console. Full sentence,
+	// capitalized.
+	CORSNote string
+	// NoInputs is shown per operation that has no parameters and no request
+	// body. Full sentence, capitalized.
+	NoInputs string
+	// OperationIDPrefix precedes the raw operation id and includes its own
+	// trailing separator and space: "Operation ID: listProjects".
+	OperationIDPrefix string
+	// ParametersLabel, RequestBodyLabel, and ResponseLabel head the three
+	// detail sections of an operation card. Cased as headings.
+	ParametersLabel  string
+	RequestBodyLabel string
+	// RequestBodyNote is the sentence under the request body heading.
+	RequestBodyNote string
+	ResponseLabel   string
+	// ValuePlaceholder is the fallback placeholder of a parameter input
+	// when the contract offers no example and no type. Single word.
+	ValuePlaceholder string
+	// ParameterWord fills a parameter's label when the contract does not
+	// say where it goes (path, query, ...). Single word, lowercase in
+	// English, because it sits between name and type.
+	ParameterWord string
+	// RequiredWord marks a parameter or body as required, appended as
+	// " · required". Lowercase in English; the separator is added by the
+	// renderer.
+	RequiredWord string
+	// NoSummary fills an operation card whose operation declares neither
+	// summary nor description. Full sentence, capitalized.
+	NoSummary string
+}
+
+// DefaultStrings returns the English surface labels.
+func DefaultStrings() Strings {
+	return Strings{
+		Eyebrow:           "OpenAPI reference",
+		OperationsLabel:   "operations",
+		SchemasLabel:      "schemas",
+		NoServer:          "No server configured",
+		FilterPlaceholder: "Filter endpoints…",
+		TryRequest:        "Try a request",
+		ConsoleNoServer:   "No OpenAPI server URL configured.",
+		OperationLabel:    "Operation",
+		SendRequest:       "Send request",
+		ResponsePrompt:    "Select an operation and send a request.",
+		NoOperations:      "No operations were found in this contract.",
+		CORSNote:          "Requests run from the browser and require the API server to allow CORS.",
+		NoInputs:          "This operation has no request inputs.",
+		OperationIDPrefix: "Operation ID: ",
+		ParametersLabel:   "Parameters",
+		RequestBodyLabel:  "Request body",
+		RequestBodyNote:   "Request body required by the contract.",
+		ResponseLabel:     "Response",
+		ValuePlaceholder:  "Value",
+		ParameterWord:     "parameter",
+		RequiredWord:      "required",
+		NoSummary:         "No summary provided.",
+	}
+}
+
+func (s Strings) withDefaults() Strings {
+	def := DefaultStrings()
+	set := func(value, fallback string) string {
+		if strings.TrimSpace(value) == "" {
+			return fallback
+		}
+		return value
+	}
+	s.Eyebrow = set(s.Eyebrow, def.Eyebrow)
+	s.OperationsLabel = set(s.OperationsLabel, def.OperationsLabel)
+	s.SchemasLabel = set(s.SchemasLabel, def.SchemasLabel)
+	s.NoServer = set(s.NoServer, def.NoServer)
+	s.FilterPlaceholder = set(s.FilterPlaceholder, def.FilterPlaceholder)
+	s.TryRequest = set(s.TryRequest, def.TryRequest)
+	s.ConsoleNoServer = set(s.ConsoleNoServer, def.ConsoleNoServer)
+	s.OperationLabel = set(s.OperationLabel, def.OperationLabel)
+	s.SendRequest = set(s.SendRequest, def.SendRequest)
+	s.ResponsePrompt = set(s.ResponsePrompt, def.ResponsePrompt)
+	s.NoOperations = set(s.NoOperations, def.NoOperations)
+	s.CORSNote = set(s.CORSNote, def.CORSNote)
+	s.NoInputs = set(s.NoInputs, def.NoInputs)
+	s.OperationIDPrefix = set(s.OperationIDPrefix, def.OperationIDPrefix)
+	s.ParametersLabel = set(s.ParametersLabel, def.ParametersLabel)
+	s.RequestBodyLabel = set(s.RequestBodyLabel, def.RequestBodyLabel)
+	s.RequestBodyNote = set(s.RequestBodyNote, def.RequestBodyNote)
+	s.ResponseLabel = set(s.ResponseLabel, def.ResponseLabel)
+	s.ValuePlaceholder = set(s.ValuePlaceholder, def.ValuePlaceholder)
+	s.ParameterWord = set(s.ParameterWord, def.ParameterWord)
+	s.RequiredWord = set(s.RequiredWord, def.RequiredWord)
+	s.NoSummary = set(s.NoSummary, def.NoSummary)
+	return s
+}
+
 // Reference is the server-rendered OpenAPI reference screen contributed by
 // Plugin. It is intentionally a normal GoFastr component, so projects can
 // replace it, wrap it, or add actions without changing the Router contract.
@@ -18,6 +149,7 @@ type Reference struct {
 	ServerURL   string
 	Operations  []Operation
 	Schemas     map[string]Schema
+	Strings     Strings
 }
 
 func (r *Reference) Render() render.HTML {
@@ -30,21 +162,21 @@ func (r *Reference) Render() render.HTML {
 	}
 	return render.Tag("div", attrs,
 		render.Tag("header", map[string]string{"class": "fastr-openapi-reference__header"},
-			render.Tag("span", map[string]string{"class": "fastr-openapi-reference__eyebrow"}, render.Text("OpenAPI reference")),
+			render.Tag("span", map[string]string{"class": "fastr-openapi-reference__eyebrow"}, render.Text(r.Strings.Eyebrow)),
 			render.Tag("h1", nil, render.Text(r.Title)),
 			render.Tag("p", nil, render.Text(r.Description)),
 			render.Tag("div", map[string]string{"class": "fastr-openapi-reference__meta"},
 				metaTag("OpenAPI "+r.Version),
-				metaTag(intText(len(r.Operations))+" operations"),
-				metaTag(intText(len(r.Schemas))+" schemas"),
-				metaTag(firstNonEmpty(r.ServerURL, "No server configured")),
+				metaTag(intText(len(r.Operations))+" "+r.Strings.OperationsLabel),
+				metaTag(intText(len(r.Schemas))+" "+r.Strings.SchemasLabel),
+				metaTag(firstNonEmpty(r.ServerURL, r.Strings.NoServer)),
 			),
 		),
 		render.Tag("div", map[string]string{"class": "fastr-openapi-reference__toolbar"},
 			ui.SearchInput(ui.SearchInputConfig{
 				Name:        "endpoint",
 				ID:          "fastr-openapi-filter",
-				Placeholder: "Filter endpoints…",
+				Placeholder: r.Strings.FilterPlaceholder,
 				ExtraAttrs:  map[string]string{"data-openapi-filter": "true", "autocomplete": "off"},
 			}),
 		),
@@ -66,20 +198,20 @@ func (r *Reference) requestConsole() render.HTML {
 		}, render.Text(strings.ToUpper(op.Method)+" · "+op.Path)))
 	}
 	children := []render.HTML{
-		render.Tag("strong", nil, render.Text("Try a request")),
-		render.Tag("p", map[string]string{"class": "fastr-openapi-reference__server"}, render.Text(firstNonEmpty(r.ServerURL, "No OpenAPI server URL configured."))),
+		render.Tag("strong", nil, render.Text(r.Strings.TryRequest)),
+		render.Tag("p", map[string]string{"class": "fastr-openapi-reference__server"}, render.Text(firstNonEmpty(r.ServerURL, r.Strings.ConsoleNoServer))),
 	}
 	if len(options) > 0 {
 		children = append(children,
-			render.Tag("label", nil, render.Text("Operation"), render.Tag("select", map[string]string{"data-openapi-operation-select": "true"}, options...)),
+			render.Tag("label", nil, render.Text(r.Strings.OperationLabel), render.Tag("select", map[string]string{"data-openapi-operation-select": "true"}, options...)),
 			r.requestInputs(),
-			render.Tag("button", map[string]string{"type": "button", "data-openapi-try": "true"}, render.Text("Send request")),
-			render.Tag("pre", map[string]string{"class": "fastr-openapi-reference__response", "data-openapi-response": "true"}, render.Text("Select an operation and send a request.")),
+			render.Tag("button", map[string]string{"type": "button", "data-openapi-try": "true"}, render.Text(r.Strings.SendRequest)),
+			render.Tag("pre", map[string]string{"class": "fastr-openapi-reference__response", "data-openapi-response": "true"}, render.Text(r.Strings.ResponsePrompt)),
 		)
 	} else {
-		children = append(children, render.Tag("p", nil, render.Text("No operations were found in this contract.")))
+		children = append(children, render.Tag("p", nil, render.Text(r.Strings.NoOperations)))
 	}
-	children = append(children, render.Tag("p", map[string]string{"class": "fastr-openapi-reference__note"}, render.Text("Requests run from the browser and require the API server to allow CORS.")))
+	children = append(children, render.Tag("p", map[string]string{"class": "fastr-openapi-reference__note"}, render.Text(r.Strings.CORSNote)))
 	return render.Tag("aside", map[string]string{"class": "fastr-openapi-reference__console"}, children...)
 }
 
@@ -102,14 +234,14 @@ func (r *Reference) requestInputs() render.HTML {
 				"data-openapi-param-in":       strings.ToLower(parameter.In),
 				"data-openapi-param-required": boolText(parameter.Required),
 				"value":                       firstNonEmpty(parameter.Example, parameter.Default),
-				"placeholder":                 firstNonEmpty(parameter.Example, parameter.Type, "Value"),
+				"placeholder":                 firstNonEmpty(parameter.Example, parameter.Type, r.Strings.ValuePlaceholder),
 			}
-			label := parameter.Name + " · " + firstNonEmpty(parameter.In, "parameter")
+			label := parameter.Name + " · " + firstNonEmpty(parameter.In, r.Strings.ParameterWord)
 			if parameter.Type != "" {
 				label += " · " + parameter.Type
 			}
 			if parameter.Required {
-				label += " · required"
+				label += " · " + r.Strings.RequiredWord
 			}
 			if parameter.Description != "" {
 				label += " — " + parameter.Description
@@ -125,14 +257,14 @@ func (r *Reference) requestInputs() render.HTML {
 				"placeholder":                firstNonEmpty(op.RequestBodyExample, "{\n  \"key\": \"value\"\n}"),
 			}
 			body := render.Tag("textarea", bodyAttrs, render.Text(op.RequestBodyExample))
-			label := "Request body · " + firstNonEmpty(op.RequestBodyContentType, "application/json")
+			label := r.Strings.RequestBodyLabel + " · " + firstNonEmpty(op.RequestBodyContentType, "application/json")
 			if op.RequestBodyRequired {
-				label += " · required"
+				label += " · " + r.Strings.RequiredWord
 			}
 			fields = append(fields, render.Tag("label", map[string]string{"class": "fastr-openapi-reference__field"}, render.Text(label), body))
 		}
 		if len(fields) == 0 {
-			fields = append(fields, render.Tag("p", map[string]string{"class": "fastr-openapi-reference__no-inputs"}, render.Text("This operation has no request inputs.")))
+			fields = append(fields, render.Tag("p", map[string]string{"class": "fastr-openapi-reference__no-inputs"}, render.Text(r.Strings.NoInputs)))
 		}
 		groups = append(groups, render.Tag("div", attrs, fields...))
 	}
@@ -165,10 +297,10 @@ func (r *Reference) operationCards() []render.HTML {
 				methodBadge(op.Method),
 				render.Tag("code", nil, render.Text(op.Path)),
 			),
-			render.Tag("p", map[string]string{"class": "fastr-openapi-operation__summary"}, render.Text(firstNonEmpty(op.Summary, op.Description, "No summary provided."))),
+			render.Tag("p", map[string]string{"class": "fastr-openapi-operation__summary"}, render.Text(firstNonEmpty(op.Summary, op.Description, r.Strings.NoSummary))),
 		}
 		if op.OperationID != "" {
-			children = append(children, render.Tag("p", map[string]string{"class": "fastr-openapi-operation__id"}, render.Text("Operation ID: "+op.OperationID)))
+			children = append(children, render.Tag("p", map[string]string{"class": "fastr-openapi-operation__id"}, render.Text(r.Strings.OperationIDPrefix+op.OperationID)))
 		}
 		if len(op.Parameters) > 0 || op.RequestBody || op.Response != "" {
 			var details []render.HTML
@@ -177,13 +309,13 @@ func (r *Reference) operationCards() []render.HTML {
 				for _, param := range op.Parameters {
 					params = append(params, render.Tag("li", nil, render.Text(param)))
 				}
-				details = append(details, render.Tag("div", nil, render.Tag("h3", nil, render.Text("Parameters")), render.Tag("ul", nil, params...)))
+				details = append(details, render.Tag("div", nil, render.Tag("h3", nil, render.Text(r.Strings.ParametersLabel)), render.Tag("ul", nil, params...)))
 			}
 			if op.RequestBody {
-				details = append(details, render.Tag("div", nil, render.Tag("h3", nil, render.Text("Request body")), render.Tag("p", nil, render.Text("Request body required by the contract."))))
+				details = append(details, render.Tag("div", nil, render.Tag("h3", nil, render.Text(r.Strings.RequestBodyLabel)), render.Tag("p", nil, render.Text(r.Strings.RequestBodyNote))))
 			}
 			if op.Response != "" {
-				details = append(details, render.Tag("div", nil, render.Tag("h3", nil, render.Text("Response")), render.Tag("code", nil, render.Text(op.Response))))
+				details = append(details, render.Tag("div", nil, render.Tag("h3", nil, render.Text(r.Strings.ResponseLabel)), render.Tag("code", nil, render.Text(op.Response))))
 			}
 			children = append(children, render.Tag("div", map[string]string{"class": "fastr-openapi-operation__details"}, details...))
 		}

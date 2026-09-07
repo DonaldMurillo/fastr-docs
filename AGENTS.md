@@ -526,16 +526,24 @@ contributes all its `.js`, which is right for a single-file runtime like
 
 ## Known GoFastr limitations worked around here
 
-Ticket these rather than re-discovering them:
-
-- `GroupConfig` had no locale, so a translated section could not pair with its
-  original. Worked around by carrying `Locale`/`Version` on the group route.
 - `ui.Markdown` maps only `title=` and `showLineNumbers` from a fence's
   options; the rest of the info string lands in `data-meta`. Line highlights
-  and `scroll` still need `extractRichCodeFences`.
+  and `scroll` still need `extractRichCodeFences` (#410).
+- `GroupConfig` had no locale, so a translated section could not pair with its
+  original. Worked around by carrying `Locale`/`Version` on the group route.
 - `core/markdown` has no nested-list support, and flattens one into a single
   `<li>` joined by `<br>`. This is why `filetree` parses raw indentation.
-- `CodeBlock` has no line-highlight, diff, word-highlight, or wrap option.
+- `CodeBlock` has no line-highlight, diff, word-highlight, or wrap option
+  (#410).
+- The layout layer key is the layout name, so a shared layer can never be
+  re-rendered per page: the header is copied into the live one by
+  `syncChrome` from a per-page `<template data-fastr-docs-chrome>`, and
+  section layouts are locale-suffixed to force re-renders, which is why
+  `styles.go` selects the blog layout with an attribute prefix (#408).
+- Widget chrome is inserted on first open with no event, and a layer swap
+  tears a globally mounted widget's DOM down with it. The palette and the
+  drawer selects are bound through trigger hooks and a document-wide
+  MutationObserver because of this (#409).
 - `ui.MountSidebar` cannot host content above the nav inside its drawer body
   (`SidebarConfig` has only `Footer`), so `MountNavigation` builds the drawer
   from `preset.Drawer` directly and slots `navigationDrawerBody` in (#405).

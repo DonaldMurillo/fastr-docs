@@ -276,6 +276,9 @@ func (r *Router) registerBlogDocuments(prefix string, documents []blogDocument, 
 		}
 		posts = append(posts, documents[i])
 	}
+	// The collection registers before its documents so path-aware helpers
+	// (blog prefixes, slug application) can see it while posts are added.
+	r.blogs[prefix] = blogCollection{cfg: cfg, prefix: prefix}
 	for i := range posts {
 		document := posts[i]
 		meta := blogMetadata(document.document.Metadata, cfg, document.rel, document.document.Body)
@@ -344,7 +347,6 @@ func (r *Router) registerBlogDocuments(prefix string, documents []blogDocument, 
 		Offline:     cfg.Offline,
 		Metadata:    indexMeta,
 	}
-	r.blogs[prefix] = blogCollection{cfg: cfg, prefix: prefix, indexBody: indexBody}
 	indexPage.Metadata.Title = indexTitle
 	indexPage.Metadata.Description = indexDescription
 	indexPage.Body = func() render.HTML { return r.renderBlogArchive(prefix, 1, indexBody) }
@@ -530,13 +532,25 @@ func (r *Router) RSSXML(cfg RSSConfig) ([]byte, error) {
 			break
 		}
 	}
+	language := ""
+	if collection, ok := r.blogs[prefix]; ok {
+		language = collection.cfg.DefaultLocale
+	}
+	lastBuild := ""
+	for _, item := range items {
+		if item.PubDate != "" && (lastBuild == "" || item.PubDate > lastBuild) {
+			lastBuild = item.PubDate
+		}
+	}
 	document := rssDocument{
 		Version: "2.0",
 		Channel: rssChannel{
-			Title:       title,
-			Link:        rssLink(siteURL, prefix),
-			Description: description,
-			Items:       items,
+			Title:         title,
+			Link:          rssLink(siteURL, prefix),
+			Description:   description,
+			Language:      language,
+			LastBuildDate: lastBuild,
+			Items:         items,
 		},
 	}
 	body, err := xml.Marshal(document)
@@ -673,10 +687,16 @@ type rssDocument struct {
 }
 
 type rssChannel struct {
-	Title       string    `xml:"title"`
-	Link        string    `xml:"link"`
-	Description string    `xml:"description"`
-	Items       []rssItem `xml:"item"`
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	// Language tells feed readers which language the channel is in,
+	// derived from the collection's declared locale.
+	Language string `xml:"language,omitempty"`
+	// LastBuildDate is the newest publish date among the items, so a
+	// reader can sort feeds by activity without fetching every post.
+	LastBuildDate string    `xml:"lastBuildDate,omitempty"`
+	Items         []rssItem `xml:"item"`
 }
 
 type rssItem struct {

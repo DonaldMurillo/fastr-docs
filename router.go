@@ -14,6 +14,8 @@ import (
 	"io"
 	"net/url"
 	"os"
+	pathpkg "path"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -527,6 +529,7 @@ type Router struct {
 	language              string
 	version               string
 	searchProvider        SearchProvider
+	searchWeights         map[string]int
 	searchBackend         SearchBackend
 	pagefindPath          string
 	searchIndexPath       string
@@ -535,6 +538,9 @@ type Router struct {
 	markdownRaws          map[string]MarkdownRawComponent
 	markdownTransforms    []namedSourceTransform
 	localeUI              map[string]UIStrings
+	customNotFound        NotFoundScreen
+	pageScripts           []PageScript
+	customCSP             string
 	localeNames           map[string]string
 	gitMeta               *GitMetadataConfig
 	gitMetaResolved       bool
@@ -770,6 +776,66 @@ func (r *Router) SearchIndexPath() string {
 	return r.searchIndexPath
 }
 
+// SearchIndexCacheControl returns the Cache-Control header a host should
+// serve the JSON search index with. The index is content-addressed per
+// build, so it is immutable and safe to cache hard.
+func (r *Router) SearchIndexCacheControl() string {
+	return "public, max-age=31536000, immutable"
+}
+
+// PageScript is one host-mountable browser script contributed by the project
+// alongside the framework runtime.
+type PageScript struct {
+	Name string
+	JS   string
+}
+
+// WithPageScript contributes a project script to the runtime asset set: it
+// is served beside docs.js and listed by RuntimeScriptNames, so analytics or
+// product glue ships without editing the generated host.
+func WithPageScript(name, js string) Option {
+	return func(r *Router) {
+		if r.pageScripts == nil {
+			r.pageScripts = []PageScript{}
+		}
+		r.pageScripts = append(r.pageScripts, PageScript{Name: name, JS: js})
+	}
+}
+
+// PageScripts lists the project-contributed scripts in registration order.
+func (r *Router) PageScripts() []PageScript {
+	if r == nil || len(r.pageScripts) == 0 {
+		return nil
+	}
+	return append([]PageScript(nil), r.pageScripts...)
+}
+
+// Sitemap builds a sitemap.xml URL set from the published routes: every
+// servable path that search engines may index, with the locale alternates
+// each page pairs with. NoIndex pages are left out.
+func (r *Router) Sitemap() []byte {
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
+	b.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
+	for _, route := range r.PublishedRoutes() {
+		if route == nil || route.Metadata.NoIndex {
+			continue
+		}
+		b.WriteString(`<url><loc>` + stdhtml.EscapeString(route.Path) + `</loc>`)
+		for lang, target := range r.alternatesFor(route) {
+			b.WriteString(`<xhtml:link rel="alternate" hreflang="` + stdhtml.EscapeString(lang) + `" href="` + stdhtml.EscapeString(target) + `"/>`)
+		}
+		if date := strings.TrimSpace(route.Metadata.DateModified); date != "" {
+			b.WriteString(`<lastmod>` + stdhtml.EscapeString(date) + `</lastmod>`)
+		} else if date := strings.TrimSpace(route.Metadata.DatePublished); date != "" {
+			b.WriteString(`<lastmod>` + stdhtml.EscapeString(date) + `</lastmod>`)
+		}
+		b.WriteString(`</url>` + "\n")
+	}
+	b.WriteString(`</urlset>`)
+	return []byte(b.String())
+}
+
 // AllowConnectOrigin records an origin that a browser-side extension is
 // expected to contact. The generated GoFastr host can use ConnectOrigins to
 // extend its strict CSP without allowing arbitrary network destinations.
@@ -805,7 +871,26 @@ func ContentSecurityPolicy(connectOrigins ...string) string {
 		seen[origin] = true
 		sources = append(sources, origin)
 	}
-	return "default-src 'self'; img-src 'self' data:; object-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; connect-src " + strings.Join(sources, " ")
+	return "default-src 'self'; img-src 'self' data:; object-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'; upgrade-insecure-requests; connect-src " + strings.Join(sources, " ")
+}
+
+// WithContentSecurityPolicy replaces the default policy wholesale, for hosts
+// that must match an organization-wide header. The framework's strict
+// default is a good starting point: copy it before loosening.
+func WithContentSecurityPolicy(policy string) Option {
+	return func(r *Router) {
+		r.customCSP = policy
+	}
+}
+
+// ContentSecurityPolicy returns the effective policy for this Router: the
+// project's override when set, otherwise the strict default with the
+// declared connect origins.
+func (r *Router) ContentSecurityPolicy() string {
+	if r != nil && strings.TrimSpace(r.customCSP) != "" {
+		return r.customCSP
+	}
+	return ContentSecurityPolicy(r.ConnectOrigins()...)
 }
 
 func normalizeConnectOrigin(raw string) string {
@@ -1120,6 +1205,11 @@ func (r *Router) SearchIndex() []SearchEntry {
 		}
 		if entry.Text == "" {
 			entry.Text = route.SearchText
+			// Screens carry no Markdown page, but their SearchText often
+			// does; the headings ride along when it does.
+			for _, heading := range markdownHeadings(entry.Text) {
+				entry.Headings = append(entry.Headings, heading.Title)
+			}
 		}
 		entries = append(entries, entry)
 	}
@@ -1151,20 +1241,22 @@ func (r *Router) Search(query string) []SearchResult {
 	var results []SearchResult
 	for _, entry := range r.SearchIndex() {
 		fields := []struct {
-			value  string
-			weight int
+			name  string
+			value string
 		}{
-			{entry.Title, 12}, {entry.Description, 6},
-			{strings.Join(entry.Tags, " "), 5}, {strings.Join(entry.Headings, " "), 8},
-			{entry.Text, 1},
+			{"title", entry.Title}, {"description", entry.Description},
+			// Tags are matched folded, so "diseno" finds a tag written
+			// "diseño" the same way body text already does.
+			{"tags", strings.Join(entry.Tags, " ")}, {"headings", strings.Join(entry.Headings, " ")},
+			{"body", entry.Text},
 		}
 		score := 0
 		matched := make([]string, 0, len(terms))
 		for _, term := range terms {
 			termScore := 0
 			for _, field := range fields {
-				if strings.Contains(strings.ToLower(field.value), term) {
-					termScore = maxInt(termScore, field.weight)
+				if strings.Contains(foldSearchText(field.value), term) {
+					termScore = maxInt(termScore, r.searchWeight(field.name))
 				}
 			}
 			if termScore == 0 {
@@ -1186,10 +1278,55 @@ func (r *Router) Search(query string) []SearchResult {
 	return results
 }
 
+// foldSearchText lowercases and strips diacritics so "traduccion" matches
+// "traducción". Ascii-folded keys are how search stays usable in languages
+// whose readers type without accents; the display text is never altered.
+func foldSearchText(value string) string {
+	var foldTable = map[rune]rune{
+		'à': 'a', 'á': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a', 'ā': 'a', 'ă': 'a', 'ą': 'a',
+		'ç': 'c', 'ć': 'c', 'ĉ': 'c', 'ċ': 'c', 'č': 'c',
+		'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e', 'ē': 'e', 'ĕ': 'e', 'ė': 'e', 'ę': 'e', 'ě': 'e',
+		'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i', 'ĩ': 'i', 'ī': 'i', 'ĭ': 'i', 'į': 'i', 'ı': 'i',
+		'ñ': 'n', 'ń': 'n', 'ņ': 'n', 'ň': 'n',
+		'ò': 'o', 'ó': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o', 'ø': 'o', 'ō': 'o', 'ŏ': 'o', 'ő': 'o',
+		'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u', 'ũ': 'u', 'ū': 'u', 'ŭ': 'u', 'ů': 'u', 'ű': 'u', 'ų': 'u',
+		'ý': 'y', 'ÿ': 'y', 'ŷ': 'y',
+		'đ': 'd', 'ď': 'd', 'ð': 'd',
+		'ł': 'l', 'ĺ': 'l', 'ľ': 'l', 'ŀ': 'l',
+		'ŕ': 'r', 'ŗ': 'r', 'ř': 'r',
+		'ś': 's', 'ŝ': 's', 'ş': 's', 'š': 's', 'ß': 's',
+		't': 't', 'ţ': 't', 'ť': 't',
+		'ź': 'z', 'ż': 'z', 'ž': 'z',
+		'ĝ': 'g', 'ğ': 'g',
+		'ĥ': 'h', 'ħ': 'h',
+		'ĵ': 'j',
+		'ķ': 'k',
+		'æ': 'a', 'œ': 'o',
+	}
+	folded := make([]rune, 0, len(value))
+	for _, r := range strings.ToLower(value) {
+		if base, ok := foldTable[r]; ok {
+			r = base
+		}
+		folded = append(folded, r)
+	}
+	return string(folded)
+}
+
+// SearchLimited bounds the result count, so a caller showing three hints
+// under a search box does not rank the whole index and truncate by hand.
+func (r *Router) SearchLimited(query string, limit int) []SearchResult {
+	results := r.Search(query)
+	if limit > 0 && len(results) > limit {
+		results = results[:limit]
+	}
+	return results
+}
+
 func searchTerms(query string) []string {
 	var terms []string
 	seen := map[string]bool{}
-	for _, term := range strings.Fields(strings.ToLower(query)) {
+	for _, term := range strings.Fields(foldSearchText(query)) {
 		term = strings.Trim(term, ".,:;!?()[]{}\"")
 		if term != "" && !seen[term] {
 			seen[term] = true
@@ -1197,6 +1334,37 @@ func searchTerms(query string) []string {
 		}
 	}
 	return terms
+}
+
+func (r *Router) searchWeight(field string) int {
+	if weight, ok := r.searchWeights[field]; ok {
+		return weight
+	}
+	switch field {
+	case "title":
+		return 12
+	case "headings":
+		return 8
+	case "description":
+		return 6
+	case "tags":
+		return 5
+	}
+	return 1
+}
+
+// WithSearchWeights tunes the built-in ranker. The map names a field (title,
+// headings, description, tags, body) and the weight a term match there adds;
+// fields left out keep their defaults, and unknown names are ignored.
+func WithSearchWeights(weights map[string]int) Option {
+	return func(r *Router) {
+		if r.searchWeights == nil {
+			r.searchWeights = map[string]int{}
+		}
+		for field, weight := range weights {
+			r.searchWeights[field] = weight
+		}
+	}
 }
 
 func maxInt(a, b int) int {
@@ -1219,6 +1387,46 @@ func (r *Router) WriteSearchIndex(w io.Writer) error {
 	return err
 }
 
+// Warnings reports advisory findings that never fail Validate: draft
+// pages counting down to publication, and locale label sets that are only
+// partly translated. A build stays usable while incomplete; these are the
+// notes that say what is still rough.
+func (r *Router) Warnings() []string {
+	if r == nil {
+		return nil
+	}
+	var warnings []string
+	for _, route := range r.Routes() {
+		if route.Metadata.Draft {
+			warnings = append(warnings, fmt.Sprintf("route %q is a draft; it is excluded from every build until drafts are included", route.Path))
+		}
+	}
+	locales := make([]string, 0, len(r.localeUI))
+	for locale := range r.localeUI {
+		locales = append(locales, locale)
+	}
+	sort.Strings(locales)
+	for _, locale := range locales {
+		set := r.localeUI[locale]
+		blog := reflect.ValueOf(set.Blog)
+		blogType := blog.Type()
+		set_, total := 0, 0
+		for i := range blogType.NumField() {
+			if blogType.Field(i).Type.Kind() != reflect.String {
+				continue
+			}
+			total++
+			if blog.Field(i).String() != "" {
+				set_++
+			}
+		}
+		if set_ > 0 && set_ < total {
+			warnings = append(warnings, fmt.Sprintf("locale %q translates %d of %d blog labels", locale, set_, total))
+		}
+	}
+	return warnings
+}
+
 // Validate checks the full route tree and returns all problems together.
 func (r *Router) Validate() error {
 	// Fills in edit links and last-updated dates before anything reads route
@@ -1238,6 +1446,7 @@ func (r *Router) Validate() error {
 	var walk func([]*Route)
 	walk = func(nodes []*Route) {
 		seenOrders := map[int]string{}
+		seenTitles := map[string]string{}
 		for _, node := range nodes {
 			if r.strict && node.Order < 1 {
 				problems = append(problems, fmt.Sprintf("route %q: a positive explicit Order is required", node.Path))
@@ -1256,6 +1465,18 @@ func (r *Router) Validate() error {
 					problems = append(problems, fmt.Sprintf("routes %q and %q: duplicate explicit order %d", previous, node.Path, node.Order))
 				}
 				seenOrders[node.Order] = node.Path
+			}
+			// Titles may repeat across languages: an untranslated
+			// section keeps its original title beside the translated
+			// tree. One language naming two siblings the same thing is
+			// the mistake worth catching.
+			if r.strict && node.Title != "" {
+				if previous, ok := seenTitles[node.Title]; ok {
+					if before := r.routes[previous]; before == nil || r.effectiveLocale(before) == r.effectiveLocale(node) {
+						problems = append(problems, fmt.Sprintf("routes %q and %q: siblings share the title %q in one language", previous, node.Path, node.Title))
+					}
+				}
+				seenTitles[node.Title] = node.Path
 			}
 			if r.strict && (node.Kind == KindPage || node.Kind == KindPlugin) && node.page != nil && node.page.Source == "" && node.page.Body == nil && node.page.ContextBody == nil && node.page.SourcePath == "" {
 				problems = append(problems, fmt.Sprintf("page %q: Source, SourcePath, or Body is required", node.Path))
@@ -1276,6 +1497,29 @@ func (r *Router) Validate() error {
 			for _, redirect := range node.Metadata.Redirects {
 				if safeRedirectPath(redirect) == "" {
 					problems = append(problems, fmt.Sprintf("route %q: redirect %q must be an internal path", node.Path, redirect))
+				}
+				if redirect == node.Path {
+					problems = append(problems, fmt.Sprintf("route %q redirects onto itself", node.Path))
+				}
+				if target := r.routes[normalizePath(redirect)]; target != nil && target != node {
+					for _, chained := range target.Metadata.Redirects {
+						if chained == redirect || chained == node.Path {
+							problems = append(problems, fmt.Sprintf("routes %q and %q form a redirect cycle through %q", node.Path, target.Path, redirect))
+						}
+					}
+				}
+			}
+			if r.strict {
+				if canonical := strings.TrimSpace(node.Metadata.CanonicalURL); canonical != "" && !strings.HasPrefix(canonical, "http://") && !strings.HasPrefix(canonical, "https://") {
+					problems = append(problems, fmt.Sprintf("route %q: canonical URL %q must be absolute", node.Path, canonical))
+				}
+				for lang, target := range node.Metadata.Alternates {
+					if !localeShape.MatchString(lang) {
+						problems = append(problems, fmt.Sprintf("route %q: alternate key %q is not a language tag", node.Path, lang))
+					}
+					if r.routes[normalizePath(target)] == nil {
+						problems = append(problems, fmt.Sprintf("route %q: alternate %q points at %q, which no route serves", node.Path, lang, target))
+					}
 				}
 			}
 			walk(node.Children)
@@ -1405,6 +1649,35 @@ func (r *Router) MountNavigation(httpRouter *gofastrRouter.Router) error {
 	}
 	r.navigationMounted = true
 	return nil
+}
+
+// NavigationDrawerNames lists every navigation drawer this Router mounts:
+// the default drawer, one per additional locale, and one per blog
+// collection. The export manifest publishes them so an offline host can
+// precache exactly the chrome that exists.
+func (r *Router) NavigationDrawerNames() []string {
+	return r.navigationDrawerNames()
+}
+
+func (r *Router) navigationDrawerNames() []string {
+	if r == nil {
+		return nil
+	}
+	names := []string{}
+	for i, home := range r.localeDrawerHomes() {
+		if i == 0 {
+			names = append(names, docsDrawerName(""))
+			continue
+		}
+		if home != nil {
+			names = append(names, docsDrawerName(r.effectiveLocale(home)))
+		}
+	}
+	for _, prefix := range r.blogPrefixesList() {
+		names = append(names, blogDrawerName(prefix))
+	}
+	sort.Strings(names[1:])
+	return names
 }
 
 // mountNavigationDrawer mounts one drawer widget with the section select
@@ -1737,7 +2010,7 @@ func (p *pageComponent) content(ctx context.Context) render.HTML {
 			panic(fmt.Sprintf("docs: render Markdown components for %q: %v", p.route.Path, err))
 		}
 	}
-	markdown = render.HTML(dedupeMarkdownHeadingIDs(string(markdown)))
+	markdown = render.HTML(headingAnchorButtons(dedupeMarkdownHeadingIDs(string(markdown))))
 	if blogPost {
 		return p.router.wrapBlogPost(p.route, markdown, source)
 	}
@@ -1901,6 +2174,28 @@ func safeRedirectPath(raw string) string {
 
 func (r *Router) addRoute(path string, route Route) (*Route, error) {
 	path = normalizePath(path)
+	// Slug renames the last segment wherever it is set, not only inside
+	// collections: the field's contract is "overrides the last segment of
+	// the route path", and a standalone page honoring it only some of the
+	// time is how two pages silently share one intended address.
+	// Blogs resolve their own slugs while building post paths, so the
+	// rewrite below must not move a post after the blog has recorded where
+	// it expects to find it.
+	underBlog := false
+	for _, prefix := range r.blogPrefixesList() {
+		if pathActive(prefix, path) {
+			underBlog = true
+			break
+		}
+	}
+	if route.Kind != KindGroup && !underBlog && route.Metadata.Slug != "" && path != "/" &&
+		!strings.Contains(route.Metadata.Slug, "/") && pathpkg.Base(path) != route.Metadata.Slug {
+		slug, err := collectionSlug(route.Metadata.Slug)
+		if err != nil {
+			return nil, fmt.Errorf("docs: route %q: %w", path, err)
+		}
+		path = normalizePath(pathpkg.Join(pathpkg.Dir(path), slug))
+	}
 	if path == "" {
 		return nil, errors.New("docs: route path is required")
 	}
@@ -1918,6 +2213,11 @@ func (r *Router) addRoute(path string, route Route) (*Route, error) {
 	r.seq++
 	route.Path = path
 	route.ID = routeID(path)
+	// Locale and Version are compared as lowercased slugs everywhere
+	// downstream (pairing, search, the manifest); storing them raw lets a
+	// mixed-case front matter value fork one language into two.
+	route.Metadata.Locale = normalizeLocale(route.Metadata.Locale)
+	route.Metadata.Version = strings.TrimSpace(route.Metadata.Version)
 	route.seq = r.seq
 	if route.Title == "" && route.Kind == KindPage && route.page != nil {
 		route.Title = titleFromPath(path)

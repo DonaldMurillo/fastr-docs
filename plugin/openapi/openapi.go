@@ -120,24 +120,58 @@ func (p Plugin) Apply(r *docs.Router) error {
 	if err != nil {
 		return fmt.Errorf("parse operations: %w", err)
 	}
+	if err := checkDuplicateOperationIDs(operations); err != nil {
+		return fmt.Errorf("invalid spec %s: %w", path, err)
+	}
 	order := p.Order
 	if order < 1 {
 		order = len(r.Routes()) + 1
 	}
 	serverURL := spec.serverURL(p.ServerURL)
 	r.AllowConnectOrigin(serverURL)
+	locale := strings.ToLower(strings.TrimSpace(p.Locale))
+	idPrefix := mountIDPrefix(path)
 	return r.Screen(path, docs.ScreenConfig{
 		Title:       title,
 		Description: description,
 		Component: &Reference{Title: title, Description: description, Version: spec.version(), ServerURL: serverURL,
-			Operations: operations, Schemas: spec.Components.Schemas, Strings: p.Strings.withDefaults()},
+			Operations: operations, Schemas: spec.Components.Schemas, Strings: p.Strings.withDefaults(), IDPrefix: idPrefix},
 		SearchText: spec.searchText(operations),
 		Plugin:     "openapi",
 		Order:      order,
 		Offline:    true,
+		Preload:    "hover",
 		Badge:      p.Badge,
-		Metadata:   docs.ContentMetadata{Locale: strings.TrimSpace(p.Locale)},
+		Metadata:   docs.ContentMetadata{Locale: locale},
 	})
+}
+
+// mountIDPrefix derives a per-mount discriminator from the mount path, so
+// two mounts of the plugin (a reference and its translation) never produce
+// colliding element ids on one host.
+func mountIDPrefix(path string) string {
+	value := strings.Trim(strings.ReplaceAll(strings.ReplaceAll(path, "/", "-"), "_", "-"), "-")
+	if value == "" {
+		value = "api"
+	}
+	return value
+}
+
+// checkDuplicateOperationIDs fails loudly on a contract that reuses an
+// operation id: the console and anchors key off ids, and a silent collision
+// makes one operation unreachable.
+func checkDuplicateOperationIDs(operations []Operation) error {
+	seen := map[string]string{}
+	for _, op := range operations {
+		if op.OperationID == "" {
+			continue
+		}
+		if previous, ok := seen[op.OperationID]; ok {
+			return fmt.Errorf("operations %s and %s share operationId %q", previous, op.Path, op.OperationID)
+		}
+		seen[op.OperationID] = op.Path
+	}
+	return nil
 }
 
 func decodeSpec(data []byte, target any) error {

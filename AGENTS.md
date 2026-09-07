@@ -547,6 +547,9 @@ contributes all its `.js`, which is right for a single-file runtime like
 - `ui.MountSidebar` cannot host content above the nav inside its drawer body
   (`SidebarConfig` has only `Footer`), so `MountNavigation` builds the drawer
   from `preset.Drawer` directly and slots `navigationDrawerBody` in (#405).
+- The app shell hardcodes the skip link text in English, so the runtime
+  rewrites it per language from `UIStrings.SkipToContent` carried on the
+  chrome template (#411).
 
 Fixed upstream in v0.83.0, and the workarounds removed here: the per-page
 document language (`app.WithLangFunc`), the pager's direction labels

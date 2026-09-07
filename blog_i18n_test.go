@@ -188,7 +188,7 @@ func TestEveryPageCarriesItsChromeTemplate(t *testing.T) {
 	r := bilingualBlogSite(t)
 	page := &pageComponent{router: r, route: r.routeAtPath("/es/blog/segunda")}
 	html := string(page.RenderCtx(context.Background()))
-	if !strings.Contains(html, `<template data-fastr-docs-chrome="" data-fastr-docs-lang="es">`) {
+	if !strings.Contains(html, `<template data-fastr-docs-chrome="" data-fastr-docs-dir="ltr" data-fastr-docs-lang="es" data-fastr-docs-skip="Skip to main content">`) {
 		t.Fatalf("Spanish page lacks its chrome template: %s", html)
 	}
 	// The template is the page's own header: its tabs point into the

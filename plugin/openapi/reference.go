@@ -1,6 +1,7 @@
 package openapi
 
 import (
+	"context"
 	"sort"
 	"strings"
 
@@ -143,6 +144,10 @@ func (s Strings) withDefaults() Strings {
 // Plugin. It is intentionally a normal GoFastr component, so projects can
 // replace it, wrap it, or add actions without changing the Router contract.
 type Reference struct {
+	// IDPrefix discriminates this mount's element ids (operation cards,
+	// console option values) so two mounts never collide on one host.
+	IDPrefix string
+
 	// Title heads the reference page.
 	Title string
 	// Description is the page's intro line.
@@ -163,6 +168,13 @@ type Reference struct {
 
 // Render draws the whole reference surface: header and meta, the endpoint
 // filter, the operation index and cards, and the request console.
+// RenderCtx renders per request. The surface carries no request-dependent
+// chrome yet, so it delegates to Render; implementing the method keeps the
+// component usable wherever GoFastr prefers context-aware rendering.
+func (r *Reference) RenderCtx(ctx context.Context) render.HTML {
+	return r.Render()
+}
+
 func (r *Reference) Render() render.HTML {
 	attrs := map[string]string{
 		"class":                  "fastr-openapi-reference",
@@ -203,7 +215,8 @@ func (r *Reference) requestConsole() render.HTML {
 	options := make([]render.HTML, 0, len(r.Operations))
 	for i, op := range r.Operations {
 		options = append(options, render.Tag("option", map[string]string{
-			"value":               operationID(i),
+			"value":               r.operationID(i),
+			"role":                "option",
 			"data-openapi-method": strings.ToUpper(op.Method),
 			"data-openapi-path":   op.Path,
 		}, render.Text(strings.ToUpper(op.Method)+" · "+op.Path)))
@@ -217,7 +230,7 @@ func (r *Reference) requestConsole() render.HTML {
 			render.Tag("label", nil, render.Text(r.Strings.OperationLabel), render.Tag("select", map[string]string{"data-openapi-operation-select": "true"}, options...)),
 			r.requestInputs(),
 			render.Tag("button", map[string]string{"type": "button", "data-openapi-try": "true"}, render.Text(r.Strings.SendRequest)),
-			render.Tag("pre", map[string]string{"class": "fastr-openapi-reference__response", "data-openapi-response": "true"}, render.Text(r.Strings.ResponsePrompt)),
+			render.Tag("pre", map[string]string{"class": "fastr-openapi-reference__response", "role": "status", "aria-live": "polite", "data-openapi-response": "true"}, render.Text(r.Strings.ResponsePrompt)),
 		)
 	} else {
 		children = append(children, render.Tag("p", nil, render.Text(r.Strings.NoOperations)))
@@ -229,7 +242,7 @@ func (r *Reference) requestConsole() render.HTML {
 func (r *Reference) requestInputs() render.HTML {
 	groups := make([]render.HTML, 0, len(r.Operations))
 	for index, op := range r.Operations {
-		operation := operationID(index)
+		operation := r.operationID(index)
 		attrs := map[string]string{
 			"class":                   "fastr-openapi-reference__inputs",
 			"data-openapi-inputs-for": operation,
@@ -285,7 +298,7 @@ func (r *Reference) requestInputs() render.HTML {
 func (r *Reference) operationIndex() render.HTML {
 	items := make([]ui.RailItem, 0, len(r.Operations))
 	for i, op := range r.Operations {
-		id := operationID(i)
+		id := r.operationID(i)
 		items = append(items, ui.RailItem{Anchor: id, Text: op.Path, Eyebrow: strings.ToUpper(op.Method)})
 	}
 	if len(items) == 0 {
@@ -330,7 +343,7 @@ func (r *Reference) operationCards() []render.HTML {
 			}
 			children = append(children, render.Tag("div", map[string]string{"class": "fastr-openapi-operation__details"}, details...))
 		}
-		items = append(items, render.Tag("article", map[string]string{"id": operationID(i), "class": "fastr-openapi-operation", "data-openapi-operation": "true", "data-openapi-search": strings.ToLower(op.Method + " " + op.Path + " " + op.Summary + " " + op.OperationID)}, children...))
+		items = append(items, render.Tag("article", map[string]string{"id": r.operationID(i), "class": "fastr-openapi-operation", "data-openapi-operation": "true", "data-openapi-search": strings.ToLower(op.Method + " " + op.Path + " " + op.Summary + " " + op.OperationID)}, children...))
 	}
 	if len(r.Schemas) > 0 {
 		names := make([]string, 0, len(r.Schemas))
@@ -395,7 +408,13 @@ func methodBadge(method string) render.HTML {
 	})
 }
 
-func operationID(index int) string { return "fastr-openapi-operation-" + intText(index+1) }
+func (r *Reference) operationID(index int) string {
+	prefix := "fastr-openapi-operation"
+	if r.IDPrefix != "" {
+		prefix += "-" + r.IDPrefix
+	}
+	return prefix + "-" + intText(index+1)
+}
 
 func intText(value int) string {
 	if value == 0 {
@@ -425,6 +444,8 @@ func firstNonEmpty(values ...string) string {
 func CSS() string {
 	return strings.Join([]string{
 		".fastr-openapi-reference { max-width: 1180px; margin: 0 auto; padding: 32px clamp(20px, 4vw, 56px) 72px; color: var(--color-text, #18181b); }",
+		".fastr-openapi-reference select:focus-visible, .fastr-openapi-reference input:focus-visible, .fastr-openapi-reference button:focus-visible { outline: 2px solid var(--color-accent, #0891b2); outline-offset: 2px; }",
+		".fastr-openapi-reference__response[data-state='loading'] { opacity: .6; }",
 		".fastr-openapi-reference__header h1 { margin: 8px 0; font-size: clamp(2rem, 4vw, 3.5rem); letter-spacing: -.04em; }",
 		".fastr-openapi-reference__header p { max-width: 70ch; color: var(--color-text-muted, #52525b); line-height: 1.7; }",
 		".fastr-openapi-reference__eyebrow, .fastr-openapi-reference__tag { color: var(--color-primary, #4f46e5); font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }",

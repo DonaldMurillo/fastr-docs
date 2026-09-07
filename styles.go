@@ -93,7 +93,8 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
 .fastr-docs-mobile-nav-trigger { display: none; }
 
 /* Outer shell and route tree */
-.layout-docs .layout-body { min-height: calc(100vh - 68px); }
+:root { --docs-sticky-offset: 68px; }
+.layout-docs .layout-body { min-height: calc(100vh - var(--docs-sticky-offset, 68px)); }
 .layout-docs .layout-body > nav { flex: 0 0 254px; min-width: 0; border-right: 1px solid var(--docs-line); background: color-mix(in srgb, var(--docs-canvas) 80%, transparent); }
 .layout-docs .ui-sidebar__inline { display: block; min-width: 0; height: calc(100vh - 68px); padding: 21px 16px 19px; overflow-y: auto; position: sticky; top: 68px; scrollbar-width: thin; scrollbar-color: var(--docs-line-strong) transparent; }
 .layout-docs .ui-sidebar__title { display: flex; align-items: center; gap: 7px; padding: 26px 8px 9px; margin: 0; color: var(--docs-muted); font-size: 11.5px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
@@ -102,6 +103,7 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
 /* The section select sits above the nav inside the drawer, where it stands
    in for the header tabs a phone does not show. */
 .fastr-docs-drawer-sections { padding: 14px 10px 4px; border-bottom: 1px solid var(--docs-line); }
+.fastr-docs-drawer-sections .ui-select__input:focus-visible { outline: 2px solid var(--docs-orange); outline-offset: 2px; }
 .fastr-docs-drawer-sections .ui-select__label { display: block; margin: 0 0 6px; color: var(--docs-faint); font-family: var(--font-mono, monospace); font-size: 11px; font-weight: 650; letter-spacing: .11em; text-transform: uppercase; }
 .fastr-docs-drawer-sections .ui-select__input { display: block; width: 100%; box-sizing: border-box; min-height: 34px; padding: 7px 34px 7px 10px; border-color: var(--docs-line); border-radius: 6px; color: var(--docs-ink); background-color: var(--docs-paper); }
 .layout-docs .ui-sidebar__list, .layout-docs .ui-sidebar__sublist { gap: 6px; }
@@ -145,6 +147,8 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
   padding: 26px 18px 32px;
   color: var(--docs-ink);
   background: var(--docs-canvas, var(--color-background, #f7f5ef));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .ui-sidebar--drawer-body .ui-sidebar__title { display: flex; align-items: center; gap: 8px; padding: 0 10px 16px; margin: 0; color: var(--docs-muted); font-size: 11.5px; font-weight: 650; letter-spacing: .1em; line-height: 1.2; text-transform: uppercase; }
 .ui-sidebar--drawer-body .ui-sidebar__title::before { width: 14px; height: 1px; flex: 0 0 auto; background: var(--docs-orange); content: ""; }
@@ -244,6 +248,7 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
 .layout-docs .ui-markdown h1, .layout-docs .ui-markdown h2, .layout-docs .ui-markdown h3, .layout-docs .ui-markdown h4 { color: var(--docs-ink); font-family: var(--font-heading, Inter, sans-serif); letter-spacing: -.045em; }
 .layout-docs .ui-markdown h1 { margin: 0 0 16px; font-size: clamp(40px, 5vw, 64px); line-height: 1.02; }
 .layout-docs .ui-markdown h2 { margin-top: 58px; margin-bottom: 13px; padding-top: 0; scroll-margin-top: 110px; font-size: 26px; line-height: 1.1; }
+.layout-docs .ui-markdown h4 { scroll-margin-top: 110px; }
 .layout-docs .ui-markdown h3 { margin-top: 34px; margin-bottom: 9px; scroll-margin-top: 110px; font-size: 18px; }
 .layout-docs .ui-markdown p { max-width: 73ch; margin: 0 0 16px; }
 .layout-docs .ui-markdown a { color: var(--docs-orange-deep); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--docs-orange) 45%, transparent); text-underline-offset: 3px; }
@@ -347,7 +352,7 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
   .fastr-docs-doc-layout > .fastr-docs-toc-select { display: flex; order: -1; position: sticky; top: 68px; z-index: 12; width: min(900px, calc(100% - 72px)); box-sizing: border-box; align-items: center; gap: 12px; height: auto; margin: 18px auto 8px; padding: 11px 13px; border: 1px solid var(--docs-line); border-radius: 7px; background: var(--docs-paper); }
   .fastr-docs-doc-layout > .fastr-docs-toc-select .ui-select__label { flex: 0 0 auto; margin: 0; }
   .fastr-docs-doc-layout > .fastr-docs-toc-select .ui-select__input { flex: 1 1 auto; width: auto; }
-  .layout-docs .ui-markdown h2, .layout-docs .ui-markdown h3 { scroll-margin-top: 164px; }
+  .layout-docs .ui-markdown h2, .layout-docs .ui-markdown h3, .layout-docs .ui-markdown h4 { scroll-margin-top: 164px; }
   .fastr-docs-doc-layout .ui-doc-layout__crumbs, .fastr-docs-doc-layout .ui-markdown, .layout-docs .ui-doc-layout__foot { width: min(900px, calc(100% - 72px)); }
   .fastr-docs-doc-layout .ui-doc-layout__crumbs { padding-top: 12px; }
   .fastr-docs-home { width: min(900px, calc(100% - 72px)); }
@@ -369,7 +374,8 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
   .fastr-docs-site-header .ui-site-header__brand--mobile { gap: 2px; }
   .fastr-docs-site-header .ui-site-header__brand--mobile .fastr-docs-brand { flex: 0 0 auto; }
   .fastr-docs-mobile-nav-trigger { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; margin-right: 2px; padding: 0; border: 1px solid transparent; border-radius: 7px; color: var(--docs-muted); background: transparent; cursor: pointer; }
-  .fastr-docs-mobile-nav-trigger:hover, .fastr-docs-mobile-nav-trigger:focus-visible { color: var(--docs-ink); border-color: var(--docs-line); background: var(--docs-paper); }
+  .fastr-docs-mobile-nav-trigger:hover { color: var(--docs-ink); border-color: var(--docs-line); background: var(--docs-paper); }
+  .fastr-docs-mobile-nav-trigger:focus-visible { color: var(--docs-ink); background: var(--docs-paper); outline: 2px solid var(--docs-orange); outline-offset: 2px; }
   .fastr-docs-brand__name { font-size: 16px; }
   .fastr-docs-command-trigger { width: 36px; padding-inline: 0; justify-content: center; border-color: transparent; background: transparent; }
   .fastr-docs-command-trigger__label, .fastr-docs-command-trigger__hint { display: none; }
@@ -397,7 +403,8 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
   .fastr-docs-doc-layout > .fastr-docs-toc-select { top: 62px; width: calc(100% - 38px); margin-top: 13px; }
   .fastr-docs-doc-layout > .fastr-docs-toc-select { display: block; margin-bottom: 0; padding: 10px 11px 11px; }
   .fastr-docs-doc-layout > .fastr-docs-toc-select .ui-select__label { display: block; margin: 0 0 6px; }
-  .fastr-docs-doc-layout > .fastr-docs-toc-select .ui-select__input { display: block; width: 100%; box-sizing: border-box; }
+  .fastr-docs-doc-layout > .fastr-docs-toc-select .ui-select__input { display: block; width: 100%; box-sizing: border-box; font-size: 16px; }
+  .fastr-docs-doc-layout > .fastr-docs-toc-select .ui-select__input:focus-visible { outline: 2px solid var(--docs-orange); outline-offset: 2px; }
   .fastr-docs-doc-layout .ui-doc-layout__content { margin-top: 10px; }
   .fastr-docs-doc-layout .ui-markdown { padding-top: 18px; }
   .layout-docs .ui-markdown h1 { font-size: 41px; }
@@ -406,6 +413,24 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
   .layout-docs .ui-markdown h2 { margin-top: 45px; scroll-margin-top: 160px; font-size: 23px; }
   .layout-docs .ui-doc-layout__foot-nav { grid-template-columns: 1fr; }
   .layout-docs .ui-doc-layout__next { text-align: left; }
+}
+
+/* Printing a documentation page: the navigation chrome and sticky bars are
+   screen furniture, and a drawer or palette left open would eat the sheet.
+   Content goes full width and collapsed sidebar groups expand so the whole
+   tree reads on paper. */
+@media print {
+  .layout-docs > header, .layout-docs .layout-body > nav, .fastr-docs-doc-layout > .fastr-docs-toc-select, .fastr-docs-doc-layout > .scrollspy, [data-fui-widget], .fastr-docs-command-trigger, .fastr-docs-theme-toggle, .fastr-docs-variant-selectors { display: none !important; }
+  .fastr-docs-doc-layout .ui-markdown, .fastr-docs-doc-layout .ui-doc-layout__crumbs { width: 100%; }
+  .ui-sidebar details > ul[hidden] { display: block; }
+}
+/* Windows high contrast and friends: badges that live on color alone become
+   bordered, the active page gains an underline, and focus rings use the
+   system highlight. */
+@media (forced-colors: active) {
+  .fastr-docs-nav-badge { border: 1px solid CanvasText; forced-color-adjust: none; }
+  .layout-docs .ui-sidebar__link[aria-current="page"] { text-decoration: underline; }
+  .fastr-docs-mobile-nav-trigger:focus-visible, .fastr-docs-doc-layout > .fastr-docs-toc-select .ui-select__input:focus-visible { outline: 2px solid Highlight; }
 }
 
 @media (max-width: 540px) {

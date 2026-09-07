@@ -3,6 +3,7 @@ package docs
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 )
@@ -20,6 +21,13 @@ type UIStrings struct {
 	// Home labels the sidebar link to the site root, rendered in the
 	// language of the page being read. One word.
 	Home string
+	// SkipToContent labels the skip link that jumps the keyboard past the
+	// navigation chrome. GoFastr renders the element with English text; the
+	// runtime rewrites it from this label per page language.
+	SkipToContent string
+	// SectionHelp is the helper line under the drawer's section select,
+	// wired as the select's accessible description.
+	SectionHelp string
 	// Sections labels the section select at the top of the mobile drawer,
 	// where the whole site's navigation lives because the header tabs are
 	// hidden below md.
@@ -235,6 +243,8 @@ var defaultUIStrings = UIStrings{
 	Previous:           "← Previous",
 	Next:               "Next →",
 	Home:               "Home",
+	SkipToContent:      "Skip to main content",
+	SectionHelp:        "Jump to a top-level section.",
 	Sections:           "Sections",
 	OnThisPage:         "On this page",
 	Search:             "Search",
@@ -267,7 +277,7 @@ var defaultUIStrings = UIStrings{
 		SearchThePublication:   "Search the publication",
 		ResultsFor:             "Results for “%s”",
 		NoPostsMatched:         "No posts matched that search.",
-		MatchesSummary:         "%d matches",
+		MatchesSummary:         "1 match|%d matches",
 		Archive:                "Archive",
 		ArchiveDescription:     "Browse every published post by year.",
 		ArchiveYear:            "%s archive",
@@ -276,7 +286,7 @@ var defaultUIStrings = UIStrings{
 		Tags:                   "Tags",
 		TagsDescription:        "Browse posts by topic.",
 		ExploreTerms:           "Explore %s across the publication.",
-		PostCount:              "%d posts",
+		PostCount:              "1 post|%d posts",
 		Publication:            "Publication",
 		ReadingTime:            "%s min read",
 		Featured:               "Featured",
@@ -375,7 +385,135 @@ func formatLabel(label string, args ...any) string {
 	if !strings.ContainsRune(label, '%') {
 		return label
 	}
+	// A translation that dropped or added a placeholder must not reach the
+	// page as Go's %!(EXTRA ...) or %!s(MISSING) artifacts: the label is
+	// wrong either way, so it renders as written and the placeholder check
+	// in ContentIssues names it at build time.
+	if countFormatDirectives(label) != len(args) {
+		return label
+	}
 	return fmt.Sprintf(label, args...)
+}
+
+// countFormatDirectives counts the printf verbs a label carries, ignoring
+// the %% escape.
+func countFormatDirectives(label string) int {
+	count := 0
+	for i := 0; i < len(label); i++ {
+		if label[i] != '%' || i+1 >= len(label) {
+			continue
+		}
+		if label[i+1] == '%' {
+			i++
+			continue
+		}
+		count++
+	}
+	return count
+}
+
+// Keys lists the label field names a translation can set, so tooling can
+// diff a locale against the inventory without importing the struct layout.
+func (UIStrings) Keys() []string {
+	return uiStringKeys()
+}
+
+func uiStringKeys() []string {
+	var keys []string
+	t := reflect.TypeOf(UIStrings{})
+	for i := range t.NumField() {
+		if t.Field(i).Type.Kind() == reflect.String {
+			keys = append(keys, t.Field(i).Name)
+		}
+	}
+	return keys
+}
+
+// formatCount renders a counted label. A label may carry the CLDR pipe form
+// "1 post|%d posts" so a language with different plural rules can name both;
+// without a pipe the label renders as written, count and all.
+func formatCount(label string, n int) string {
+	if head, tail, found := strings.Cut(label, "|"); found {
+		if n == 1 {
+			return head
+		}
+		return formatLabel(tail, n)
+	}
+	return formatLabel(label, n)
+}
+
+// labelIssues checks the locale label sets a project registered: month
+// calendars that cannot render every month, and translations that dropped a
+// placeholder the default carries, which would silently lose an argument at
+// render time.
+func (r *Router) labelIssues() []ContentIssue {
+	var issues []ContentIssue
+	locales := make([]string, 0, len(r.localeUI))
+	for locale := range r.localeUI {
+		locales = append(locales, locale)
+	}
+	sort.Strings(locales)
+	for _, locale := range locales {
+		set := r.localeUI[locale]
+		if len(set.Months) != 0 && len(set.Months) != 12 {
+			issues = append(issues, ContentIssue{RoutePath: localeTagPath(locale),
+				Message: fmt.Sprintf("locale %q translates %d month names, want 12", locale, len(set.Months))})
+		}
+		if len(set.ShortMonths) != 0 && len(set.ShortMonths) != 12 {
+			issues = append(issues, ContentIssue{RoutePath: localeTagPath(locale),
+				Message: fmt.Sprintf("locale %q translates %d short month names, want 12", locale, len(set.ShortMonths))})
+		}
+		if dup := duplicateString(set.Months); dup != "" {
+			issues = append(issues, ContentIssue{RoutePath: localeTagPath(locale),
+				Message: fmt.Sprintf("locale %q names two months %q", locale, dup)})
+		}
+		issues = append(issues, placeholderIssues(locale, reflect.ValueOf(r.localeUI[locale]), reflect.ValueOf(defaultUIStrings))...)
+	}
+	return issues
+}
+
+func localeTagPath(locale string) string {
+	return "labels/" + locale
+}
+
+func duplicateString(values []string) string {
+	seen := map[string]bool{}
+	for _, value := range values {
+		if value == "" || seen[value] {
+			return value
+		}
+		seen[value] = true
+	}
+	return ""
+}
+
+// placeholderIssues walks two label structs field by field and reports any
+// string whose verb count no longer matches the default's.
+func placeholderIssues(locale string, got, want reflect.Value) []ContentIssue {
+	var issues []ContentIssue
+	if got.Type() != want.Type() {
+		return issues
+	}
+	switch got.Kind() {
+	case reflect.Struct:
+		for i := range got.NumField() {
+			if !got.Field(i).CanInterface() {
+				continue
+			}
+			issues = append(issues, placeholderIssues(locale, got.Field(i), want.Field(i))...)
+		}
+	case reflect.String:
+		gotLabel, wantLabel := got.String(), want.String()
+		if gotLabel == "" {
+			return issues
+		}
+		if countFormatDirectives(gotLabel) != countFormatDirectives(wantLabel) {
+			issues = append(issues, ContentIssue{RoutePath: localeTagPath(locale),
+				Message: fmt.Sprintf("locale %q label %q carries %d placeholders, the default carries %d",
+					locale, gotLabel, countFormatDirectives(gotLabel), countFormatDirectives(wantLabel))})
+		}
+	}
+	return issues
 }
 
 // formatDate renders a date with the configured layout.

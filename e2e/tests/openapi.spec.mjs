@@ -36,7 +36,7 @@ test('OpenAPI reference collects path parameters and JSON request bodies', async
   await expect(response).toContainText('/v1/projects/prj_e2e');
 
   await select.selectOption({ label: 'GET · /projects' });
-  const limitInput = page.locator('[data-openapi-inputs-for="fastr-openapi-operation-1"] [data-openapi-param-name="limit"]');
+  const limitInput = page.locator('[data-openapi-inputs-for="fastr-openapi-operation-api-reference-1"] [data-openapi-param-name="limit"]');
   await limitInput.fill('5');
   await page.locator('[data-openapi-try]').click();
   await expect(response).toContainText('200');

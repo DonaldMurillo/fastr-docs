@@ -55,6 +55,7 @@ func (r *Router) ContentIssues() []ContentIssue {
 	}
 	var issues []ContentIssue
 	issues = append(issues, r.translationIssues()...)
+	issues = append(issues, r.labelIssues()...)
 	for _, route := range r.Routes() {
 		if route == nil || route.page == nil || route.page.Body != nil {
 			continue
@@ -119,6 +120,8 @@ func (r *Router) translationIssues() []ContentIssue {
 			issue.Message = fmt.Sprintf("translation_of points at %q, which no route serves", ref)
 		case target == route:
 			issue.Message = "translation_of points at the page itself"
+		case target.Metadata.Draft:
+			issue.Message = fmt.Sprintf("translation_of points at %q, which is a draft; publish the original before translating it", ref)
 		case r.effectiveLocale(target) == r.effectiveLocale(route):
 			issue.Message = fmt.Sprintf("translation_of points at %q, which is in the same language (%q); a translation needs its own locale", ref, r.effectiveLocale(route))
 		default:

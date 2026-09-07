@@ -43,7 +43,7 @@ func TestPluginRegistersRichReferenceScreen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderPage() error = %v", err)
 	}
-	for _, marker := range []string{"data-openapi-reference", "data-openapi-server-url=\"https://api.example.com/v1\"", "data-fui-scrollspy", "ui-anchored-rail", "data-openapi-try", "data-openapi-inputs-for=\"fastr-openapi-operation-1\"", "#fastr-openapi-operation-1", "GET", "/projects", "Project"} {
+	for _, marker := range []string{"data-openapi-reference", "data-openapi-server-url=\"https://api.example.com/v1\"", "data-fui-scrollspy", "ui-anchored-rail", "data-openapi-try", "data-openapi-inputs-for=\"fastr-openapi-operation-api-reference-1\"", "#fastr-openapi-operation-api-reference-1", "GET", "/projects", "Project"} {
 		if !strings.Contains(string(html), marker) {
 			t.Fatalf("rendered reference missing %q: %s", marker, html)
 		}

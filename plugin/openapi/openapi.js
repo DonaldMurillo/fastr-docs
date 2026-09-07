@@ -11,6 +11,15 @@
           operation.hidden = Boolean(query) && !operation.dataset.openapiSearch.includes(query);
         });
       });
+      // Escape is the keyboard way out of a narrowed list: clear and show
+      // every operation again.
+      filter.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && filter.value) {
+          filter.value = '';
+          operations.forEach(operation => { operation.hidden = false; });
+          event.stopPropagation();
+        }
+      });
 
       const select = root.querySelector('[data-openapi-operation-select]');
       const send = root.querySelector('[data-openapi-try]');
@@ -26,6 +35,15 @@
         });
       };
       select.addEventListener('change', syncInputs);
+      // A deep link names an operation by its card id; landing on it
+      // preselects that operation in the console instead of the first.
+      if (location.hash) {
+        const target = root.querySelector(location.hash);
+        if (target && target.dataset.openapiOperation !== undefined) {
+          const wanted = [...select.options].find(option => option.value === target.id);
+          if (wanted) select.value = wanted.value;
+        }
+      }
       syncInputs();
 
       send.addEventListener('click', async () => {
@@ -77,6 +95,8 @@
           return;
         }
         response.textContent = `${method} ${url}\n\nLoading…`;
+        response.dataset.state = 'loading';
+        send.disabled = true;
         const headers = { Accept: 'application/json' };
         fields.forEach(field => {
           if (field.dataset.openapiParamIn !== 'header' || !valueFor(field)) return;
@@ -109,14 +129,22 @@
           return;
         }
         try {
-          const request = { method, headers };
-          if (body !== undefined) request.body = body;
-          const result = await fetch(url, request);
-          const responseBody = await result.text();
-          response.textContent = `${method} ${url}\n\n${result.status} ${result.statusText}\n${responseBody}`;
-        } catch (error) {
-          const detail = error && error.message ? ` (${error.message})` : '';
-          response.textContent = `${method} ${url}\n\nRequest failed. Check the server URL, network access, and CORS policy.${detail}`;
+          try {
+            const request = { method, headers };
+            if (body !== undefined) request.body = body;
+            const result = await fetch(url, request);
+            const responseBody = await result.text();
+            response.textContent = `${method} ${url}\n\n${result.status} ${result.statusText}\n${responseBody}`;
+          } catch (error) {
+            const detail = error && error.message ? ` (${error.message})` : '';
+            response.textContent = `${method} ${url}\n\nRequest failed. Check the server URL, network access, and CORS policy.${detail}`;
+          }
+        } finally {
+          // Errors land inline in the response pane rather than only the
+          // console, the button comes back, and the pane stops announcing
+          // itself as loading.
+          delete response.dataset.state;
+          send.disabled = false;
         }
       });
     });

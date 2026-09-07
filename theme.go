@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/DonaldMurillo/gofastr/core-ui/style"
@@ -34,6 +35,54 @@ type ThemeOverrides = uitheme.Overrides
 // CustomCSS is appended after the fastr-docs visual layer, so it is suitable
 // for project-specific components and small layout adjustments. Keep it in
 // source control and treat it as trusted CSS.
+// Variables returns the theme's CSS custom properties as data: the
+// template's baseline with this config's overrides applied. Tooling can
+// diff or preview a theme without parsing CSS.
+func (c ThemeConfig) Variables() map[string]string {
+	vars := map[string]string{}
+	for k, v := range templateVariables(c.Template) {
+		vars[k] = v
+	}
+	for k, v := range overridesVariables(c.Overrides) {
+		vars[k] = v
+	}
+	if strings.TrimSpace(c.CustomCSS) != "" {
+		vars["custom-css-bytes"] = strconv.Itoa(len(c.CustomCSS))
+	}
+	return vars
+}
+
+func overridesVariables(o ThemeOverrides) map[string]string {
+	vars := map[string]string{}
+	set := func(token, value string) {
+		if strings.TrimSpace(value) != "" {
+			vars[token] = value
+		}
+	}
+	set("color-background", o.Background)
+	set("color-surface", o.Surface)
+	set("color-surface-soft", o.SurfaceSoft)
+	set("color-border", o.Border)
+	set("color-border-strong", o.BorderStrong)
+	set("color-text", o.Text)
+	set("color-text-muted", o.TextMuted)
+	set("color-text-subtle", o.TextSubtle)
+	set("color-primary", o.Primary)
+	set("color-primary-fg", o.PrimaryFg)
+	set("color-accent", o.Accent)
+	set("color-success", o.Success)
+	set("color-warning", o.Warning)
+	set("color-danger", o.Danger)
+	set("color-info", o.Info)
+	set("font-body", o.FontBody)
+	set("font-heading", o.FontHeading)
+	set("font-mono", o.FontMono)
+	for k, v := range o.DarkColors {
+		vars["dark-"+k] = v
+	}
+	return vars
+}
+
 type ThemeConfig struct {
 	// Template is the starting point; one of ThemeTemplates.
 	Template Template
@@ -171,6 +220,10 @@ func DefaultTheme() style.Theme {
 
 func themeForTemplate(template Template, overrides ThemeOverrides) style.Theme {
 	return uitheme.Default(templateOverrides(template), overrides)
+}
+
+func templateVariables(template Template) map[string]string {
+	return overridesVariables(templateOverrides(template))
 }
 
 func templateOverrides(template Template) ThemeOverrides {

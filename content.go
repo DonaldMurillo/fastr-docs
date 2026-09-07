@@ -455,6 +455,9 @@ func collectionRootTitle(sourceRoot string) string {
 // Markdown body is stored without front matter so render, search, and TOC
 // all consume the same content.
 func pageMetadata(cfg PageConfig) (ContentMetadata, string, error) {
+	if cfg.Source != "" && cfg.SourcePath != "" {
+		return ContentMetadata{}, "", errors.New("docs: PageConfig sets both Source and SourcePath; pick one")
+	}
 	var document MarkdownDocument
 	var err error
 	source := cfg.Source

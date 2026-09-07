@@ -38,6 +38,10 @@ type ExportManifest struct {
 	Routes []ManifestRoute `json:"routes"`
 	// Redirects lists the source-to-target pairs the export writes.
 	Redirects []ManifestRedirect `json:"redirects,omitempty"`
+	// Drawers names the mounted navigation drawer widgets, one per
+	// language plus one per blog collection, so an offline host can
+	// precache exactly the chrome that exists.
+	Drawers []string `json:"drawers,omitempty"`
 }
 
 // ManifestRoute is one published route in the export manifest, carrying the
@@ -70,6 +74,12 @@ type ManifestRoute struct {
 	Blog bool `json:"blog,omitempty"`
 	// BlogIndex marks a collection's generated landing view.
 	BlogIndex bool `json:"blogIndex,omitempty"`
+	// DatePublished is the page's publish date as declared, for consumers
+	// that sort or display recency.
+	DatePublished string `json:"datePublished,omitempty"`
+	// Alternates maps language tags to the route's translations, the
+	// hreflang pairs derived from the route tree.
+	Alternates map[string]string `json:"alternates,omitempty"`
 }
 
 // ManifestRedirect is one source-to-target pair of the export's redirects.
@@ -94,6 +104,7 @@ func (r *Router) ExportManifestJSON(basePath string) ([]byte, error) {
 		AssetsPrefix:  basePath + "/assets/",
 		Locales:       r.Locales(),
 		Versions:      r.Versions(),
+		Drawers:       r.navigationDrawerNames(),
 	}
 	for _, route := range r.PublishedRoutes() {
 		manifest.Routes = append(manifest.Routes, ManifestRoute{
@@ -102,6 +113,7 @@ func (r *Router) ExportManifestJSON(basePath string) ([]byte, error) {
 			Locale: route.Metadata.Locale, Version: route.Metadata.Version,
 			Tags: cloneStrings(route.Tags), Offline: route.Offline,
 			NoIndex: route.Metadata.NoIndex, Blog: route.Blog, BlogIndex: route.BlogIndex,
+			DatePublished: route.Metadata.DatePublished, Alternates: r.alternatesFor(route),
 		})
 		for _, from := range route.Metadata.Redirects {
 			if clean := safeRedirectPath(from); clean != "" {

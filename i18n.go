@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -31,6 +32,12 @@ func WithLocaleFallback(defaultLocale string) Option {
 // This is deliberately only about pairing. Which routes publish is decided by
 // localeAllows, and that is left alone: a route with no declared locale is
 // still served in every locale build.
+// localeShape accepts BCP 47 shaped tags: a two or three letter primary
+// subtag, optionally extended. Front matter values are checked against it so
+// "spanish" or a dangling "es-" fails at build time instead of forking the
+// language pairing silently.
+var localeShape = regexp.MustCompile(`^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{1,8})*$`)
+
 func (r *Router) effectiveLocale(route *Route) string {
 	if route == nil {
 		return ""
@@ -49,6 +56,35 @@ func (r *Router) effectiveLocale(route *Route) string {
 // rules. A path with no route, such as a 404, takes the language of the
 // deepest route above it, so a missed URL under /es still answers in Spanish.
 // A path in no language at all is the host language.
+// rtlLocales lists the primary subtags whose writing direction is right to
+// left. DirectionFor answers per page so hosts can set <html dir> the way
+// WithLangFunc sets <html lang>.
+var rtlLocales = map[string]bool{
+	"ar": true, "he": true, "fa": true, "ur": true,
+	"ps": true, "sd": true, "ug": true, "yi": true,
+}
+
+// DirectionFor returns "rtl" or "ltr" for the document served at path,
+// resolved the way LanguageFor resolves the language: the route's effective
+// locale, or the deepest route above an unmatched path.
+func (r *Router) DirectionFor(path string) string {
+	if r == nil {
+		return "ltr"
+	}
+	locale := r.LanguageFor(path)
+	if locale == "" {
+		return "ltr"
+	}
+	primary := locale
+	if dash := strings.IndexByte(primary, '-'); dash > 0 {
+		primary = primary[:dash]
+	}
+	if rtlLocales[strings.ToLower(primary)] {
+		return "rtl"
+	}
+	return "ltr"
+}
+
 func (r *Router) LanguageFor(path string) string {
 	if r == nil {
 		return "en"
@@ -214,6 +250,14 @@ func (r *Router) LocaleCoverage() map[string][]string {
 	for _, locale := range r.Locales() {
 		if missing := r.UntranslatedFamilies(locale); len(missing) > 0 {
 			coverage[locale] = missing
+		}
+	}
+	// A locale that exists only as a label set is a translation someone
+	// started; reporting it with every family missing says so instead of
+	// letting it vanish from coverage.
+	for locale := range r.localeUI {
+		if _, seen := coverage[locale]; !seen {
+			coverage[locale] = r.UntranslatedFamilies(locale)
 		}
 	}
 	return coverage

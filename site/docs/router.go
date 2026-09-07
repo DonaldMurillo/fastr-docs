@@ -33,6 +33,7 @@ func NewRouter() *docs.Router {
 		docs.WithLocaleUIStrings("es", docs.UIStrings{
 			Contents:          "Contenido",
 			Home:              "Inicio",
+			SkipToContent:     "Saltar al contenido principal",
 			Sections:          "Secciones",
 			OnThisPage:        "En esta página",
 			Search:            "Buscar",
@@ -623,6 +624,7 @@ func NewRouter() *docs.Router {
 	}
 	if err := router.Use(openapi.Plugin{
 		SpecPath:    contractFileES(),
+		ServerURL:   os.Getenv("API_SERVER_URL"),
 		Path:        "/es/api-reference",
 		Title:       "Referencia de la API de ejemplo",
 		Description: "El mismo contrato pequeño, traducido: cada montura del plugin declara su idioma y sus etiquetas.",

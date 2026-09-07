@@ -120,6 +120,8 @@ func (r *Router) chromeTemplate(ctx context.Context, fallbackPath string) render
 	return render.Tag("template", map[string]string{
 		"data-fastr-docs-chrome": "",
 		"data-fastr-docs-lang":   r.LanguageFor(currentPath),
+		"data-fastr-docs-dir":    r.DirectionFor(currentPath),
+		"data-fastr-docs-skip":   r.uiAt(currentPath).SkipToContent,
 	}, (&docsHeader{router: r}).siteHeader(currentPath))
 }
 
@@ -375,7 +377,7 @@ func (r *Router) variantTarget(current *Route, dimension, value string) *Route {
 }
 
 func (r *Router) routeAtPath(path string) *Route {
-	path = normalizePath(path)
+	path = normalizePath(strings.SplitN(strings.SplitN(path, "?", 2)[0], "#", 2)[0])
 	for _, route := range r.Routes() {
 		if route.Path == path {
 			return route
@@ -396,16 +398,19 @@ func variantFamily(route *Route) string {
 		return ""
 	}
 	parts := strings.Split(strings.Trim(route.Path, "/"), "/")
+	// Segments compare case-insensitively: locales are normalized to
+	// lowercase at registration, while the path itself keeps the spelling
+	// the project chose (pt-BR stays pt-BR in the URL).
 	remove := map[string]bool{}
 	if route.Metadata.Locale != "" {
-		remove[route.Metadata.Locale] = true
+		remove[strings.ToLower(route.Metadata.Locale)] = true
 	}
 	if route.Metadata.Version != "" {
-		remove[route.Metadata.Version] = true
+		remove[strings.ToLower(route.Metadata.Version)] = true
 	}
 	filtered := parts[:0]
 	for _, part := range parts {
-		if !remove[part] {
+		if !remove[strings.ToLower(part)] {
 			filtered = append(filtered, part)
 		}
 	}
@@ -653,7 +658,7 @@ func (r *Router) sidebarConfig(currentPath string) ui.SidebarConfig {
 // precache depend on it); every other locale derives one, the way
 // blogDrawerName does for a collection.
 func docsDrawerName(locale string) string {
-	value := strings.TrimSpace(locale)
+	value := strings.ToLower(strings.TrimSpace(locale))
 	if value == "" {
 		return "fastr-docs-sections"
 	}
@@ -677,6 +682,11 @@ func (r *Router) localeDrawerHomes() []*Route {
 		return nil
 	}
 	defaultHome := r.routes["/"]
+	if defaultHome != nil && defaultHome.Hidden {
+		// A hidden home cannot label the default drawer; mount it from the
+		// bare roots list instead, the way a home-less site does.
+		defaultHome = nil
+	}
 	seen := make(map[string]bool, 4)
 	locales := make([]string, 0, 4)
 	for _, family := range r.localeFamilyLocales() {
@@ -692,6 +702,23 @@ func (r *Router) localeDrawerHomes() []*Route {
 	sort.Strings(locales)
 	homes := []*Route{defaultHome}
 	drawers := map[string]bool{docsDrawerName(""): true}
+	seenVersionFamily := map[string]bool{}
+	for _, home := range r.versionHomes() {
+		if home == nil || home == defaultHome {
+			continue
+		}
+		family := r.familyOf(home)
+		if family != "" && seenVersionFamily[family] {
+			continue
+		}
+		if drawer := docsDrawerName("v-" + home.Metadata.Version); !drawers[drawer] {
+			drawers[drawer] = true
+			if family != "" {
+				seenVersionFamily[family] = true
+			}
+			homes = append(homes, home)
+		}
+	}
 	for _, locale := range locales {
 		home := r.findVariant(r.roots, nil, "", locale)
 		if home == nil || home == defaultHome {
@@ -725,6 +752,32 @@ func (r *Router) localeDrawerNames() string {
 	return strings.Join(pairs, ";")
 }
 
+// versionHomes lists one home per version family: the route that opens the
+// version's tree, so a versioned site gets a drawer per version exactly the
+// way a translated one gets one per language.
+func (r *Router) versionHomes() []*Route {
+	if r == nil {
+		return nil
+	}
+	// One home per version FAMILY, not per version: /guide (v2) and
+	// /v1/guide pair as variants of one guide, and the drawer count follows
+	// the families the reader can cross between.
+	seen := map[string]bool{}
+	var homes []*Route
+	for _, route := range r.Routes() {
+		version := strings.TrimSpace(route.Metadata.Version)
+		if version == "" || seen[version] {
+			continue
+		}
+		if !r.routeVisible(route) {
+			continue
+		}
+		seen[version] = true
+		homes = append(homes, route)
+	}
+	return homes
+}
+
 // drawerRoots is the whole navigation tree for one locale's drawer. The
 // desktop rail narrows to the section being read (sidebarRoots); the drawer
 // is the only navigation a phone has, so it carries the locale's home plus
@@ -744,8 +797,15 @@ func (r *Router) docsDrawerConfig(home *Route, drawer string) ui.SidebarConfig {
 	if home != nil && home.Path != "/" {
 		currentPath = home.Path
 	}
+	// On a single-language site whose only locale is not the default
+	// ("everything is Spanish", no fallback declared), the default drawer
+	// must still speak that language: read labels from the home's locale.
+	title := r.uiAt(currentPath).Contents
+	if currentPath == "" && home != nil && home.Path == "/" {
+		title = r.uiAt(home.Path).Contents
+	}
 	return ui.SidebarConfig{
-		Title:                 r.uiAt(currentPath).Contents,
+		Title:                 title,
 		Items:                 r.sidebarItems(r.drawerRoots(home), currentPath),
 		DrawerName:            drawer,
 		SuppressDrawerTrigger: true,
@@ -760,22 +820,63 @@ func (r *Router) docsDrawerConfig(home *Route, drawer string) ui.SidebarConfig {
 func (r *Router) docsSectionSelect(currentPath, id string) render.HTML {
 	labels := r.uiAt(currentPath)
 	options := make([]ui.SelectOption, 0, 8)
+	items := r.headerItems(currentPath)
 	if home := r.localeHome(currentPath); home != nil {
 		options = append(options, ui.SelectOption{Value: home.Path, Text: labels.Home})
+		for _, item := range items {
+			options = append(options, ui.SelectOption{Value: item.Href, Text: item.Label})
+		}
+	} else if len(items) > 0 {
+		// A site with no home route still needs a first option meaning
+		// "the beginning": the first section stands in, labeled Home.
+		options = append(options, ui.SelectOption{Value: items[0].Href, Text: labels.Home})
+		for _, item := range items[1:] {
+			options = append(options, ui.SelectOption{Value: item.Href, Text: item.Label})
+		}
 	}
-	for _, item := range r.headerItems(currentPath) {
-		options = append(options, ui.SelectOption{Value: item.Href, Text: item.Label})
+	// A versioned family puts one sibling per version in the select, so the
+	// reader crosses versions from the drawer the way the selector crosses
+	// languages.
+	for _, home := range r.versionHomes() {
+		if home == nil || home.Path == "" {
+			continue
+		}
+		duplicate := false
+		for _, option := range options {
+			if option.Value == home.Path {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			options = append(options, ui.SelectOption{Value: home.Path, Text: home.Title})
+		}
 	}
 	return ui.Select(ui.SelectConfig{
 		Name:    "docs-section",
 		ID:      id,
 		Label:   labels.Sections,
+		Help:    labels.SectionHelp,
 		Options: options,
 		Class:   "fastr-docs-section-select",
 		ExtraAttrs: html.Attrs{
 			"data-fastr-docs-section-select": "true",
+			"autocomplete":                   "off",
+			// Each option's route path rides along, so the runtime can
+			// prefix-match and re-sync without parsing option text.
+			"data-fastr-docs-section-paths": strings.Join(sectionPaths(options), ","),
 		},
 	})
+}
+
+func sectionPaths(options []ui.SelectOption) []string {
+	paths := make([]string, 0, len(options))
+	for _, option := range options {
+		if option.Value != "" {
+			paths = append(paths, option.Value)
+		}
+	}
+	return paths
 }
 
 // navigationDrawerBody is a drawer widget's content: the section select

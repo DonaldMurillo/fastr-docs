@@ -21,6 +21,18 @@ const docsRuntimeJS = `(function(){
     select.dataset.docsTocReady = 'true';
     var rail = document.querySelector('.fastr-docs-toc--rail');
     var requestedHref = '';
+    function restore(){
+      try {
+        var saved = sessionStorage.getItem('fastrDocsToc.' + normalizeDocsPath(location.pathname));
+        if (saved && select.querySelector('option[value="' + saved + '"]')) {
+          select.value = saved;
+          requestedHref = saved;
+        }
+      } catch (_) {}
+    }
+    function remember(href){
+      try { sessionStorage.setItem('fastrDocsToc.' + normalizeDocsPath(location.pathname), href); } catch (_) {}
+    }
     function sync(){
       if (!rail) return;
       var active = rail.querySelector('a[aria-current="true"]');
@@ -41,10 +53,13 @@ const docsRuntimeJS = `(function(){
       var target = document.querySelector(href);
       if (!target) return;
       requestedHref = href;
+      remember(href);
       window.history.replaceState(null, '', href);
-      if (target) target.scrollIntoView({behavior:'smooth', block:'start'});
+      var smooth = !window.matchMedia || !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (target) target.scrollIntoView({behavior: smooth ? 'smooth' : 'auto', block:'start'});
     }
     select.addEventListener('change', onChange);
+    restore();
     sync();
     window.__fastrDocsTocCleanup = function(){
       if (observer) observer.disconnect();
@@ -73,7 +88,9 @@ const docsRuntimeJS = `(function(){
   // the base and any trailing slash removed, so a path from location and a
   // path from the page compare equal.
   function normalizeDocsPath(value){
-    var path = String(value || '/').split(/[?#]/, 1)[0] || '/';
+    var raw = String(value || '/').split(/[?#]/, 1)[0] || '/';
+    var path = raw;
+    try { path = decodeURIComponent(raw); } catch (_) { path = raw; }
     path = path.length > 1 ? path.replace(/\/+$/, '') : path;
     var base = docsBase();
     if (base && (path === base || path.indexOf(base + '/') === 0)) path = path.slice(base.length) || '/';
@@ -172,8 +189,10 @@ const docsRuntimeJS = `(function(){
           if (node.matches && node.matches('select[data-fastr-docs-section-select]')) bindSectionSelect(node);
           node.querySelectorAll('select[data-fastr-docs-section-select]').forEach(bindSectionSelect);
         });
+        if (mutation.type === 'attributes' && mutation.attributeName === 'hidden') syncDrawerTriggers();
       });
     });
+    observer.observe(document.documentElement, {childList: true, subtree: true, attributes: true, attributeFilter: ['hidden']});
     observer.observe(document.documentElement, {childList: true, subtree: true});
     window.__fastrDocsSectionSelectObserver = observer;
   }
@@ -228,11 +247,32 @@ const docsRuntimeJS = `(function(){
       target.hidden = false;
     });
   }
-  function syncDocsSidebars(){
+  // The drawer widgets toggle a hidden attribute as GoFastr opens and closes
+  // them. Syncing the triggers off that attribute gives every trigger the
+  // aria-expanded state screen readers expect, and returns focus to the
+  // trigger when its drawer closes.
+  function syncDrawerTriggers(){
+    document.querySelectorAll('[data-fui-widget]').forEach(function(widget){
+      var name = widget.getAttribute('data-fui-widget') || '';
+      if (name.indexOf('fastr-docs-sections') !== 0 && name.indexOf('fastr-docs-blog') !== 0) return;
+      var open = !(widget.hasAttribute('hidden') || widget.getAttribute('aria-hidden') === 'true');
+      var triggers = document.querySelectorAll('.fastr-docs-mobile-nav-trigger');
+      Array.prototype.forEach.call(triggers, function(trigger){
+        if (trigger.getAttribute('data-fui-open') === name) {
+          trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+          if (!open && widget.dataset.docsFocusReturned !== 'true' && document.activeElement && widget.contains(document.activeElement)) {
+            trigger.focus();
+          }
+          if (open) delete widget.dataset.docsFocusReturned;
+        }
+      });
+    });
+  }
+    function syncDocsSidebars(){
     // The attribute prefix matches every locale's drawer: the suffixed
     // fastr-docs-sections-es owns the same active-link state as the
     // default one, or a translated drawer keeps whatever the server baked.
-    document.querySelectorAll('.ui-sidebar--persistent, [data-fui-widget^="fastr-docs-sections"]').forEach(syncDocsSidebar);
+    document.querySelectorAll('.ui-sidebar--persistent, [data-fui-widget^="fastr-docs-sections"], [data-fui-widget^="fastr-docs-blog"]').forEach(syncDocsSidebar);
   }
   function initSidebarState(){
     syncDocsSidebars();
@@ -290,6 +330,8 @@ const docsRuntimeJS = `(function(){
     var close = trigger.getAttribute('data-fastr-docs-search-close');
     var input = document.getElementById('fastr-docs-command-palette-input');
     if (input && placeholder) input.setAttribute('placeholder', placeholder);
+    var modal = input ? input.closest('[role="dialog"], [data-fui-widget]') : null;
+    if (modal && placeholder) modal.setAttribute('aria-label', placeholder);
     var button = document.querySelector('.fastr-docs-command-palette__close');
     if (button && close) button.setAttribute('aria-label', close);
   }
@@ -418,6 +460,21 @@ const docsRuntimeJS = `(function(){
     }).join('');
     list.removeAttribute('data-fui-static-options');
     list.removeAttribute('hidden');
+    announceJSONResultCount(ranked.length, query);
+  }
+  // Screen readers hear how many results arrived rather than silence
+  // followed by an unannounced list swap.
+  function announceJSONResultCount(count, query){
+    var existing = document.getElementById('fastr-docs-search-count');
+    if (!existing) {
+      existing = document.createElement('p');
+      existing.id = 'fastr-docs-search-count';
+      existing.setAttribute('role', 'status');
+      existing.setAttribute('aria-live', 'polite');
+      existing.className = 'ui-visually-hidden';
+      document.body.appendChild(existing);
+    }
+    existing.textContent = count + (query ? ' / ' + query : '');
   }
   // Search results stay in the language of the page the reader is on. The
   // index carries every locale, so without this a Spanish reader gets English
@@ -761,6 +818,25 @@ const docsRuntimeJS = `(function(){
     }
     var lang = template.getAttribute('data-fastr-docs-lang');
     if (lang) document.documentElement.setAttribute('lang', lang);
+    var dir = template.getAttribute('data-fastr-docs-dir');
+    if (dir) document.documentElement.setAttribute('dir', dir);
+    var skip = template.getAttribute('data-fastr-docs-skip');
+    if (skip) {
+      var skipLink = document.querySelector('.skip-link');
+      if (skipLink) skipLink.textContent = skip;
+    }
+  }
+  // A theme change in one tab should reach the others. GoFastr's toggle
+  // persists under its own key; any storage write whose key mentions theme
+  // re-syncs this tab from the same source of truth.
+  function watchThemeStorage(){
+    if (window.__fastrDocsThemeStorage) return;
+    window.__fastrDocsThemeStorage = true;
+    window.addEventListener('storage', function(event){
+      if (event && event.key && event.key.toLowerCase().indexOf('theme') !== -1) {
+        location.reload();
+      }
+    });
   }
   function init(){
     if (window.__fastrDocsTocCleanup) window.__fastrDocsTocCleanup();
@@ -772,6 +848,7 @@ const docsRuntimeJS = `(function(){
     initBlogShare();
     initSidebarState();
     syncDocsDrawerTrigger();
+    syncDrawerTriggers();
     syncSectionSelects();
     initSectionSelects();
     watchSectionSelects();
@@ -781,6 +858,7 @@ const docsRuntimeJS = `(function(){
     initVariantSelectors();
     initVariantActiveLinks();
     watchPaletteForLocalization();
+    watchThemeStorage();
     if (window.__fastrDocsRuntimeReady) return;
     window.__fastrDocsRuntimeReady = true;
     var scheduleInit = function(){ setTimeout(init, 0); };
@@ -794,6 +872,8 @@ const docsRuntimeJS = `(function(){
   else init();
   window.fastrDocs = window.fastrDocs || {};
   window.fastrDocs.initTocSelect = initTocSelect;
+  window.fastrDocs.initSectionSelects = initSectionSelects;
+  window.fastrDocs.syncSectionSelects = syncSectionSelects;
   window.fastrDocs.initPagefindSearch = initPagefindSearch;
   window.fastrDocs.initBlogSearch = initBlogSearch;
   window.fastrDocs.initBlogShare = initBlogShare;

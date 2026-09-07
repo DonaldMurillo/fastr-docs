@@ -207,7 +207,10 @@ func markdownHeadings(source string) []Heading {
 		for level < len(trimmed) && trimmed[level] == '#' {
 			level++
 		}
-		if level < 2 || level > 3 {
+		// h2 and h3 drive the rail; h4 joins when it is the deepest level
+		// the page uses, so a page organized entirely in h4s still gets a
+		// table of contents instead of none at all.
+		if level < 2 || level > 4 {
 			continue
 		}
 		title := strings.TrimSpace(strings.TrimLeft(trimmed, "# "))
@@ -231,6 +234,46 @@ func markdownHeadings(source string) []Heading {
 // source of HTML, then repairs only the generated h2/h3 IDs so duplicate
 // headings remain valid HTML and every scrollspy item has a unique target.
 // GoFastr's slugger is intentionally stable and does not suffix duplicates.
+// headingAnchorButtons adds a copyable anchor to every h2 and h3 the page
+// carries. Headings come from GoFastr's renderer without one, and a reader
+// linking a section by hand has to fish the URL out of the TOC otherwise.
+func headingAnchorButtons(markdown string) string {
+	var out strings.Builder
+	for offset := 0; offset < len(markdown); {
+		next2 := strings.Index(markdown[offset:], `<h2 id="`)
+		next3 := strings.Index(markdown[offset:], `<h3 id="`)
+		next := -1
+		if next2 >= 0 {
+			next = next2
+		}
+		if next3 >= 0 && (next < 0 || next3 < next) {
+			next = next3
+		}
+		if next < 0 {
+			out.WriteString(markdown[offset:])
+			break
+		}
+		next += offset
+		idStart := next + strings.Index(markdown[next:], ` id="`) + len(` id="`)
+		idEndRel := strings.IndexByte(markdown[idStart:], '"')
+		if idEndRel < 0 {
+			out.WriteString(markdown[offset:])
+			break
+		}
+		idEnd := idStart + idEndRel
+		closeRel := strings.Index(markdown[idEnd:], "</h")
+		if closeRel < 0 {
+			out.WriteString(markdown[offset:])
+			break
+		}
+		id := markdown[idStart:idEnd]
+		out.WriteString(markdown[offset : idEnd+closeRel])
+		out.WriteString(` <a class="heading-anchor" href="#` + render.Escape(id) + `" aria-hidden="true">#</a>`)
+		offset = idEnd + closeRel
+	}
+	return out.String()
+}
+
 func dedupeMarkdownHeadingIDs(markdown string) string {
 	counts := make(map[string]int)
 	var out strings.Builder

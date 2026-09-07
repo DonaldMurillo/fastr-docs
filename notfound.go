@@ -113,7 +113,25 @@ func (s NotFoundScreen) render(path string) render.HTML {
 	if path != "" {
 		message = render.Escape(formatLabel(labels.MessageForURL, path))
 	}
-	return render.Raw(`<div class="fastr-docs-not-found">` +
+	// Every language this screen serves tells search engines about its
+	// siblings, the same pairing pages carry, so a missed URL is not seen as
+	// six duplicate dead ends.
+	var head strings.Builder
+	for _, locale := range s.Locales {
+		if strings.TrimSpace(locale.Prefix) == "" {
+			continue
+		}
+		lang := strings.Trim(strings.TrimPrefix(locale.Prefix, "/"), "/")
+		if dash := strings.IndexByte(lang, '/'); dash > 0 {
+			lang = lang[:dash]
+		}
+		if lang == "" {
+			continue
+		}
+		head.WriteString(`<link rel="alternate" hreflang="` + render.Escape(lang) + `" href="` + render.Escape(locale.Prefix) + `">`)
+	}
+	return render.Raw(head.String() +
+		`<div class="fastr-docs-not-found">` +
 		`<p class="fastr-docs-not-found__code">404</p>` +
 		`<h1>` + render.Escape(labels.Heading) + `</h1>` +
 		`<p class="fastr-docs-not-found__message">` + message + `</p>` +
@@ -144,7 +162,18 @@ func WriteStaticNotFound(dir, basePath string, screen NotFoundScreen, css string
 	}
 	body := screen.RenderNotFound("")
 	title := stdhtml.EscapeString("404: " + screen.SiteName)
-	document := `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>` + title + `</title><link rel="stylesheet" href="` + stdhtml.EscapeString(basePath+"/404.css") + `"></head><body>` + string(body) + `</body></html>`
+	// The hreflang alternates carry root-relative route paths; the export
+	// serves below a base, so they are rewritten like every other URL the
+	// static writer touches.
+	rendered := string(body)
+	if basePath != "" {
+		for _, locale := range screen.Locales {
+			if prefix := strings.TrimSpace(locale.Prefix); prefix != "" {
+				rendered = strings.ReplaceAll(rendered, `href="`+prefix+`">`, `href="`+basePath+prefix+`">`)
+			}
+		}
+	}
+	document := `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>` + title + `</title><link rel="stylesheet" href="` + stdhtml.EscapeString(basePath+"/404.css") + `"></head><body>` + rendered + `</body></html>`
 	if err := os.WriteFile(filepath.Join(dir, "404.html"), []byte(document), 0o644); err != nil {
 		return fmt.Errorf("docs: write static 404.html: %w", err)
 	}
@@ -247,6 +276,14 @@ func RewriteStaticCSP(dir, policy string) error {
 // is, and what its labels are. Getting any of those wrong is invisible until
 // someone mistypes a URL.
 func (r *Router) NotFoundScreen() NotFoundScreen {
+	if r != nil && r.customNotFound.SiteName != "" || (r != nil && r.customNotFound.Strings.Heading != "") {
+		screen := r.customNotFound
+		if screen.SiteName == "" {
+			screen.SiteName = r.SiteName()
+		}
+		screen.Locales = append(screen.Locales, r.customNotFound.Locales...)
+		return screen
+	}
 	screen := NotFoundScreen{SiteName: r.SiteName(), Strings: r.UIStrings().NotFound}
 	if r == nil {
 		return screen

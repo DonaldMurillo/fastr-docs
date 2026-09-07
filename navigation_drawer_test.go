@@ -183,7 +183,7 @@ func TestMobileHeadingScrollOffsetClearsTheStickyBars(t *testing.T) {
 	}
 	mobile := docsCSS[start:end]
 	effective := func(rule string) float64 {
-		re := regexp.MustCompile(regexp.QuoteMeta(rule) + `\s*\{[^}]*scroll-margin-top:\s*(\d+(?:\.\d+)?)px`)
+		re := regexp.MustCompile(regexp.QuoteMeta(rule) + `[^{]*\{[^}]*scroll-margin-top:\s*(\d+(?:\.\d+)?)px`)
 		matches := re.FindAllStringSubmatch(mobile, -1)
 		if len(matches) == 0 {
 			t.Fatalf("no scroll-margin-top for %q in the mobile blocks", rule)

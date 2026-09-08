@@ -210,7 +210,7 @@ func blogTerms(posts []*Route, authors bool) []string {
 			if value == "" {
 				continue
 			}
-			key := strings.ToLower(value)
+			key := foldRunes(value)
 			if _, exists := seen[key]; !exists {
 				seen[key] = value
 			}
@@ -227,7 +227,7 @@ func blogTerms(posts []*Route, authors bool) []string {
 func blogSlug(value string) string {
 	var b strings.Builder
 	lastDash := false
-	for _, r := range strings.ToLower(strings.TrimSpace(value)) {
+	for _, r := range foldRunes(strings.TrimSpace(value)) {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			b.WriteRune(r)
 			lastDash = false

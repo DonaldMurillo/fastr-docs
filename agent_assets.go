@@ -37,6 +37,11 @@ func WriteAgentAssets(dir, basePath string, handler http.Handler) error {
 		if basePath != "" && strings.HasSuffix(route, ".txt") {
 			body = []byte(prefixRootLinks(string(body), basePath))
 		}
+		if basePath != "" && strings.HasSuffix(route, ".json") {
+			// The card's link values are route paths; move them under the
+			// export base the same way the text body's links move.
+			body = []byte(strings.ReplaceAll(string(body), `":"/`, `":"`+basePath+`/`))
+		}
 		target := filepath.Join(dir, strings.TrimPrefix(basePath+route, "/"))
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return fmt.Errorf("docs: create agent asset directory: %w", err)

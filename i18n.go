@@ -32,6 +32,11 @@ func WithLocaleFallback(defaultLocale string) Option {
 // This is deliberately only about pairing. Which routes publish is decided by
 // localeAllows, and that is left alone: a route with no declared locale is
 // still served in every locale build.
+// IsValidLocale reports whether a locale tag is BCP 47 shaped: a two or
+// three letter primary subtag, optionally extended. Plugins and projects
+// use it to refuse a locale that would fork the language pairing silently.
+func IsValidLocale(locale string) bool { return localeShape.MatchString(locale) }
+
 // localeShape accepts BCP 47 shaped tags: a two or three letter primary
 // subtag, optionally extended. Front matter values are checked against it so
 // "spanish" or a dangling "es-" fails at build time instead of forking the
@@ -62,6 +67,7 @@ func (r *Router) effectiveLocale(route *Route) string {
 var rtlLocales = map[string]bool{
 	"ar": true, "he": true, "fa": true, "ur": true,
 	"ps": true, "sd": true, "ug": true, "yi": true,
+	"ckb": true, "dv": true,
 }
 
 // DirectionFor returns "rtl" or "ltr" for the document served at path,
@@ -247,7 +253,7 @@ func (r *Router) LocaleCoverage() map[string][]string {
 		return nil
 	}
 	coverage := make(map[string][]string)
-	for _, locale := range r.Locales() {
+	for _, locale := range r.publishedLocales() {
 		if missing := r.UntranslatedFamilies(locale); len(missing) > 0 {
 			coverage[locale] = missing
 		}
@@ -261,4 +267,22 @@ func (r *Router) LocaleCoverage() map[string][]string {
 		}
 	}
 	return coverage
+}
+
+// publishedLocales is Locales plus the site's default language once a
+// fallback locale has been named. A site that marks its translations but
+// not its originals declares exactly one locale and looks untranslated in
+// its own language; consumers of the manifest and of coverage reports need
+// the default named too.
+func (r *Router) publishedLocales() []string {
+	locales := r.Locales()
+	if r == nil || r.fallbackLocale == "" {
+		return locales
+	}
+	for _, locale := range locales {
+		if locale == r.fallbackLocale {
+			return locales
+		}
+	}
+	return append(locales, r.fallbackLocale)
 }

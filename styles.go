@@ -420,7 +420,7 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
    Content goes full width and collapsed sidebar groups expand so the whole
    tree reads on paper. */
 @media print {
-  .layout-docs > header, .layout-docs .layout-body > nav, .fastr-docs-doc-layout > .fastr-docs-toc-select, .fastr-docs-doc-layout > .scrollspy, [data-fui-widget], .fastr-docs-command-trigger, .fastr-docs-theme-toggle, .fastr-docs-variant-selectors { display: none !important; }
+  .layout-docs > header, .layout-docs .layout-body > nav, .fastr-docs-doc-layout > .fastr-docs-toc-select, .fastr-docs-doc-layout > .scrollspy, [data-fui-widget], .fastr-docs-command-trigger, .fastr-docs-theme-toggle, .fastr-docs-variant-selectors, .heading-anchor, .fastr-docs-blog__toolbar, .fastr-docs-blog__feed-link, .fastr-docs-blog-card__tags { display: none !important; }
   .fastr-docs-doc-layout .ui-markdown, .fastr-docs-doc-layout .ui-doc-layout__crumbs { width: 100%; }
   .ui-sidebar details > ul[hidden] { display: block; }
 }
@@ -428,6 +428,7 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
    bordered, the active page gains an underline, and focus rings use the
    system highlight. */
 @media (forced-colors: active) {
+  .fastr-docs-code-hl { border-left: 3px solid Highlight; forced-color-adjust: none; }
   .fastr-docs-nav-badge { border: 1px solid CanvasText; forced-color-adjust: none; }
   .layout-docs .ui-sidebar__link[aria-current="page"] { text-decoration: underline; }
   .fastr-docs-mobile-nav-trigger:focus-visible, .fastr-docs-doc-layout > .fastr-docs-toc-select .ui-select__input:focus-visible { outline: 2px solid Highlight; }
@@ -444,6 +445,7 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .fastr-docs-command-trigger, .layout-docs .ui-sidebar__link, .layout-docs .ui-doc-layout__prev, .layout-docs .ui-doc-layout__next { transition: none; }
+  .fastr-docs-blog-card { transition: none; transform: none; }
 }
 
 /* Blog publication surface. Blog is a sibling layout to documentation: it
@@ -576,4 +578,72 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
   [data-fui-layout^="blog"] .ui-doc-layout__foot-nav { grid-template-columns: 1fr; }
   [data-fui-layout^="blog"] .ui-doc-layout__next { text-align: left; }
 }
+
+/* Second-suite additions: deep links, print, forced colors, contrast,
+   direction, and the surfaces the runtime grew. */
+
+:root { accent-color: var(--docs-orange, #b45309); }
+
+.layout-docs .ui-markdown { overflow-wrap: break-word; }
+
+/* Arriving at :target scrolls the heading clear of the sticky header and
+   the toc rail, matching the scroll-margin the headings already carry. */
+.layout-docs .ui-markdown :target { scroll-margin-top: var(--docs-sticky-offset, 164px); }
+
+/* Heading anchors: quiet until hovered or focused, and never a raw blue
+   underlined link. */
+.heading-anchor {
+  opacity: 0;
+  margin-left: 6px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--docs-text-subtle, inherit);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.ui-markdown h2:hover + .heading-anchor, .ui-markdown h3:hover + .heading-anchor,
+.ui-markdown h4:hover + .heading-anchor, .heading-anchor:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--docs-orange);
+  outline-offset: 2px;
+}
+
+/* The drawer's helper line under the section select. */
+.ui-select__help { margin: 4px 0 0; font-size: 12px; color: var(--docs-text-subtle, inherit); }
+
+/* The announced counts are for ears, not eyes. */
+.fastr-docs-search-count, .fastr-docs-blog-search-count {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The mobile drawer tracks the dynamic viewport, so the on-screen keyboard
+   cannot push its footer off screen. */
+.ui-sidebar--drawer-body { max-height: 100dvh; }
+
+/* The on-this-page rail is keyboard reachable. */
+.fastr-docs-doc-layout .ui-anchored-rail__list a:focus-visible {
+  outline: 2px solid var(--docs-orange);
+  outline-offset: 2px;
+}
+
+@media (prefers-contrast: more) {
+  .layout-docs .ui-markdown a { text-decoration: underline; text-decoration-thickness: 2px; }
+  .fastr-docs-blog-card, .fastr-docs-blog-term { border-width: 2px; }
+}
+
+/* Direction: the rail and the anchor sit on the other side once the
+   document runs right to left. */
+[dir="rtl"] .fastr-docs-doc-layout .ui-anchored-rail__list a { border-left: 0; border-right: 2px solid var(--docs-line, transparent); padding-left: 0; padding-right: 8px; }
+[dir="rtl"] .heading-anchor { margin-left: 0; margin-right: 6px; }
+.heading-anchor { vertical-align: middle; }
 `

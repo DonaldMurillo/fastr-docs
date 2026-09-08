@@ -34,6 +34,7 @@ func NewRouter() *docs.Router {
 			Contents:          "Contenido",
 			Home:              "Inicio",
 			SkipToContent:     "Saltar al contenido principal",
+			SectionHelp:       "Salta a una sección de primer nivel.",
 			Sections:          "Secciones",
 			OnThisPage:        "En esta página",
 			Search:            "Buscar",

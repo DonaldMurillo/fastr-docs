@@ -107,6 +107,11 @@ func (r *Router) BlogPosts(prefix string) []*Route {
 		if prefix != "/" && !strings.HasPrefix(route.Path, prefix+"/") {
 			continue
 		}
+		// A future publish date is a schedule, not a leak: the post
+		// stays registered but leaves every public listing.
+		if blogPostDatedFuture(route) {
+			continue
+		}
 		posts = append(posts, route)
 	}
 	sort.SliceStable(posts, func(i, j int) bool {
@@ -275,6 +280,9 @@ func (r *Router) registerBlogDocuments(prefix string, documents []blogDocument, 
 			continue
 		}
 		posts = append(posts, documents[i])
+	}
+	if index == nil {
+		return fmt.Errorf("docs: MarkdownBlog %q has no index.md; the archive route has nothing to say", prefix)
 	}
 	// The collection registers before its documents so path-aware helpers
 	// (blog prefixes, slug application) can see it while posts are added.
@@ -480,6 +488,9 @@ type RSSConfig struct {
 	// SiteURL is the absolute origin of the site, needed for valid
 	// RSS link elements on a static export.
 	SiteURL string
+	// FeedPath is the URL the feed itself is served at, used for the
+	// channel's atom:link rel="self". Empty derives prefix + "/feed.xml".
+	FeedPath string
 	// Limit caps the item count; zero includes every published post.
 	Limit int
 }
@@ -501,6 +512,9 @@ func (r *Router) RSSXML(cfg RSSConfig) ([]byte, error) {
 	if prefix == "" || prefix == "/" {
 		return nil, errors.New("docs: RSS prefix must be a non-root path")
 	}
+	if _, ok := r.blogs[prefix]; !ok {
+		return nil, fmt.Errorf("docs: RSS prefix %q has no registered blog collection", prefix)
+	}
 	siteURL, err := rssSiteURL(cfg.SiteURL)
 	if err != nil {
 		return nil, err
@@ -516,7 +530,7 @@ func (r *Router) RSSXML(cfg RSSConfig) ([]byte, error) {
 	posts := r.BlogPosts(prefix)
 	items := make([]rssItem, 0, len(posts))
 	for _, route := range posts {
-		if route.Metadata.NoIndex || route.Metadata.Draft {
+		if route.Metadata.NoIndex || route.Metadata.Draft || blogPostDatedFuture(route) {
 			continue
 		}
 		items = append(items, rssItem{
@@ -542,8 +556,13 @@ func (r *Router) RSSXML(cfg RSSConfig) ([]byte, error) {
 			lastBuild = item.PubDate
 		}
 	}
+	feedPath := strings.TrimSpace(cfg.FeedPath)
+	if feedPath == "" {
+		feedPath = joinPath(prefix, "feed.xml")
+	}
 	document := rssDocument{
-		Version: "2.0",
+		Version:   "2.0",
+		XMLNSAtom: "http://www.w3.org/2005/Atom",
 		Channel: rssChannel{
 			Title:         title,
 			Link:          rssLink(siteURL, prefix),
@@ -551,6 +570,9 @@ func (r *Router) RSSXML(cfg RSSConfig) ([]byte, error) {
 			Language:      language,
 			LastBuildDate: lastBuild,
 			Items:         items,
+			// Validators require the channel to name itself; readers
+			// use it to detect moved feeds.
+			AtomLink: atomLink{Href: rssLink(siteURL, feedPath), Rel: "self", Type: "application/rss+xml"},
 		},
 	}
 	body, err := xml.Marshal(document)
@@ -681,9 +703,17 @@ func rssDate(raw string) string {
 }
 
 type rssDocument struct {
-	XMLName xml.Name   `xml:"rss"`
-	Version string     `xml:"version,attr"`
-	Channel rssChannel `xml:"channel"`
+	XMLName   xml.Name   `xml:"rss"`
+	Version   string     `xml:"version,attr"`
+	XMLNSAtom string     `xml:"xmlns:atom,attr"`
+	Channel   rssChannel `xml:"channel"`
+}
+
+// atomLink is the channel's self reference.
+type atomLink struct {
+	Href string `xml:"href,attr"`
+	Rel  string `xml:"rel,attr"`
+	Type string `xml:"type,attr,omitempty"`
 }
 
 type rssChannel struct {
@@ -696,6 +726,7 @@ type rssChannel struct {
 	// LastBuildDate is the newest publish date among the items, so a
 	// reader can sort feeds by activity without fetching every post.
 	LastBuildDate string    `xml:"lastBuildDate,omitempty"`
+	AtomLink      atomLink  `xml:"atom:link"`
 	Items         []rssItem `xml:"item"`
 }
 

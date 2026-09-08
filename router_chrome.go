@@ -122,7 +122,11 @@ func (r *Router) chromeTemplate(ctx context.Context, fallbackPath string) render
 		"data-fastr-docs-lang":   r.LanguageFor(currentPath),
 		"data-fastr-docs-dir":    r.DirectionFor(currentPath),
 		"data-fastr-docs-skip":   r.uiAt(currentPath).SkipToContent,
-	}, (&docsHeader{router: r}).siteHeader(currentPath))
+	}, render.Join(
+		// syncChrome copies this into the live head, so the browser
+		// chrome follows the page's theme instead of the first page's.
+		render.Raw(`<meta name="theme-color" content="`+r.ThemeColor()+`">`),
+		(&docsHeader{router: r}).siteHeader(currentPath)))
 }
 
 // headerVariantActiveScript extends GoFastr's normal exact/prefix active-link
@@ -852,6 +856,12 @@ func (r *Router) docsSectionSelect(currentPath, id string) render.HTML {
 			options = append(options, ui.SelectOption{Value: home.Path, Text: home.Title})
 		}
 	}
+	// A select with nothing to choose between is noise; a one-section
+	// site keeps its drawer to the tree alone.
+	if len(options) < 2 {
+		return ""
+	}
+	versions := r.Versions()
 	return ui.Select(ui.SelectConfig{
 		Name:    "docs-section",
 		ID:      id,
@@ -865,6 +875,10 @@ func (r *Router) docsSectionSelect(currentPath, id string) render.HTML {
 			// Each option's route path rides along, so the runtime can
 			// prefix-match and re-sync without parsing option text.
 			"data-fastr-docs-section-paths": strings.Join(sectionPaths(options), ","),
+			// The site's version segments, so the runtime can match an
+			// option to the reader's current version even when the
+			// option's own path is the default-family spelling.
+			"data-fastr-docs-versions": strings.Join(versions, ","),
 		},
 	})
 }

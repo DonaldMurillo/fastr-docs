@@ -89,8 +89,10 @@ func TestRed001To010DrawerAndLocale(t *testing.T) {
 	})
 	t.Run("002 home option without a home route", func(t *testing.T) {
 		r := NewRouter()
-		g := r.MustGroup("/docs", GroupConfig{Title: "Docs", Description: "d", Order: 1})
-		g.MustPage("start", PageConfig{Title: "Start", Description: "s", Source: "# S", Order: 1})
+		docs := r.MustGroup("/docs", GroupConfig{Title: "Docs", Description: "d", Order: 1})
+		docs.MustPage("start", PageConfig{Title: "Start", Description: "s", Source: "# S", Order: 1})
+		guides := r.MustGroup("/guides", GroupConfig{Title: "Guides", Description: "d", Order: 2})
+		guides.MustPage("first", PageConfig{Title: "First", Description: "s", Source: "# F", Order: 1})
 		html := redSectionSelect(r, "")
 		// The first option is the beginning: labeled Home, aimed at the
 		// first section when no home route exists.

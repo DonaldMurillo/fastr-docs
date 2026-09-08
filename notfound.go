@@ -117,6 +117,7 @@ func (s NotFoundScreen) render(path string) render.HTML {
 	// siblings, the same pairing pages carry, so a missed URL is not seen as
 	// six duplicate dead ends.
 	var head strings.Builder
+	defaultPrefix := ""
 	for _, locale := range s.Locales {
 		if strings.TrimSpace(locale.Prefix) == "" {
 			continue
@@ -128,7 +129,13 @@ func (s NotFoundScreen) render(path string) render.HTML {
 		if lang == "" {
 			continue
 		}
+		if defaultPrefix == "" {
+			defaultPrefix = locale.Prefix
+		}
 		head.WriteString(`<link rel="alternate" hreflang="` + render.Escape(lang) + `" href="` + render.Escape(locale.Prefix) + `">`)
+	}
+	if defaultPrefix != "" {
+		head.WriteString(`<link rel="alternate" hreflang="x-default" href="` + render.Escape(defaultPrefix) + `">`)
 	}
 	return render.Raw(head.String() +
 		`<div class="fastr-docs-not-found">` +

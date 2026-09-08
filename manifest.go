@@ -98,11 +98,11 @@ func (r *Router) ExportManifestJSON(basePath string) ([]byte, error) {
 	basePath = normalizeBasePath(basePath)
 	manifest := ExportManifest{
 		Schema: "fastr-docs/v1", SiteName: r.SiteName(), BasePath: basePath,
-		SearchIndex:   basePath + "/__fastr-docs/search.json",
+		SearchIndex:   basePath + r.SearchIndexPath(),
 		SearchBackend: r.SearchBackend(),
 		SearchPath:    basePath + r.PagefindPath(),
 		AssetsPrefix:  basePath + "/assets/",
-		Locales:       r.Locales(),
+		Locales:       r.publishedLocales(),
 		Versions:      r.Versions(),
 		Drawers:       r.navigationDrawerNames(),
 	}
@@ -110,7 +110,10 @@ func (r *Router) ExportManifestJSON(basePath string) ([]byte, error) {
 		manifest.Routes = append(manifest.Routes, ManifestRoute{
 			ID: route.ID, Path: basePath + route.Path, Title: route.Title,
 			Description: route.Description, Kind: route.Kind,
-			Locale: route.Metadata.Locale, Version: route.Metadata.Version,
+			// The effective locale, not the declared one, so a consumer
+			// filtering the manifest by language keeps the unmarked
+			// pages of the default language the way search does.
+			Locale: r.effectiveLocale(route), Version: route.Metadata.Version,
 			Tags: cloneStrings(route.Tags), Offline: route.Offline,
 			NoIndex: route.Metadata.NoIndex, Blog: route.Blog, BlogIndex: route.BlogIndex,
 			DatePublished: route.Metadata.DatePublished, Alternates: r.alternatesFor(route),

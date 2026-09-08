@@ -61,6 +61,7 @@ func (r *Router) ContentIssues() []ContentIssue {
 			continue
 		}
 		source := pageSource(route.page)
+		issues = append(issues, shortcodeIssues(route, source)...)
 		for _, link := range markdownLinks(source) {
 			resolved, fragment, kind, err := resolveContentLink(route.Path, link.Target)
 			base := ContentIssue{
@@ -260,4 +261,41 @@ func markdownAnchorIDs(source string) map[string]bool {
 		ids[id] = true
 	}
 	return ids
+}
+
+// calloutVariants are the values the sanitized callout and card components
+// accept; anything else reaches a fallback silently, so it is named here at
+// build time instead.
+var calloutVariants = map[string]bool{
+	"info": true, "warning": true, "danger": true, "success": true,
+	"neutral": true, "accent": true, "": true,
+}
+
+var shortcodePropValuePattern = regexp.MustCompile(`\{\{<\s*(callout|card|steps)[^>]*?variant="([^"]*)"[^>]*>`)
+var shortcodeTabsBlockPattern = regexp.MustCompile(`(?s)\{\{<\s*tabs[^>]*>\}\}(.*?)\{\{<\s*/tabs\s*>\}\}`)
+var shortcodeTabLabelPattern = regexp.MustCompile(`\{\{<\s*tab[^>]*?label="([^"]*)"`)
+
+// shortcodeIssues checks the built-in shortcodes' prop values: variant
+// values the sanitizer would quietly replace, and tab labels repeated
+// within one tabs block.
+func shortcodeIssues(route *Route, source string) []ContentIssue {
+	var issues []ContentIssue
+	for _, match := range shortcodePropValuePattern.FindAllStringSubmatch(source, -1) {
+		name, variant := match[1], match[2]
+		if !calloutVariants[variant] {
+			issues = append(issues, ContentIssue{RoutePath: route.Path, SourcePath: route.page.SourcePath,
+				Message: fmt.Sprintf("shortcode %q: unknown variant %q (info, warning, danger, success, neutral, accent)", name, variant)})
+		}
+	}
+	for _, block := range shortcodeTabsBlockPattern.FindAllStringSubmatch(source, -1) {
+		seen := map[string]bool{}
+		for _, label := range shortcodeTabLabelPattern.FindAllStringSubmatch(block[1], -1) {
+			if seen[label[1]] {
+				issues = append(issues, ContentIssue{RoutePath: route.Path, SourcePath: route.page.SourcePath,
+					Message: fmt.Sprintf("tabs block: two tabs share the label %q; a reader cannot tell them apart", label[1])})
+			}
+			seen[label[1]] = true
+		}
+	}
+	return issues
 }

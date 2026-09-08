@@ -39,8 +39,21 @@ type Strings struct {
 	ConsoleNoServer string
 	// OperationLabel captions the console's operation dropdown.
 	OperationLabel string
+	// ServerLabel captions the server dropdown a multi-server contract
+	// renders. One word.
+	ServerLabel string
+	// TokenPlaceholder is the placeholder of the bearer token field, for
+	// contracts the console can authenticate.
+	TokenPlaceholder string
+	// DeprecatedLabel marks an operation the contract retired. One word.
+	DeprecatedLabel string
+	// ResponseHeadersLabel captions the documented response headers.
+	ResponseHeadersLabel string
 	// SendRequest is the console button. Imperative.
 	SendRequest string
+	// CopyCurlLabel is the button that emits the prepared request as a
+	// curl command. Sentence case.
+	CopyCurlLabel string
 	// ResponsePrompt is the response pane's initial text and describes the
 	// action, not the pane. Full sentence, capitalized.
 	ResponsePrompt string
@@ -82,28 +95,32 @@ type Strings struct {
 // DefaultStrings returns the English surface labels.
 func DefaultStrings() Strings {
 	return Strings{
-		Eyebrow:           "OpenAPI reference",
-		OperationsLabel:   "operations",
-		SchemasLabel:      "schemas",
-		NoServer:          "No server configured",
-		FilterPlaceholder: "Filter endpoints…",
-		TryRequest:        "Try a request",
-		ConsoleNoServer:   "No OpenAPI server URL configured.",
-		OperationLabel:    "Operation",
-		SendRequest:       "Send request",
-		ResponsePrompt:    "Select an operation and send a request.",
-		NoOperations:      "No operations were found in this contract.",
-		CORSNote:          "Requests run from the browser and require the API server to allow CORS.",
-		NoInputs:          "This operation has no request inputs.",
-		OperationIDPrefix: "Operation ID: ",
-		ParametersLabel:   "Parameters",
-		RequestBodyLabel:  "Request body",
-		RequestBodyNote:   "Request body required by the contract.",
-		ResponseLabel:     "Response",
-		ValuePlaceholder:  "Value",
-		ParameterWord:     "parameter",
-		RequiredWord:      "required",
-		NoSummary:         "No summary provided.",
+		Eyebrow:              "OpenAPI reference",
+		OperationsLabel:      "operations",
+		SchemasLabel:         "schemas",
+		NoServer:             "No server configured",
+		FilterPlaceholder:    "Filter endpoints…",
+		TryRequest:           "Try a request",
+		ConsoleNoServer:      "No OpenAPI server URL configured.",
+		OperationLabel:       "Operation",
+		ServerLabel:          "Server",
+		TokenPlaceholder:     "Bearer token",
+		DeprecatedLabel:      "Deprecated",
+		ResponseHeadersLabel: "Response headers",
+		SendRequest:          "Send request",
+		ResponsePrompt:       "Select an operation and send a request.",
+		NoOperations:         "No operations were found in this contract.",
+		CORSNote:             "Requests run from the browser and require the API server to allow CORS.",
+		NoInputs:             "This operation has no request inputs.",
+		OperationIDPrefix:    "Operation ID: ",
+		ParametersLabel:      "Parameters",
+		RequestBodyLabel:     "Request body",
+		RequestBodyNote:      "Request body required by the contract.",
+		ResponseLabel:        "Response",
+		ValuePlaceholder:     "Value",
+		ParameterWord:        "parameter",
+		RequiredWord:         "required",
+		NoSummary:            "No summary provided.",
 	}
 }
 
@@ -157,6 +174,12 @@ type Reference struct {
 	// ServerURL is where the request console sends; empty shows the
 	// no-server note.
 	ServerURL string
+	// Servers lists every declared server. More than one renders a
+	// selector, so the second declared server is reachable.
+	Servers []string
+	// BearerScheme names an HTTP bearer security scheme the document
+	// requires; the console offers a token field for it.
+	BearerScheme string
 	// Operations are the document's operations, in document order.
 	Operations []Operation
 	// Schemas are the document's component schemas.
@@ -182,6 +205,9 @@ func (r *Reference) Render() render.HTML {
 	}
 	if r.ServerURL != "" {
 		attrs["data-openapi-server-url"] = r.ServerURL
+	}
+	if r.BearerScheme != "" {
+		attrs["data-openapi-bearer"] = r.BearerScheme
 	}
 	return render.Tag("div", attrs,
 		render.Tag("header", map[string]string{"class": "fastr-openapi-reference__header"},
@@ -223,15 +249,31 @@ func (r *Reference) requestConsole() render.HTML {
 	}
 	children := []render.HTML{
 		render.Tag("strong", nil, render.Text(r.Strings.TryRequest)),
-		render.Tag("p", map[string]string{"class": "fastr-openapi-reference__server"}, render.Text(firstNonEmpty(r.ServerURL, r.Strings.ConsoleNoServer))),
+	}
+	// A multi-server contract gets a selector; a single one stays prose.
+	if len(r.Servers) > 1 {
+		options := make([]render.HTML, 0, len(r.Servers))
+		for _, server := range r.Servers {
+			options = append(options, render.Tag("option", map[string]string{"value": server}, render.Text(server)))
+		}
+		children = append(children,
+			render.Tag("label", nil, render.Text(r.Strings.ServerLabel), render.Tag("select", map[string]string{"data-openapi-servers": "true"}, options...)))
+	}
+	children = append(children, render.Tag("p", map[string]string{"class": "fastr-openapi-reference__server", "data-openapi-server-note": "true"}, render.Text(firstNonEmpty(r.ServerURL, r.Strings.ConsoleNoServer))))
+	if r.BearerScheme != "" {
+		children = append(children, render.Tag("label", map[string]string{"class": "fastr-openapi-reference__field"},
+			render.Text(r.BearerScheme+" token"),
+			render.Tag("input", map[string]string{"type": "password", "data-openapi-token": "true", "autocomplete": "off", "placeholder": r.Strings.TokenPlaceholder})))
 	}
 	if len(options) > 0 {
 		children = append(children,
 			render.Tag("label", nil, render.Text(r.Strings.OperationLabel), render.Tag("select", map[string]string{"data-openapi-operation-select": "true"}, options...)),
 			r.requestInputs(),
-			render.Tag("button", map[string]string{"type": "button", "data-openapi-try": "true"}, render.Text(r.Strings.SendRequest)),
-			render.Tag("pre", map[string]string{"class": "fastr-openapi-reference__response", "role": "status", "aria-live": "polite", "data-openapi-response": "true"}, render.Text(r.Strings.ResponsePrompt)),
-		)
+			render.Join(
+				render.Tag("button", map[string]string{"type": "button", "data-openapi-try": "true"}, render.Text(r.Strings.SendRequest)),
+				render.Tag("button", map[string]string{"type": "button", "data-openapi-curl": "true"}, render.Text(r.Strings.CopyCurlLabel)),
+				render.Tag("pre", map[string]string{"class": "fastr-openapi-reference__response", "role": "status", "aria-live": "polite", "data-openapi-response": "true"}, render.Text(r.Strings.ResponsePrompt)),
+			))
 	} else {
 		children = append(children, render.Tag("p", nil, render.Text(r.Strings.NoOperations)))
 	}
@@ -252,14 +294,6 @@ func (r *Reference) requestInputs() render.HTML {
 		}
 		fields := make([]render.HTML, 0, len(op.ParameterSpecs)+1)
 		for _, parameter := range op.ParameterSpecs {
-			fieldAttrs := map[string]string{
-				"type":                        inputType(parameter.Type),
-				"data-openapi-param-name":     parameter.Name,
-				"data-openapi-param-in":       strings.ToLower(parameter.In),
-				"data-openapi-param-required": boolText(parameter.Required),
-				"value":                       firstNonEmpty(parameter.Example, parameter.Default),
-				"placeholder":                 firstNonEmpty(parameter.Example, parameter.Type, r.Strings.ValuePlaceholder),
-			}
 			label := parameter.Name + " · " + firstNonEmpty(parameter.In, r.Strings.ParameterWord)
 			if parameter.Type != "" {
 				label += " · " + parameter.Type
@@ -269,6 +303,33 @@ func (r *Reference) requestInputs() render.HTML {
 			}
 			if parameter.Description != "" {
 				label += " — " + parameter.Description
+			}
+			// An enum is a closed set: offer it as choices rather than
+			// trusting free text the contract would reject.
+			if len(parameter.Enum) > 0 {
+				options := make([]render.HTML, 0, len(parameter.Enum))
+				for _, value := range parameter.Enum {
+					optionAttrs := map[string]string{"value": value}
+					if value == firstNonEmpty(parameter.Example, parameter.Default, parameter.Enum[0]) {
+						optionAttrs["selected"] = "selected"
+					}
+					options = append(options, render.Tag("option", optionAttrs, render.Text(value)))
+				}
+				fields = append(fields, render.Tag("label", map[string]string{"class": "fastr-openapi-reference__field"}, render.Text(label),
+					render.Tag("select", map[string]string{
+						"data-openapi-param-name":     parameter.Name,
+						"data-openapi-param-in":       strings.ToLower(parameter.In),
+						"data-openapi-param-required": boolText(parameter.Required),
+					}, options...)))
+				continue
+			}
+			fieldAttrs := map[string]string{
+				"type":                        parameterInputType(parameter),
+				"data-openapi-param-name":     parameter.Name,
+				"data-openapi-param-in":       strings.ToLower(parameter.In),
+				"data-openapi-param-required": boolText(parameter.Required),
+				"value":                       firstNonEmpty(parameter.Example, parameter.Default),
+				"placeholder":                 firstNonEmpty(parameter.Example, parameter.Type, r.Strings.ValuePlaceholder),
 			}
 			fields = append(fields, render.Tag("label", map[string]string{"class": "fastr-openapi-reference__field"}, render.Text(label), render.Tag("input", fieldAttrs)))
 		}
@@ -315,13 +376,42 @@ func (r *Reference) operationIndex() render.HTML {
 
 func (r *Reference) operationCards() []render.HTML {
 	items := make([]render.HTML, 0, len(r.Operations)+len(r.Schemas))
+	// Operations render grouped: the document's own tag when it carries
+	// one, else the first path segment. The group wrapper is what the
+	// filter hides once every operation inside it is filtered out.
+	groups := make([]render.HTML, 0, len(r.Operations))
+	var currentGroup string
+	var currentChildren []render.HTML
+	flush := func() {
+		if len(currentChildren) == 0 {
+			return
+		}
+		groups = append(groups, render.Tag("section",
+			map[string]string{"class": "fastr-openapi-group", "data-openapi-group": currentGroup},
+			render.Join(
+				render.Tag("h2", map[string]string{"class": "fastr-openapi-group__title"}, render.Text(currentGroup)),
+				render.Join(currentChildren...))))
+		currentChildren = nil
+	}
 	for i, op := range r.Operations {
+		group := operationGroup(op)
+		if group != currentGroup {
+			flush()
+			currentGroup = group
+		}
+		cardAttrs := map[string]string{"id": r.operationID(i), "class": "fastr-openapi-operation", "data-openapi-operation": "true", "data-openapi-search": strings.ToLower(op.Method + " " + op.Path + " " + op.Summary + " " + op.OperationID)}
+		if op.Deprecated {
+			cardAttrs["data-deprecated"] = "true"
+		}
 		children := []render.HTML{
 			render.Tag("div", map[string]string{"class": "fastr-openapi-operation__route"},
 				methodBadge(op.Method),
 				render.Tag("code", nil, render.Text(op.Path)),
 			),
-			render.Tag("p", map[string]string{"class": "fastr-openapi-operation__summary"}, render.Text(firstNonEmpty(op.Summary, op.Description, r.Strings.NoSummary))),
+			render.Tag("p", map[string]string{"class": "fastr-openapi-operation__summary"}, render.Text(firstNonEmpty(op.Summary, op.Description, op.OperationID, r.Strings.NoSummary))),
+		}
+		if op.Deprecated {
+			children = append(children, render.Tag("p", map[string]string{"class": "fastr-openapi-operation__deprecated"}, render.Text(r.Strings.DeprecatedLabel)))
 		}
 		if op.OperationID != "" {
 			children = append(children, render.Tag("p", map[string]string{"class": "fastr-openapi-operation__id"}, render.Text(r.Strings.OperationIDPrefix+op.OperationID)))
@@ -341,10 +431,19 @@ func (r *Reference) operationCards() []render.HTML {
 			if op.Response != "" {
 				details = append(details, render.Tag("div", nil, render.Tag("h3", nil, render.Text(r.Strings.ResponseLabel)), render.Tag("code", nil, render.Text(op.Response))))
 			}
+			if len(op.ResponseHeaders) > 0 {
+				headers := make([]render.HTML, 0, len(op.ResponseHeaders))
+				for _, name := range op.ResponseHeaders {
+					headers = append(headers, render.Tag("li", nil, render.Tag("code", nil, render.Text(name))))
+				}
+				details = append(details, render.Tag("div", nil, render.Tag("h3", nil, render.Text(r.Strings.ResponseHeadersLabel)), render.Tag("ul", nil, headers...)))
+			}
 			children = append(children, render.Tag("div", map[string]string{"class": "fastr-openapi-operation__details"}, details...))
 		}
-		items = append(items, render.Tag("article", map[string]string{"id": r.operationID(i), "class": "fastr-openapi-operation", "data-openapi-operation": "true", "data-openapi-search": strings.ToLower(op.Method + " " + op.Path + " " + op.Summary + " " + op.OperationID)}, children...))
+		currentChildren = append(currentChildren, render.Tag("article", cardAttrs, children...))
 	}
+	flush()
+	items = append(items, groups...)
 	if len(r.Schemas) > 0 {
 		names := make([]string, 0, len(r.Schemas))
 		for name := range r.Schemas {
@@ -369,6 +468,22 @@ func (r *Reference) operationCards() []render.HTML {
 	return items
 }
 
+// operationGroup names the bucket an operation renders under: the
+// document's own tag when present, else the first path segment.
+func operationGroup(op Operation) string {
+	if len(op.Tags) > 0 && strings.TrimSpace(op.Tags[0]) != "" {
+		return strings.TrimSpace(op.Tags[0])
+	}
+	trimmed := strings.Trim(op.Path, "/")
+	if trimmed == "" {
+		return "api"
+	}
+	if slash := strings.IndexByte(trimmed, '/'); slash > 0 {
+		return trimmed[:slash]
+	}
+	return trimmed
+}
+
 func inputType(parameterType string) string {
 	switch strings.ToLower(parameterType) {
 	case "integer", "number":
@@ -378,6 +493,18 @@ func inputType(parameterType string) string {
 	default:
 		return "text"
 	}
+}
+
+// parameterInputType lets a format refine the input a parameter renders:
+// a date format becomes a date picker instead of free text.
+func parameterInputType(parameter Parameter) string {
+	if strings.EqualFold(parameter.Format, "date") {
+		return "date"
+	}
+	if strings.EqualFold(parameter.Format, "date-time") {
+		return "datetime-local"
+	}
+	return inputType(parameter.Type)
 }
 
 func boolText(value bool) string {

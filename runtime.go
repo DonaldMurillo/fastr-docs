@@ -59,6 +59,14 @@ const docsRuntimeJS = `(function(){
       if (target) target.scrollIntoView({behavior: smooth ? 'smooth' : 'auto', block:'start'});
     }
     select.addEventListener('change', onChange);
+    // Landing on #section selects that section rather than the first
+    // entry; a later hash change (back button) follows too.
+    var followHash = function(){
+      var hash = location.hash || '';
+      if (hash && select.querySelector('option[value="' + hash + '"]')) select.value = hash;
+    };
+    followHash();
+    window.addEventListener('hashchange', followHash);
     restore();
     sync();
     window.__fastrDocsTocCleanup = function(){
@@ -141,6 +149,18 @@ const docsRuntimeJS = `(function(){
   // client-side navigation.
   function syncSectionSelect(select){
     var currentPath = normalizeDocsPath(location.pathname);
+    // A versioned page (/v1/guide) prefixes no option path (/guide), so a
+    // second pass strips a declared version segment and tries again; the
+    // select then marks the section the reader is actually in.
+    var versions = (select.getAttribute('data-fastr-docs-versions') || '').split(',').filter(Boolean);
+    var unversioned = currentPath;
+    for (var v = 0; v < versions.length; v++) {
+      var segment = '/' + versions[v];
+      if (unversioned.indexOf(segment + '/') === 0) {
+        unversioned = unversioned.slice(segment.length);
+        break;
+      }
+    }
     var best = '';
     Array.prototype.forEach.call(select.options, function(option){
       var value = option.value || '';
@@ -148,7 +168,7 @@ const docsRuntimeJS = `(function(){
       // The home option is "/" itself, which never matches a
       // segment-boundary prefix check, so it is special-cased: every
       // route path starts with it.
-      var active = value === '/' ? currentPath.charAt(0) === '/' : (currentPath === value || currentPath.indexOf(value + '/') === 0);
+      var active = value === '/' ? currentPath.charAt(0) === '/' : (currentPath === value || currentPath.indexOf(value + '/') === 0 || unversioned === value || unversioned.indexOf(value + '/') === 0);
       if (active && value.length > best.length) best = value;
     });
     if (best) select.value = best;
@@ -322,6 +342,18 @@ const docsRuntimeJS = `(function(){
     document.addEventListener('focusin', function(event){
       if (event.target && event.target.id === 'fastr-docs-command-palette-input') localizePalette();
     });
+    // Closing the palette strands focus at the top of the document; hand
+    // it back to the trigger that opened it.
+    var palette = document.querySelector('[data-fui-widget="fastr-docs-command-palette"]');
+    if (palette && window.MutationObserver) {
+      var returnFocus = function(){
+        if (palette.hasAttribute('hidden')) {
+          var trigger = document.querySelector('.fastr-docs-command-trigger');
+          if (trigger) trigger.focus();
+        }
+      };
+      new MutationObserver(returnFocus).observe(palette, {attributes: true, attributeFilter: ['hidden']});
+    }
   }
   function localizePalette(){
     var trigger = searchTriggerElement();
@@ -403,7 +435,9 @@ const docsRuntimeJS = `(function(){
       var meta = data.meta || {};
       var title = meta.title || data.url || 'Documentation';
 		var excerpt = String(data.excerpt || data.url || '').replace(/<[^>]*>/g, '');
-      var url = data.url || '#';
+      // Pagefind urls are relative to the page it indexed; the export
+      // serves below a base, so every result navigates through it.
+      var url = withBase(String(data.url || '#'));
       return '<li role="option" id="fastr-docs-command-palette-list-opt-pagefind-' + index + '" data-value="' + escapeHTML(title) + '" data-fui-push-state="' + escapeHTML(url) + '">' +
         '<span class="combobox__opt-label">' + escapeHTML(title) + '</span>' +
         '<span class="combobox__opt-meta">' + escapeHTML(excerpt) + '</span></li>';
@@ -411,16 +445,20 @@ const docsRuntimeJS = `(function(){
     list.removeAttribute('data-fui-static-options');
     list.removeAttribute('hidden');
   }
-  function jsonSearchModule(){
-    if (window.fastrDocsSearchIndex) return window.fastrDocsSearchIndex;
+  function jsonSearchModule(controller){
+    if (!controller && window.fastrDocsSearchIndex) return window.fastrDocsSearchIndex;
     var trigger = jsonSearchTrigger();
     if (!trigger) return null;
     var href = new URL(trigger.getAttribute('data-fastr-docs-index-path') || '/__fastr-docs/search.json', document.baseURI).href;
-    window.fastrDocsSearchIndex = fetch(href, {headers:{'Accept':'application/json'}}).then(function(response){
+    var request = fetch(href, {headers:{'Accept':'application/json'}, signal: controller ? controller.signal : undefined}).then(function(response){
       if (!response.ok) throw new Error('Search index request failed');
       return response.json();
     });
-    return window.fastrDocsSearchIndex;
+    if (!controller) window.fastrDocsSearchIndex = request;
+    return request;
+  }
+  function jsonSearchAbortController(){
+    return window.AbortController ? new AbortController() : null;
   }
   function jsonSearchTerms(value){
     return String(value || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
@@ -428,6 +466,17 @@ const docsRuntimeJS = `(function(){
   function jsonSearchExcerpt(entry){
 		var value = String(entry.description || entry.text || '').replace(/[#*_>\[\]]/g, '').replace(/\s+/g, ' ').trim();
     return value.length > 140 ? value.slice(0, 137) + '...' : value;
+  }
+  // The matched term is wrapped in <mark> so the reader sees why the row
+  // answered, not only that it did.
+  function highlightTerms(text, terms){
+    var escaped = escapeHTML(text);
+    terms.forEach(function(term){
+      if (!term) return;
+      var pattern = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      escaped = escaped.replace(new RegExp('(' + pattern + ')', 'gi'), '<mark>$1</mark>');
+    });
+    return escaped;
   }
   function renderJSONResults(list, entries, query){
     if (!list) return;
@@ -455,8 +504,8 @@ const docsRuntimeJS = `(function(){
       var entry = result.entry || {};
       var url = withBase(String(entry.path || '#'));
       return '<li role="option" id="fastr-docs-command-palette-list-opt-json-' + index + '" data-value="' + escapeHTML(result.title) + '" data-fui-push-state="' + escapeHTML(url) + '">' +
-        '<span class="combobox__opt-label">' + escapeHTML(result.title) + '</span>' +
-        '<span class="combobox__opt-meta">' + escapeHTML(jsonSearchExcerpt(entry) || url) + '</span></li>';
+        '<span class="combobox__opt-label">' + highlightTerms(result.title, terms) + '</span>' +
+        '<span class="combobox__opt-meta">' + highlightTerms(jsonSearchExcerpt(entry) || url, terms) + '</span></li>';
     }).join('');
     list.removeAttribute('data-fui-static-options');
     list.removeAttribute('hidden');
@@ -500,22 +549,44 @@ const docsRuntimeJS = `(function(){
     if (!jsonSearchTrigger() || window.fastrDocsJSONSearchReady) return;
     window.fastrDocsJSONSearchReady = true;
     var requestID = 0;
+    // A slow earlier query must not overwrite a later answer: the index
+    // fetch is aborted when a newer keystroke arrives, and the handler
+    // itself waits out the typist through a short debounce.
+    var searchDebounceTimer = null;
+    var searchAbortController = null;
     document.addEventListener('input', function(event){
       var input = event.target && event.target.closest && event.target.closest('#fastr-docs-command-palette-input');
       if (!input) return;
       var list = pagefindList(input);
       if (!list) return;
       if (!list.dataset.fastrDocsInitialOptions) list.dataset.fastrDocsInitialOptions = list.innerHTML;
-      var query = (input.value || '').trim();
-      if (!query){ restorePalette(list); return; }
-      var current = ++requestID;
-      var index = jsonSearchModule();
-      if (!index) return;
-      index.then(function(entries){
-        if (current === requestID) renderJSONResults(list, localeEntries(entries), query);
-      }).catch(function(){
-        if (current === requestID) restorePalette(list, query);
-      });
+      var pending = (input.value || '').trim();
+      // A query swaps the route list out synchronously: leaving the
+      // unfiltered links up while the index loads answers a Spanish
+      // question with English pages.
+      if (pending) {
+        list.innerHTML = '<li role="option" aria-disabled="true" class="fastr-docs-search-loading"><span class="combobox__opt-label">\u2026</span></li>';
+        list.removeAttribute('data-fui-static-options');
+        list.removeAttribute('hidden');
+      } else {
+        restorePalette(list);
+        return;
+      }
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(function(){
+        var query = (input.value || '').trim();
+        if (!query){ restorePalette(list); return; }
+        var current = ++requestID;
+        if (searchAbortController) searchAbortController.abort();
+        searchAbortController = jsonSearchAbortController();
+        var index = jsonSearchModule(searchAbortController);
+        if (!index) return;
+        index.then(function(entries){
+          if (current === requestID) renderJSONResults(list, localeEntries(entries), query);
+        }).catch(function(){
+          if (current === requestID) restorePalette(list, query);
+        });
+      }, 150);
     });
   }
   function initPagefindSearch(){
@@ -548,7 +619,12 @@ const docsRuntimeJS = `(function(){
     });
   }
   function blogSearchTerms(value){
-    return String(value || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+  }
+  // The same diacritic fold search uses server-side: "diseno" finds the
+  // post tagged "diseño".
+  function foldSearchText(value){
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   }
   function initBlogSearch(root){
     if (!root || root.dataset.fastrDocsBlogSearchReady === 'true') return;
@@ -567,7 +643,7 @@ const docsRuntimeJS = `(function(){
       var terms = blogSearchTerms(query);
       var visible = 0;
       items.forEach(function(item){
-        var text = String(item.getAttribute('data-fastr-docs-blog-search-item') || item.textContent || '').toLowerCase();
+        var text = foldSearchText(String(item.getAttribute('data-fastr-docs-blog-search-item') || item.textContent || ''));
         var match = !terms.length || terms.every(function(term){ return text.indexOf(term) !== -1; });
         item.hidden = !match;
         if (match) visible++;
@@ -579,8 +655,25 @@ const docsRuntimeJS = `(function(){
         var matchLabel = root.getAttribute('data-fastr-docs-blog-match-summary') || '%d matches';
         var heading = query ? resultsFor.replace('%s', query) : idleLabel;
         summary.textContent = heading + ' · ' + matchLabel.replace('%d', visible);
+        announceBlogResultCount(summary, heading, matchLabel, visible);
       }
       if (empty) empty.hidden = visible > 0;
+    }
+    // The summary text swapping is not enough for a screen reader; a polite
+    // live region says how many posts survived the filter.
+    function announceBlogResultCount(summary, heading, matchLabel, visible){
+      var region = document.getElementById('fastr-docs-blog-search-count');
+      if (!region) {
+        region = document.createElement('p');
+        region.id = 'fastr-docs-blog-search-count';
+        region.setAttribute('role', 'status');
+        region.setAttribute('aria-live', 'polite');
+        region.className = 'fastr-docs-blog-search-count';
+        summary.parentNode && summary.parentNode.appendChild(region);
+      }
+      // Only the count: the visible summary already says the rest, and a
+      // duplicate of the whole line breaks text-based queries.
+      region.textContent = matchLabel.replace('%d', visible);
     }
     function onSubmit(event){
       event.preventDefault();
@@ -774,6 +867,14 @@ const docsRuntimeJS = `(function(){
     var live = document.querySelector('.fastr-docs-site-header');
     if (!template || !template.content || !live) return;
     var fresh = template.content;
+    // The browser chrome color rides on meta theme-color; the template
+    // carries the destination's value, the live head keeps the first
+    // page's otherwise.
+    var freshTheme = fresh.querySelector('meta[name="theme-color"]');
+    if (freshTheme) {
+      var liveTheme = document.querySelector('meta[name="theme-color"]');
+      if (liveTheme) liveTheme.setAttribute('content', freshTheme.getAttribute('content') || '');
+    }
     // Compared by their links, not their markup: GoFastr's active-link
     // module adds aria-current to the live anchors, so the markup always
     // differs and a same-language navigation would wipe the active state.
@@ -838,7 +939,54 @@ const docsRuntimeJS = `(function(){
       }
     });
   }
+  // Client-side navigation drops the reading position; the browser only
+  // restores it on full loads. Keep the offset across swaps.
+  function watchScrollRestoration(){
+    if (window.__fastrDocsScrollRestoration || !('scrollRestoration' in history)) return;
+    window.__fastrDocsScrollRestoration = true;
+    history.scrollRestoration = 'manual';
+    var savedScroll = null;
+    window.addEventListener('gofastr:navigate', function(){ savedScroll = window.scrollY; });
+    window.addEventListener('fastr:navigate', function(){ savedScroll = window.scrollY; });
+    window.addEventListener('popstate', function(){
+      requestAnimationFrame(function(){
+        if (savedScroll != null) { window.scrollTo(0, savedScroll); savedScroll = null; }
+      });
+    });
+  }
+  // Heading anchors copy their link instead of scrolling: the reader is
+  // already at the section and wants the URL out of the page.
+  function initHeadingAnchors(){
+    if (window.__fastrDocsAnchorsReady || !document.body) return;
+    window.__fastrDocsAnchorsReady = true;
+    document.addEventListener('click', function(event){
+      var button = event.target && event.target.closest && event.target.closest('.heading-anchor[data-fastr-docs-anchor]');
+      if (!button) return;
+      event.preventDefault();
+      var hash = button.getAttribute('data-fastr-docs-anchor') || '';
+      var url = location.origin + location.pathname + location.search + hash;
+      try { history.replaceState(null, '', hash); } catch (_) {}
+      var done = function(){
+        var label = button.getAttribute('data-anchor-copied') || 'Link copied';
+        button.setAttribute('aria-label', label);
+      };
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(url).then(done).catch(done);
+      } else {
+        var field = document.createElement('textarea');
+        field.value = url;
+        field.hidden = true;
+        document.body.appendChild(field);
+        field.select();
+        try { document.execCommand('copy'); } catch (_) {}
+        field.remove();
+        done();
+      }
+    });
+  }
   function init(){
+    watchScrollRestoration();
+    initHeadingAnchors();
     if (window.__fastrDocsTocCleanup) window.__fastrDocsTocCleanup();
     syncChrome();
     if (window.__fastrDocsBlogSearchCleanup) window.__fastrDocsBlogSearchCleanup();

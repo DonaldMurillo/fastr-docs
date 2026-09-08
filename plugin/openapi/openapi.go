@@ -127,14 +127,25 @@ func (p Plugin) Apply(r *docs.Router) error {
 	if order < 1 {
 		order = len(r.Routes()) + 1
 	}
-	serverURL := spec.serverURL(p.ServerURL)
-	r.AllowConnectOrigin(serverURL)
 	locale := strings.ToLower(strings.TrimSpace(p.Locale))
+	if locale != "" && !docs.IsValidLocale(locale) {
+		return fmt.Errorf("locale %q is not a BCP 47 shaped tag", locale)
+	}
+	serverURL := spec.serverURL(p.ServerURL)
+	if serverURL == "" {
+		// No declared server and no override means the API lives where
+		// the docs live; a dead console is the wrong reading of silence.
+		serverURL = "/"
+	}
+	if strings.Contains(serverURL, "://") {
+		r.AllowConnectOrigin(serverURL)
+	}
 	idPrefix := mountIDPrefix(path)
 	return r.Screen(path, docs.ScreenConfig{
 		Title:       title,
 		Description: description,
 		Component: &Reference{Title: title, Description: description, Version: spec.version(), ServerURL: serverURL,
+			Servers: spec.serverURLs(), BearerScheme: spec.bearerScheme(),
 			Operations: operations, Schemas: spec.Components.Schemas, Strings: p.Strings.withDefaults(), IDPrefix: idPrefix},
 		SearchText: spec.searchText(operations),
 		Plugin:     "openapi",
@@ -246,10 +257,23 @@ type document struct {
 	BasePath   string                                `json:"basePath"`
 	Schemes    []string                              `json:"schemes"`
 	Consumes   []string                              `json:"consumes"`
+	Security   []map[string][]string                 `json:"security"`
 	Paths      map[string]map[string]json.RawMessage `json:"paths"`
 	Components struct {
-		Schemas map[string]Schema `json:"schemas"`
+		Schemas         map[string]Schema         `json:"schemas"`
+		SecuritySchemes map[string]securityScheme `json:"securitySchemes"`
 	} `json:"components"`
+}
+
+// securityScheme is one declared way to authenticate. The console supports
+// the HTTP bearer shape; other kinds still render their name so the reader
+// knows credentials belong in the request.
+type securityScheme struct {
+	Type        string `json:"type"`
+	Scheme      string `json:"scheme"`
+	Name        string `json:"name"`
+	In          string `json:"in"`
+	Description string `json:"description"`
 }
 
 type server struct {
@@ -265,10 +289,15 @@ type operation struct {
 	Summary     string          `json:"summary"`
 	Description string          `json:"description"`
 	OperationID string          `json:"operationId"`
+	Deprecated  bool            `json:"deprecated"`
+	Tags        []string        `json:"tags"`
 	Parameters  []rawParameter  `json:"parameters"`
 	RequestBody *rawRequestBody `json:"requestBody"`
 	Responses   map[string]struct {
 		Description string `json:"description"`
+		Headers     map[string]struct {
+			Description string `json:"description"`
+		} `json:"headers"`
 	} `json:"responses"`
 }
 
@@ -278,6 +307,7 @@ type rawParameter struct {
 	Description string          `json:"description"`
 	Required    bool            `json:"required"`
 	Type        string          `json:"type"` // Swagger 2 parameter shape.
+	Enum        []string        `json:"enum"`
 	Schema      json.RawMessage `json:"schema"`
 	Default     json.RawMessage `json:"default"`
 	Example     json.RawMessage `json:"example"`
@@ -329,6 +359,13 @@ type Operation struct {
 	RequestBodyExample string
 	// Response is the declared success response description.
 	Response string
+	// ResponseHeaders names the documented response headers, so a reader
+	// can find rate limits and pagination before the first call.
+	ResponseHeaders []string
+	// Deprecated marks an operation the contract retired.
+	Deprecated bool
+	// Tags carry the document's own grouping.
+	Tags []string
 }
 
 // Parameter is the normalized request input contract shown by Reference.
@@ -350,6 +387,12 @@ type Parameter struct {
 	Example string
 	// Required says the request fails without it.
 	Required bool
+	// Format refines Type, and picks the input: a date format renders a
+	// date picker rather than free text.
+	Format string
+	// Enum lists the values the contract allows; the console offers them
+	// as a select instead of trusting free text.
+	Enum []string
 }
 
 func (d document) version() string {
@@ -382,6 +425,38 @@ func (d document) serverURL(override string) string {
 		value = strings.ReplaceAll(value, "{"+name+"}", variable.Default)
 	}
 	return strings.TrimRight(value, "/")
+}
+
+// serverURLs lists every declared server, variables resolved, so the
+// console can offer them all instead of silently using the first.
+func (d document) serverURLs() []string {
+	var urls []string
+	for _, declared := range d.Servers {
+		value := strings.TrimSpace(declared.URL)
+		if value == "" {
+			continue
+		}
+		for name, variable := range declared.Variables {
+			value = strings.ReplaceAll(value, "{"+name+"}", variable.Default)
+		}
+		urls = append(urls, strings.TrimRight(value, "/"))
+	}
+	return urls
+}
+
+// bearerScheme names the HTTP bearer security scheme the document's global
+// security requires, or "". That is the one shape the browser console can
+// send without a custom flow.
+func (d document) bearerScheme() string {
+	for _, requirement := range d.Security {
+		for name := range requirement {
+			scheme, ok := d.Components.SecuritySchemes[name]
+			if ok && strings.EqualFold(scheme.Type, "http") && strings.EqualFold(scheme.Scheme, "bearer") {
+				return name
+			}
+		}
+	}
+	return ""
 }
 
 func (d document) operations() ([]Operation, error) {
@@ -428,6 +503,7 @@ func (d document) operations() ([]Operation, error) {
 				params = append(params, label)
 			}
 			response := ""
+			responseHeaders := make([]string, 0)
 			codes := make([]string, 0, len(op.Responses))
 			for code := range op.Responses {
 				codes = append(codes, code)
@@ -435,6 +511,14 @@ func (d document) operations() ([]Operation, error) {
 			sort.Strings(codes)
 			if len(codes) > 0 {
 				response = codes[0]
+				if declared := op.Responses[response]; len(declared.Headers) > 0 {
+					names := make([]string, 0, len(declared.Headers))
+					for name := range declared.Headers {
+						names = append(names, name)
+					}
+					sort.Strings(names)
+					responseHeaders = names
+				}
 			}
 			hasBody, bodyRequired, contentType, bodyExample := normalizeRequestBody(op.RequestBody, parameterSpecs, d.Consumes)
 			out = append(out, Operation{
@@ -443,7 +527,8 @@ func (d document) operations() ([]Operation, error) {
 				Parameters: params, ParameterSpecs: parameterSpecs,
 				RequestBody: hasBody, RequestBodyRequired: bodyRequired,
 				RequestBodyContentType: contentType, RequestBodyExample: bodyExample,
-				Response: response,
+				Response: response, ResponseHeaders: responseHeaders,
+				Deprecated: op.Deprecated, Tags: op.Tags,
 			})
 		}
 	}
@@ -472,6 +557,8 @@ func normalizeParameter(raw rawParameter) Parameter {
 	param := Parameter{Name: raw.Name, In: raw.In, Description: raw.Description, Type: raw.Type, Required: raw.Required}
 	var schema struct {
 		Type    string          `json:"type"`
+		Format  string          `json:"format"`
+		Enum    []string        `json:"enum"`
 		Default json.RawMessage `json:"default"`
 		Example json.RawMessage `json:"example"`
 	}
@@ -488,6 +575,12 @@ func normalizeParameter(raw rawParameter) Parameter {
 	param.Example = rawJSONText(raw.Example)
 	if param.Example == "" {
 		param.Example = rawJSONText(schema.Example)
+	}
+	param.Format = schema.Format
+	if len(raw.Enum) > 0 {
+		param.Enum = raw.Enum
+	} else if len(schema.Enum) > 0 {
+		param.Enum = schema.Enum
 	}
 	return param
 }

@@ -204,3 +204,37 @@ func TestMobileHeadingScrollOffsetClearsTheStickyBars(t *testing.T) {
 		t.Fatalf("h3 scroll-margin-top = %vpx in the mobile blocks, want at least 160", got)
 	}
 }
+
+func TestDrawerInventoryAndSelect(t *testing.T) {
+	t.Run("drawer names cover version drawers without duplicates", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/", PageConfig{Title: "Home", Description: "d", Order: 1, Source: "# H"})
+		r.MustPage("/guide", PageConfig{Title: "Guide", Description: "d", Order: 2, Source: "# G",
+			Metadata: ContentMetadata{Version: "v2"}})
+		r.MustPage("/v1/guide", PageConfig{Title: "Guide v1", Description: "d", Order: 3, Source: "# G1",
+			Metadata: ContentMetadata{Version: "v1"}})
+		names := r.NavigationDrawerNames()
+		duplicates := 0
+		versionDrawers := 0
+		for _, name := range names {
+			if name == "fastr-docs-sections" {
+				duplicates++
+			}
+			if strings.Contains(name, "v1") || strings.Contains(name, "v2") {
+				versionDrawers++
+			}
+		}
+		if duplicates != 1 || versionDrawers == 0 {
+			t.Fatalf("NavigationDrawerNames() = %v: default appears %d times, version drawers %d", names, duplicates, versionDrawers)
+		}
+	})
+	t.Run("the section select hides when it has nothing to choose", func(t *testing.T) {
+		r := NewRouter()
+		g := r.MustGroup("/only", GroupConfig{Title: "Only", Description: "d", Order: 1})
+		g.MustPage("p", PageConfig{Title: "P", Description: "d", Order: 1, Source: "# P"})
+		html := redSectionSelect(r, "/only/p")
+		if strings.Contains(html, "<select") {
+			t.Fatalf("a one-option select renders: %s", html)
+		}
+	})
+}

@@ -5,21 +5,41 @@
       if (!filter || filter.dataset.openapiFilterBound) return;
       filter.dataset.openapiFilterBound = 'true';
       const operations = [...root.querySelectorAll('[data-openapi-operation]')];
-      filter.addEventListener('input', () => {
-        const query = filter.value.trim().toLowerCase();
-        operations.forEach(operation => {
-          operation.hidden = Boolean(query) && !operation.dataset.openapiSearch.includes(query);
-        });
+      const groups = [...root.querySelectorAll('[data-openapi-group]')];
+      // Accents fold on both sides: a reader typing "operacion" finds
+      // "operación".
+      const foldText = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      operations.forEach(operation => {
+        operation.dataset.openapiSearchFolded = foldText(operation.dataset.openapiSearch);
       });
-      // Escape is the keyboard way out of a narrowed list: clear and show
-      // every operation again.
+      const applyFilter = () => {
+        const query = foldText(filter.value.trim());
+        operations.forEach(operation => {
+          operation.hidden = Boolean(query) && !operation.dataset.openapiSearchFolded.includes(query);
+        });
+        // A group heading with nothing left under it is noise.
+        groups.forEach(group => {
+          const visible = group.querySelectorAll('[data-openapi-operation]:not([hidden])');
+          group.hidden = Boolean(query) && visible.length === 0;
+        });
+      };
+      filter.addEventListener('input', applyFilter);
+      // The narrowed list never survives a navigation: Escape clears it,
+      // and so does arriving somewhere else.
+      const resetFilter = () => {
+        if (!filter.value) return;
+        filter.value = '';
+        operations.forEach(operation => { operation.hidden = false; });
+        groups.forEach(group => { group.hidden = false; });
+      };
       filter.addEventListener('keydown', event => {
         if (event.key === 'Escape' && filter.value) {
-          filter.value = '';
-          operations.forEach(operation => { operation.hidden = false; });
+          resetFilter();
           event.stopPropagation();
         }
       });
+      window.addEventListener('gofastr:navigate', resetFilter);
+      window.addEventListener('fastr:navigate', resetFilter);
 
       const select = root.querySelector('[data-openapi-operation-select]');
       const send = root.querySelector('[data-openapi-try]');
@@ -42,9 +62,25 @@
         if (target && target.dataset.openapiOperation !== undefined) {
           const wanted = [...select.options].find(option => option.value === target.id);
           if (wanted) select.value = wanted.value;
+          // The deep-linked card sits under the sticky header otherwise.
+          requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
         }
       }
       syncInputs();
+      // Picking an operation is a choice worth sharing: the URL says which
+      // one is loaded, without adding a history entry.
+      select.addEventListener('change', () => {
+        try { history.replaceState(null, '', '#' + select.value); } catch (_) {}
+      });
+      // A multi-server contract can be switched without a reload.
+      const serverSelect = root.querySelector('[data-openapi-servers]');
+      if (serverSelect) {
+        serverSelect.addEventListener('change', () => {
+          root.dataset.openapiServerUrl = serverSelect.value;
+          const note = root.querySelector('[data-openapi-server-note]');
+          if (note) note.textContent = serverSelect.value;
+        });
+      }
 
       send.addEventListener('click', async () => {
         const option = select.selectedOptions[0];
@@ -96,8 +132,14 @@
         }
         response.textContent = `${method} ${url}\n\nLoading…`;
         response.dataset.state = 'loading';
+        response.setAttribute('aria-busy', 'true');
+        root.setAttribute('aria-busy', 'true');
         send.disabled = true;
         const headers = { Accept: 'application/json' };
+        const tokenInput = root.querySelector('[data-openapi-token]');
+        if (tokenInput && tokenInput.value.trim()) {
+          headers['Authorization'] = `Bearer ${tokenInput.value.trim()}`;
+        }
         fields.forEach(field => {
           if (field.dataset.openapiParamIn !== 'header' || !valueFor(field)) return;
           const name = field.dataset.openapiParamName;
@@ -128,13 +170,22 @@
           response.textContent = `${method} ${url}\n\nCookie parameters cannot be set by a cross-origin browser request.`;
           return;
         }
+        // A newer click cancels the older request rather than racing it.
+        if (window.__fastrOpenAPIAbort) window.__fastrOpenAPIAbort.abort();
+        const controller = window.AbortController ? new AbortController() : null;
+        window.__fastrOpenAPIAbort = controller;
         try {
           try {
-            const request = { method, headers };
+            const request = { method, headers, signal: controller ? controller.signal : undefined };
             if (body !== undefined) request.body = body;
             const result = await fetch(url, request);
             const responseBody = await result.text();
-            response.textContent = `${method} ${url}\n\n${result.status} ${result.statusText}\n${responseBody}`;
+            // JSON renders indented, the way a person reads it.
+            let displayBody = responseBody;
+            try {
+              displayBody = JSON.stringify(JSON.parse(responseBody), null, 2);
+            } catch (_) { /* not JSON: show it verbatim */ }
+            response.textContent = `${method} ${url}\n\n${result.status} ${result.statusText}\n${displayBody}`;
           } catch (error) {
             const detail = error && error.message ? ` (${error.message})` : '';
             response.textContent = `${method} ${url}\n\nRequest failed. Check the server URL, network access, and CORS policy.${detail}`;
@@ -144,9 +195,51 @@
           // console, the button comes back, and the pane stops announcing
           // itself as loading.
           delete response.dataset.state;
+          response.removeAttribute('aria-busy');
+          root.removeAttribute('aria-busy');
           send.disabled = false;
+          if (window.__fastrOpenAPIAbort === controller) window.__fastrOpenAPIAbort = null;
         }
       });
+      // A prepared request is worth taking out of the page: the console
+      // can emit the same call as curl.
+      const curlButton = root.querySelector('[data-openapi-curl]');
+      if (curlButton && !curlButton.dataset.openapiCurlBound) {
+        curlButton.dataset.openapiCurlBound = 'true';
+        curlButton.addEventListener('click', () => {
+          const option = select.selectedOptions[0];
+          if (!option) return;
+          const method = option.dataset.openapiMethod || 'GET';
+          const path = option.dataset.openapiPath || '/';
+          const group = inputGroups.find(item => item.dataset.openapiInputsFor === option.value);
+          const fields = group ? [...group.querySelectorAll('[data-openapi-param-name]')] : [];
+          const query = new URLSearchParams();
+          fields.forEach(field => {
+            const value = (field.value || '').trim();
+            if (value && field.dataset.openapiParamIn === 'query') query.set(field.dataset.openapiParamName, value);
+          });
+          let resolvedPath = path;
+          fields.forEach(field => {
+            const value = (field.value || '').trim();
+            if (field.dataset.openapiParamIn === 'path' && value) {
+              resolvedPath = resolvedPath.split(`{${field.dataset.openapiParamName}}`).join(encodeURIComponent(value));
+            }
+          });
+          const target = `${root.dataset.openapiServerUrl || ''}${resolvedPath}${query.toString() ? '?' + query : ''}`;
+          const lines = [`curl -X ${method} '${target}'`];
+          if (headers && headers.Accept) lines.push(`  -H 'Accept: ${headers.Accept}'`);
+          const tokenInput = root.querySelector('[data-openapi-token]');
+          if (tokenInput && tokenInput.value.trim()) lines.push(`  -H 'Authorization: Bearer ${tokenInput.value.trim()}'`);
+          const bodyInput = group && group.querySelector('[data-openapi-body]');
+          if (bodyInput && bodyInput.value.trim()) lines.push(`  -d '${bodyInput.value.trim().replace(/'/g, `'\\''`)}'`);
+          const command = lines.join(' \\\n');
+          const copied = () => { curlButton.textContent = 'Copied'; setTimeout(() => { curlButton.textContent = 'Copy as cURL'; }, 1600); };
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            navigator.clipboard.writeText(command).then(copied).catch(copied);
+          } else { copied(); }
+          response.textContent = command;
+        });
+      }
     });
   };
 

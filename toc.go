@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"unicode"
@@ -213,7 +214,7 @@ func markdownHeadings(source string) []Heading {
 		if level < 2 || level > 4 {
 			continue
 		}
-		title := strings.TrimSpace(strings.TrimLeft(trimmed, "# "))
+		title := plainHeadingTitle(strings.TrimSpace(strings.TrimLeft(trimmed, "# ")))
 		if title == "" {
 			continue
 		}
@@ -240,15 +241,7 @@ func markdownHeadings(source string) []Heading {
 func headingAnchorButtons(markdown string) string {
 	var out strings.Builder
 	for offset := 0; offset < len(markdown); {
-		next2 := strings.Index(markdown[offset:], `<h2 id="`)
-		next3 := strings.Index(markdown[offset:], `<h3 id="`)
-		next := -1
-		if next2 >= 0 {
-			next = next2
-		}
-		if next3 >= 0 && (next < 0 || next3 < next) {
-			next = next3
-		}
+		next := nextHeadingWithID(markdown[offset:], 2, 3, 4)
 		if next < 0 {
 			out.WriteString(markdown[offset:])
 			break
@@ -267,9 +260,21 @@ func headingAnchorButtons(markdown string) string {
 			break
 		}
 		id := markdown[idStart:idEnd]
-		out.WriteString(markdown[offset : idEnd+closeRel])
-		out.WriteString(` <a class="heading-anchor" href="#` + render.Escape(id) + `" aria-hidden="true">#</a>`)
-		offset = idEnd + closeRel
+		// The button lands AFTER the closing tag, not inside the heading:
+		// a labeled control inside a heading joins the heading's own
+		// accessible name, and "Start here" stops matching exactly.
+		closer := markdown[idEnd+closeRel:]
+		closerEnd := strings.IndexByte(closer, '>')
+		if closerEnd < 0 {
+			out.WriteString(markdown[offset:])
+			break
+		}
+		out.WriteString(markdown[offset : idEnd+closeRel+closerEnd+1])
+		// A button, not a link: the anchor copies the URL rather than
+		// scrolling (the reader is already here), and it is reachable by
+		// keyboard with a name a screen reader announces.
+		out.WriteString(`<button type="button" class="heading-anchor" data-fastr-docs-anchor="#` + render.Escape(id) + `" aria-label="Copy link to this section">#</button>`)
+		offset = idEnd + closeRel + closerEnd + 1
 	}
 	return out.String()
 }
@@ -278,15 +283,7 @@ func dedupeMarkdownHeadingIDs(markdown string) string {
 	counts := make(map[string]int)
 	var out strings.Builder
 	for offset := 0; offset < len(markdown); {
-		next2 := strings.Index(markdown[offset:], `<h2 id="`)
-		next3 := strings.Index(markdown[offset:], `<h3 id="`)
-		next := -1
-		if next2 >= 0 {
-			next = next2
-		}
-		if next3 >= 0 && (next < 0 || next3 < next) {
-			next = next3
-		}
+		next := nextHeadingWithID(markdown[offset:], 2, 3, 4)
 		if next < 0 {
 			out.WriteString(markdown[offset:])
 			break
@@ -299,8 +296,21 @@ func dedupeMarkdownHeadingIDs(markdown string) string {
 			break
 		}
 		idEnd := idStart + idEndRel
+		closeRel := strings.Index(markdown[idEnd:], "</h")
+		if closeRel < 0 {
+			out.WriteString(markdown[offset:])
+			break
+		}
 		out.WriteString(markdown[offset:idStart])
-		base := markdown[idStart:idEnd]
+		// The rendered id becomes the folded slug of the heading's own
+		// text, so the id, the toc, the rail, and a reader typing the
+		// ASCII form of an accented word all agree. GoFastr's slugger
+		// keeps the accents; the rail aims at the folded form, and a
+		// mismatch there crashes the scrollspy.
+		base := headingSlug(plainText(markdown[idEnd : idEnd+closeRel]))
+		if base == "" {
+			base = markdown[idStart:idEnd]
+		}
 		counts[base]++
 		if counts[base] == 1 {
 			out.WriteString(base)
@@ -312,10 +322,32 @@ func dedupeMarkdownHeadingIDs(markdown string) string {
 	return out.String()
 }
 
+// plainText strips the tags from a rendered fragment, leaving the words a
+// reader sees.
+func plainText(fragment string) string {
+	var b strings.Builder
+	depth := 0
+	for _, r := range fragment {
+		switch {
+		case r == '<':
+			depth++
+		case r == '>':
+			if depth > 0 {
+				depth--
+			}
+		case depth == 0:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 func headingSlug(text string) string {
 	var out strings.Builder
 	previousDash := true
-	for _, char := range strings.ToLower(text) {
+	// Folded like search and tags: the anchor for "Diseño" is #diseno, so
+	// a reader typing the ASCII form lands on the section.
+	for _, char := range foldRunes(text) {
 		switch {
 		case unicode.IsLetter(char) || unicode.IsDigit(char):
 			out.WriteRune(char)
@@ -328,4 +360,28 @@ func headingSlug(text string) string {
 		}
 	}
 	return strings.Trim(out.String(), "-")
+}
+
+// nextHeadingWithID finds the next hN-with-id opening tag for any of the
+// levels given, or -1.
+func nextHeadingWithID(markdown string, levels ...int) int {
+	next := -1
+	for _, level := range levels {
+		at := strings.Index(markdown, fmt.Sprintf(`<h%d id="`, level))
+		if at >= 0 && (next < 0 || at < next) {
+			next = at
+		}
+	}
+	return next
+}
+
+// plainHeadingTitle strips the syntax a writer can leave in a heading:
+// shortcode markers and emphasis pairs. The table of contents and the slug
+// should show words, not markup.
+func plainHeadingTitle(title string) string {
+	title = markdownShortcodeToken.ReplaceAllString(title, "")
+	for _, marker := range []string{"**", "__"} {
+		title = strings.ReplaceAll(title, marker, "")
+	}
+	return strings.TrimSpace(title)
 }

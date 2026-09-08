@@ -420,12 +420,20 @@ func (UIStrings) Keys() []string {
 
 func uiStringKeys() []string {
 	var keys []string
-	t := reflect.TypeOf(UIStrings{})
-	for i := range t.NumField() {
-		if t.Field(i).Type.Kind() == reflect.String {
-			keys = append(keys, t.Field(i).Name)
+	var walk func(reflect.Type, string)
+	walk = func(t reflect.Type, prefix string) {
+		for i := range t.NumField() {
+			field := t.Field(i)
+			name := prefix + field.Name
+			switch field.Type.Kind() {
+			case reflect.String, reflect.Slice:
+				keys = append(keys, name)
+			case reflect.Struct:
+				walk(field.Type, name+".")
+			}
 		}
 	}
+	walk(reflect.TypeOf(UIStrings{}), "")
 	return keys
 }
 
@@ -433,11 +441,24 @@ func uiStringKeys() []string {
 // "1 post|%d posts" so a language with different plural rules can name both;
 // without a pipe the label renders as written, count and all.
 func formatCount(label string, n int) string {
-	if head, tail, found := strings.Cut(label, "|"); found {
-		if n == 1 {
-			return head
+	parts := strings.Split(label, "|")
+	switch len(parts) {
+	case 3:
+		// "0 posts|1 post|%d posts": a zero form, a singular form, and
+		// the plural. Languages whose zero differs from their plural
+		// (French "aucun article") need all three.
+		if n == 0 {
+			return parts[0]
 		}
-		return formatLabel(tail, n)
+		if n == 1 {
+			return parts[1]
+		}
+		return formatLabel(parts[2], n)
+	case 2:
+		if n == 1 {
+			return parts[0]
+		}
+		return formatLabel(parts[1], n)
 	}
 	return formatLabel(label, n)
 }
@@ -463,9 +484,17 @@ func (r *Router) labelIssues() []ContentIssue {
 			issues = append(issues, ContentIssue{RoutePath: localeTagPath(locale),
 				Message: fmt.Sprintf("locale %q translates %d short month names, want 12", locale, len(set.ShortMonths))})
 		}
-		if dup := duplicateString(set.Months); dup != "" {
+		if empty := emptyStringIn(set.Months); empty {
 			issues = append(issues, ContentIssue{RoutePath: localeTagPath(locale),
-				Message: fmt.Sprintf("locale %q names two months %q", locale, dup)})
+				Message: fmt.Sprintf("locale %q leaves a month name empty", locale)})
+		}
+		if dup := duplicateFoldedString(set.Months); dup != "" {
+			issues = append(issues, ContentIssue{RoutePath: localeTagPath(locale),
+				Message: fmt.Sprintf("locale %q names two months %q once casing and spacing are ignored", locale, dup)})
+		}
+		if !localeShape.MatchString(locale) {
+			issues = append(issues, ContentIssue{RoutePath: localeTagPath(locale),
+				Message: fmt.Sprintf("locale %q is not a BCP 47 shaped language tag", locale)})
 		}
 		issues = append(issues, placeholderIssues(locale, reflect.ValueOf(r.localeUI[locale]), reflect.ValueOf(defaultUIStrings))...)
 	}
@@ -490,6 +519,14 @@ func duplicateString(values []string) string {
 // placeholderIssues walks two label structs field by field and reports any
 // string whose verb count no longer matches the default's.
 func placeholderIssues(locale string, got, want reflect.Value) []ContentIssue {
+	return placeholderIssuesAt(locale, got, want, "")
+}
+
+// placeholderIssuesAt walks two label structs field by field and reports any
+// string whose verb count no longer matches the default's. The path names the
+// field with its group, "Blog.PostCount", because the label text itself may
+// be arbitrary prose a tool cannot look up.
+func placeholderIssuesAt(locale string, got, want reflect.Value, path string) []ContentIssue {
 	var issues []ContentIssue
 	if got.Type() != want.Type() {
 		return issues
@@ -500,7 +537,7 @@ func placeholderIssues(locale string, got, want reflect.Value) []ContentIssue {
 			if !got.Field(i).CanInterface() {
 				continue
 			}
-			issues = append(issues, placeholderIssues(locale, got.Field(i), want.Field(i))...)
+			issues = append(issues, placeholderIssuesAt(locale, got.Field(i), want.Field(i), path+got.Type().Field(i).Name+".")...)
 		}
 	case reflect.String:
 		gotLabel, wantLabel := got.String(), want.String()
@@ -508,12 +545,37 @@ func placeholderIssues(locale string, got, want reflect.Value) []ContentIssue {
 			return issues
 		}
 		if countFormatDirectives(gotLabel) != countFormatDirectives(wantLabel) {
+			name := strings.TrimSuffix(path, ".")
 			issues = append(issues, ContentIssue{RoutePath: localeTagPath(locale),
-				Message: fmt.Sprintf("locale %q label %q carries %d placeholders, the default carries %d",
-					locale, gotLabel, countFormatDirectives(gotLabel), countFormatDirectives(wantLabel))})
+				Message: fmt.Sprintf("locale %q label %s (%q) carries %d placeholders, the default carries %d",
+					locale, name, gotLabel, countFormatDirectives(gotLabel), countFormatDirectives(wantLabel))})
 		}
 	}
 	return issues
+}
+
+func emptyStringIn(values []string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == "" {
+			return true
+		}
+	}
+	return false
+}
+
+func duplicateFoldedString(values []string) string {
+	seen := map[string]bool{}
+	for _, value := range values {
+		key := foldRunes(strings.TrimSpace(value))
+		if key == "" {
+			continue
+		}
+		if seen[key] {
+			return value
+		}
+		seen[key] = true
+	}
+	return ""
 }
 
 // formatDate renders a date with the configured layout.

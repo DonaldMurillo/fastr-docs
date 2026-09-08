@@ -200,7 +200,10 @@ func expandMarkdownShortcodes(source string, vocab markdownVocabulary, renderBod
 				if value == "" {
 					value = prop[4]
 				}
-				props[prop[1]] = value
+				// Prop names fold case, so Variant= and variant= are the
+				// same knob; a capitalized name silently doing nothing is
+				// a writer's typo turned invisible.
+				props[strings.ToLower(prop[1])] = value
 			}
 			node := markdownShortcode{name: name, props: props}
 			if selfClosing {

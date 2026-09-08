@@ -18,6 +18,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
+	"unicode"
 
 	uiapp "github.com/DonaldMurillo/gofastr/core-ui/app"
 	"github.com/DonaldMurillo/gofastr/core-ui/component"
@@ -816,7 +818,7 @@ func (r *Router) PageScripts() []PageScript {
 func (r *Router) Sitemap() []byte {
 	var b strings.Builder
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
-	b.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
+	b.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">` + "\n")
 	for _, route := range r.PublishedRoutes() {
 		if route == nil || route.Metadata.NoIndex {
 			continue
@@ -825,9 +827,7 @@ func (r *Router) Sitemap() []byte {
 		for lang, target := range r.alternatesFor(route) {
 			b.WriteString(`<xhtml:link rel="alternate" hreflang="` + stdhtml.EscapeString(lang) + `" href="` + stdhtml.EscapeString(target) + `"/>`)
 		}
-		if date := strings.TrimSpace(route.Metadata.DateModified); date != "" {
-			b.WriteString(`<lastmod>` + stdhtml.EscapeString(date) + `</lastmod>`)
-		} else if date := strings.TrimSpace(route.Metadata.DatePublished); date != "" {
+		if date := sitemapLastmod(route.Metadata.DateModified, route.Metadata.DatePublished); date != "" {
 			b.WriteString(`<lastmod>` + stdhtml.EscapeString(date) + `</lastmod>`)
 		}
 		b.WriteString(`</url>` + "\n")
@@ -969,8 +969,9 @@ func (r *Router) Page(path string, cfg PageConfig) error {
 			cfg.Description = firstParagraph(cfg.Source)
 		}
 	}
+	cfg.Tags = trimTags(cfg.Tags)
 	if len(cfg.Tags) == 0 {
-		cfg.Tags = cloneStrings(metadata.Tags)
+		cfg.Tags = trimTags(metadata.Tags)
 	}
 	if cfg.Order < 1 && metadata.Order > 0 {
 		cfg.Order = metadata.Order
@@ -1198,16 +1199,16 @@ func (r *Router) SearchIndex() []SearchEntry {
 			Alternates: r.alternatesFor(route),
 		}
 		if route.page != nil {
-			entry.Text = pageSource(route.page)
-			for _, heading := range markdownHeadings(entry.Text) {
+			entry.Text = stripShortcodeSyntax(pageSource(route.page))
+			for _, heading := range markdownHeadings(pageSource(route.page)) {
 				entry.Headings = append(entry.Headings, heading.Title)
 			}
 		}
 		if entry.Text == "" {
-			entry.Text = route.SearchText
+			entry.Text = stripShortcodeSyntax(route.SearchText)
 			// Screens carry no Markdown page, but their SearchText often
 			// does; the headings ride along when it does.
-			for _, heading := range markdownHeadings(entry.Text) {
+			for _, heading := range markdownHeadings(route.SearchText) {
 				entry.Headings = append(entry.Headings, heading.Title)
 			}
 		}
@@ -1249,15 +1250,26 @@ func (r *Router) Search(query string) []SearchResult {
 			// "diseño" the same way body text already does.
 			{"tags", strings.Join(entry.Tags, " ")}, {"headings", strings.Join(entry.Headings, " ")},
 			{"body", entry.Text},
+			// The URL is searchable because readers paste fragments of
+			// it: "deep-dive" should find /docs/deep-dive even when the
+			// title says something else.
+			{"path", entry.Path},
 		}
 		score := 0
 		matched := make([]string, 0, len(terms))
 		for _, term := range terms {
 			termScore := 0
 			for _, field := range fields {
-				if strings.Contains(foldSearchText(field.value), term) {
+				if searchContains(field.value, term) {
 					termScore = maxInt(termScore, r.searchWeight(field.name))
 				}
+			}
+			// A title that IS the term outranks a title that merely
+			// contains it: "guide" should rank Guide above Guide advanced.
+			// A project that tuned its weights said what it wants; the
+			// bonus stands down rather than overriding the tuning.
+			if len(r.searchWeights) == 0 && searchKey(entry.Title) == term {
+				termScore = maxInt(termScore, r.searchWeight("title")+15)
 			}
 			if termScore == 0 {
 				continue
@@ -1282,27 +1294,35 @@ func (r *Router) Search(query string) []SearchResult {
 // "traducción". Ascii-folded keys are how search stays usable in languages
 // whose readers type without accents; the display text is never altered.
 func foldSearchText(value string) string {
-	var foldTable = map[rune]rune{
-		'à': 'a', 'á': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a', 'ā': 'a', 'ă': 'a', 'ą': 'a',
-		'ç': 'c', 'ć': 'c', 'ĉ': 'c', 'ċ': 'c', 'č': 'c',
-		'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e', 'ē': 'e', 'ĕ': 'e', 'ė': 'e', 'ę': 'e', 'ě': 'e',
-		'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i', 'ĩ': 'i', 'ī': 'i', 'ĭ': 'i', 'į': 'i', 'ı': 'i',
-		'ñ': 'n', 'ń': 'n', 'ņ': 'n', 'ň': 'n',
-		'ò': 'o', 'ó': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o', 'ø': 'o', 'ō': 'o', 'ŏ': 'o', 'ő': 'o',
-		'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u', 'ũ': 'u', 'ū': 'u', 'ŭ': 'u', 'ů': 'u', 'ű': 'u', 'ų': 'u',
-		'ý': 'y', 'ÿ': 'y', 'ŷ': 'y',
-		'đ': 'd', 'ď': 'd', 'ð': 'd',
-		'ł': 'l', 'ĺ': 'l', 'ľ': 'l', 'ŀ': 'l',
-		'ŕ': 'r', 'ŗ': 'r', 'ř': 'r',
-		'ś': 's', 'ŝ': 's', 'ş': 's', 'š': 's', 'ß': 's',
-		't': 't', 'ţ': 't', 'ť': 't',
-		'ź': 'z', 'ż': 'z', 'ž': 'z',
-		'ĝ': 'g', 'ğ': 'g',
-		'ĥ': 'h', 'ħ': 'h',
-		'ĵ': 'j',
-		'ķ': 'k',
-		'æ': 'a', 'œ': 'o',
-	}
+	return foldRunes(value)
+}
+
+// foldRunes lowercases and strips diacritics. It is shared by search, tag
+// slugs, and heading ids, so a reader who types "diseno" reaches "diseño"
+// everywhere or nowhere.
+var foldTable = map[rune]rune{
+	'à': 'a', 'á': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a', 'ā': 'a', 'ă': 'a', 'ą': 'a',
+	'ç': 'c', 'ć': 'c', 'ĉ': 'c', 'ċ': 'c', 'č': 'c',
+	'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e', 'ē': 'e', 'ĕ': 'e', 'ė': 'e', 'ę': 'e', 'ě': 'e',
+	'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i', 'ĩ': 'i', 'ī': 'i', 'ĭ': 'i', 'į': 'i', 'ı': 'i',
+	'ñ': 'n', 'ń': 'n', 'ņ': 'n', 'ň': 'n',
+	'ò': 'o', 'ó': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o', 'ø': 'o', 'ō': 'o', 'ŏ': 'o', 'ő': 'o',
+	'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u', 'ũ': 'u', 'ū': 'u', 'ŭ': 'u', 'ů': 'u', 'ű': 'u', 'ų': 'u',
+	'ý': 'y', 'ÿ': 'y', 'ŷ': 'y',
+	'đ': 'd', 'ď': 'd', 'ð': 'd',
+	'ł': 'l', 'ĺ': 'l', 'ľ': 'l', 'ŀ': 'l',
+	'ŕ': 'r', 'ŗ': 'r', 'ř': 'r',
+	'ś': 's', 'ŝ': 's', 'ş': 's', 'š': 's', 'ß': 's',
+	't': 't', 'ţ': 't', 'ť': 't',
+	'ź': 'z', 'ż': 'z', 'ž': 'z',
+	'ĝ': 'g', 'ğ': 'g',
+	'ĥ': 'h', 'ħ': 'h',
+	'ĵ': 'j',
+	'ķ': 'k',
+	'æ': 'a', 'œ': 'o',
+}
+
+func foldRunes(value string) string {
 	folded := make([]rune, 0, len(value))
 	for _, r := range strings.ToLower(value) {
 		if base, ok := foldTable[r]; ok {
@@ -1313,11 +1333,42 @@ func foldSearchText(value string) string {
 	return string(folded)
 }
 
+// searchKey folds and strips punctuation, so "route-tree" and "what's" match
+// prose written "route tree" and "what's".
+func searchKey(value string) string {
+	var b strings.Builder
+	for _, r := range foldRunes(value) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == ' ' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func stripSearchSpaces(value string) string {
+	return strings.ReplaceAll(value, " ", "")
+}
+
+// searchContains reports whether needle matches haystack once both are
+// folded: directly, or with spaces removed so a hyphenated query reaches a
+// two-word phrase.
+func searchContains(haystack, needle string) bool {
+	key := searchKey(haystack)
+	term := searchKey(needle)
+	if strings.Contains(key, term) {
+		return true
+	}
+	return strings.Contains(stripSearchSpaces(key), stripSearchSpaces(term))
+}
+
 // SearchLimited bounds the result count, so a caller showing three hints
 // under a search box does not rank the whole index and truncate by hand.
 func (r *Router) SearchLimited(query string, limit int) []SearchResult {
+	if limit < 0 {
+		return nil
+	}
 	results := r.Search(query)
-	if limit > 0 && len(results) > limit {
+	if len(results) > limit {
 		results = results[:limit]
 	}
 	return results
@@ -1326,7 +1377,7 @@ func (r *Router) SearchLimited(query string, limit int) []SearchResult {
 func searchTerms(query string) []string {
 	var terms []string
 	seen := map[string]bool{}
-	for _, term := range strings.Fields(foldSearchText(query)) {
+	for _, term := range strings.Fields(searchKey(query)) {
 		term = strings.Trim(term, ".,:;!?()[]{}\"")
 		if term != "" && !seen[term] {
 			seen[term] = true
@@ -1349,6 +1400,8 @@ func (r *Router) searchWeight(field string) int {
 		return 6
 	case "tags":
 		return 5
+	case "path":
+		return 4
 	}
 	return 1
 }
@@ -1396,9 +1449,23 @@ func (r *Router) Warnings() []string {
 		return nil
 	}
 	var warnings []string
+	knownFields := map[string]bool{"title": true, "headings": true, "description": true, "tags": true, "body": true, "path": true}
+	weightFields := make([]string, 0, len(r.searchWeights))
+	for field := range r.searchWeights {
+		weightFields = append(weightFields, field)
+	}
+	sort.Strings(weightFields)
+	for _, field := range weightFields {
+		if !knownFields[field] {
+			warnings = append(warnings, fmt.Sprintf("search weight field %q is not one of title, headings, description, tags, body, path; it does nothing", field))
+		}
+	}
 	for _, route := range r.Routes() {
 		if route.Metadata.Draft {
 			warnings = append(warnings, fmt.Sprintf("route %q is a draft; it is excluded from every build until drafts are included", route.Path))
+		}
+		if published, ok := parseBlogDate(route.Metadata.DatePublished); ok && published.After(time.Now()) {
+			warnings = append(warnings, fmt.Sprintf("route %q is dated %q, in the future; it stays out of listings and feeds until then", route.Path, route.Metadata.DatePublished))
 		}
 	}
 	locales := make([]string, 0, len(r.localeUI))
@@ -1433,6 +1500,11 @@ func (r *Router) Validate() error {
 	// metadata. Mount calls Validate, so both paths are covered.
 	r.resolveGitMetadata()
 	var problems []string
+	for field, weight := range r.searchWeights {
+		if weight < 0 {
+			problems = append(problems, fmt.Sprintf("search weight for field %q must not be negative", field))
+		}
+	}
 	if r.registrationErr != nil {
 		problems = append(problems, r.registrationErr.Error())
 	}
@@ -1494,19 +1566,22 @@ func (r *Router) Validate() error {
 			if r.strict && node.Kind == KindScreen && (node.screen == nil || node.screen.Component == nil) {
 				problems = append(problems, fmt.Sprintf("screen %q: Component is required", node.Path))
 			}
+			if r.strict {
+				problems = append(problems, r.metadataIssues(node)...)
+			}
 			for _, redirect := range node.Metadata.Redirects {
+				trimmed := strings.TrimSpace(redirect)
+				if !strings.HasPrefix(trimmed, "/") {
+					problems = append(problems, fmt.Sprintf("route %q: redirect %q must start with a slash", node.Path, redirect))
+				}
+				if strings.Contains(trimmed, "://") || strings.HasPrefix(trimmed, "//") {
+					problems = append(problems, fmt.Sprintf("route %q: redirect %q must be a site-relative path, not an absolute URL", node.Path, redirect))
+				}
 				if safeRedirectPath(redirect) == "" {
 					problems = append(problems, fmt.Sprintf("route %q: redirect %q must be an internal path", node.Path, redirect))
 				}
 				if redirect == node.Path {
 					problems = append(problems, fmt.Sprintf("route %q redirects onto itself", node.Path))
-				}
-				if target := r.routes[normalizePath(redirect)]; target != nil && target != node {
-					for _, chained := range target.Metadata.Redirects {
-						if chained == redirect || chained == node.Path {
-							problems = append(problems, fmt.Sprintf("routes %q and %q form a redirect cycle through %q", node.Path, target.Path, redirect))
-						}
-					}
 				}
 			}
 			if r.strict {
@@ -1526,6 +1601,39 @@ func (r *Router) Validate() error {
 		}
 	}
 	walk(r.roots)
+	// Redirects are a graph, so duplicate sources and cycles are checked
+	// across the whole tree rather than one route's list at a time.
+	if r.strict {
+		claimed := map[string]string{}
+		for _, route := range r.routes {
+			for _, redirect := range route.Metadata.Redirects {
+				clean := safeRedirectPath(redirect)
+				if clean == "" {
+					continue
+				}
+				if owner, ok := claimed[clean]; ok && owner != route.Path {
+					problems = append(problems, fmt.Sprintf("routes %q and %q both claim the redirect %q; a source can only move once", owner, route.Path, clean))
+				}
+				claimed[clean] = route.Path
+			}
+		}
+		for source := range claimed {
+			seen := map[string]bool{source: true}
+			current := source
+			for {
+				owner, ok := claimed[current]
+				if !ok {
+					break
+				}
+				if seen[owner] {
+					problems = append(problems, fmt.Sprintf("redirect cycle: %q redirects to %q, which redirects back", source, owner))
+					break
+				}
+				seen[owner] = true
+				current = owner
+			}
+		}
+	}
 	if r.strict {
 		for _, issue := range r.ContentIssues() {
 			problems = append(problems, issue.Error())
@@ -1663,15 +1771,25 @@ func (r *Router) navigationDrawerNames() []string {
 	if r == nil {
 		return nil
 	}
+	// The name of a home's drawer is decided by the same rule that mounts
+	// it, in one place: a version home owns a versioned drawer name, a
+	// locale home a locale-suffixed one.
 	names := []string{}
-	for i, home := range r.localeDrawerHomes() {
-		if i == 0 {
-			names = append(names, docsDrawerName(""))
+	drawers := map[string]bool{}
+	for _, home := range r.localeDrawerHomes() {
+		name := docsDrawerName("")
+		if home != nil {
+			if version := strings.TrimSpace(home.Metadata.Version); version != "" && r.effectiveLocale(home) == "" {
+				name = docsDrawerName("v-" + version)
+			} else if locale := r.effectiveLocale(home); locale != "" {
+				name = docsDrawerName(locale)
+			}
+		}
+		if drawers[name] {
 			continue
 		}
-		if home != nil {
-			names = append(names, docsDrawerName(r.effectiveLocale(home)))
-		}
+		drawers[name] = true
+		names = append(names, name)
 	}
 	for _, prefix := range r.blogPrefixesList() {
 		names = append(names, blogDrawerName(prefix))
@@ -2131,6 +2249,14 @@ func (r *Router) metadataHeadHTML(route *Route) string {
 			tags = append(tags, `<link rel="alternate" hreflang="`+stdhtml.EscapeString(locale)+`" href="`+stdhtml.EscapeString(cleanHref)+`">`)
 		}
 	}
+	// x-default names the default-language URL for crawlers choosing
+	// between the variants, which is the one reader who has no language
+	// preference lands on.
+	if len(alternates) > 0 {
+		if target := r.defaultVariantFor(route); target != "" {
+			tags = append(tags, `<link rel="alternate" hreflang="x-default" href="`+stdhtml.EscapeString(target)+`">`)
+		}
+	}
 	return strings.Join(tags, "")
 }
 
@@ -2368,4 +2494,105 @@ func pathActive(routePath, currentPath string) bool {
 		return currentPath == "/"
 	}
 	return currentPath == routePath || strings.HasPrefix(currentPath, routePath+"/")
+}
+
+// stripShortcodeSyntax removes the {{< ... >}} wrappers from search text.
+// The words inside stay searchable; the markers are syntax, not content.
+func stripShortcodeSyntax(source string) string {
+	return markdownShortcodeToken.ReplaceAllString(source, "")
+}
+
+// sitemapLastmod emits a lastmod only when it parses, because a sitemap
+// carrying a garbage date is rejected whole by strict consumers.
+func sitemapLastmod(modified, published string) string {
+	for _, raw := range []string{modified, published} {
+		if value, ok := parseBlogDate(raw); ok {
+			return value.Format("2006-01-02")
+		}
+	}
+	return ""
+}
+
+// blogPostDatedFuture reports a post whose publish date has not arrived.
+// Scheduled posts stay registered and editable but leave listings and feeds.
+func blogPostDatedFuture(route *Route) bool {
+	if route == nil {
+		return false
+	}
+	published, ok := parseBlogDate(route.Metadata.DatePublished)
+	return ok && published.After(time.Now())
+}
+
+// metadataIssues validates the content metadata one route carries: date
+// shapes and ordering, version and slug segments, byline and badge limits.
+func (r *Router) metadataIssues(node *Route) []string {
+	var problems []string
+	if date := strings.TrimSpace(node.Metadata.DatePublished); date != "" {
+		if _, ok := parseBlogDate(date); !ok {
+			problems = append(problems, fmt.Sprintf("route %q: publish date %q must be RFC 3339 or YYYY-MM-DD", node.Path, date))
+		}
+	}
+	if modified := strings.TrimSpace(node.Metadata.DateModified); modified != "" {
+		mod, modOk := parseBlogDate(modified)
+		if !modOk {
+			problems = append(problems, fmt.Sprintf("route %q: modified date %q must be RFC 3339 or YYYY-MM-DD", node.Path, modified))
+		} else if published, ok := parseBlogDate(node.Metadata.DatePublished); ok && mod.Before(published) {
+			problems = append(problems, fmt.Sprintf("route %q: modified date %q is earlier than its publish date", node.Path, modified))
+		}
+	}
+	if version := node.Metadata.Version; version != "" && strings.ContainsAny(version, " /?#") {
+		problems = append(problems, fmt.Sprintf("route %q: version %q must be a single path segment", node.Path, version))
+	}
+	if slug := node.Metadata.Slug; slug != "" && !node.Blog && strings.Contains(slug, "/") {
+		problems = append(problems, fmt.Sprintf("route %q: slug %q must be a single path segment", node.Path, slug))
+	}
+	for _, author := range node.Metadata.Authors {
+		if strings.Contains(author, ",") {
+			problems = append(problems, fmt.Sprintf("route %q: author %q contains a comma; feeds separate multiple authors with commas", node.Path, author))
+		}
+	}
+	if label := strings.TrimSpace(node.Badge.Label); label != "" && len([]rune(label)) > 24 {
+		problems = append(problems, fmt.Sprintf("route %q: badge label %q is longer than 24 characters", node.Path, label))
+	}
+	if excerpt := node.Metadata.Excerpt; len([]rune(excerpt)) > 300 {
+		problems = append(problems, fmt.Sprintf("route %q: excerpt is %d characters; keep it under 300", node.Path, len([]rune(excerpt))))
+	}
+	return problems
+}
+
+// defaultVariantFor is the family's default-language path: the variant in
+// the fallback locale when the site named one, else the first unmarked
+// variant, else the route itself.
+func (r *Router) defaultVariantFor(route *Route) string {
+	family := r.familyOf(route)
+	var firstUnmarked string
+	for _, candidate := range r.Routes() {
+		if candidate == route || !r.variantPublished(candidate) || r.familyOf(candidate) != family {
+			continue
+		}
+		locale := r.effectiveLocale(candidate)
+		if r.fallbackLocale != "" && locale == r.fallbackLocale {
+			return candidate.Path
+		}
+		if locale == "" && firstUnmarked == "" {
+			firstUnmarked = candidate.Path
+		}
+	}
+	if firstUnmarked != "" {
+		return firstUnmarked
+	}
+	return route.Path
+}
+
+// trimTags drops empty and whitespace-only tags at the boundary where a
+// route is built. An author's trailing comma should not become a term page
+// that renders an empty chip.
+func trimTags(tags []string) []string {
+	out := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		if trimmed := strings.TrimSpace(tag); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }

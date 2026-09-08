@@ -413,7 +413,7 @@ func (r *Reference) operationCards() []render.HTML {
 			flush()
 			currentGroup = group
 		}
-		cardAttrs := map[string]string{"id": r.operationID(i), "class": "fastr-openapi-operation", "data-openapi-operation": "true", "data-openapi-search": strings.ToLower(op.Method + " " + op.Path + " " + op.Summary + " " + op.OperationID)}
+		cardAttrs := map[string]string{"id": r.operationID(i), "class": "fastr-openapi-operation", "data-openapi-operation": "true", "data-openapi-search": operationSearchText(op)}
 		if op.Deprecated {
 			cardAttrs["data-deprecated"] = "true"
 		}
@@ -639,4 +639,14 @@ func CSS() string {
 		".fastr-openapi-reference__operationsEmpty, .fastr-openapi-empty { padding: 18px 4px; color: var(--color-text-muted, #52525b); font-style: italic; }",
 		".fastr-openapi-reference__response[data-state=\"loading\"] { opacity: .7; }",
 	}, "\n")
+}
+
+// operationSearchText is the filter's haystack: method, path, summary,
+// operation id, and the parameter names readers remember endpoints by.
+func operationSearchText(op Operation) string {
+	parts := []string{op.Method, op.Path, op.Summary, op.OperationID}
+	for _, parameter := range op.ParameterSpecs {
+		parts = append(parts, parameter.Name)
+	}
+	return strings.ToLower(strings.Join(parts, " "))
 }

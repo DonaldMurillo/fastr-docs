@@ -448,14 +448,19 @@ func TestRed041To050Validation(t *testing.T) {
 			t.Fatalf("route keeps raw locale %q", got)
 		}
 	})
-	t.Run("050 translation_of to a draft is flagged", func(t *testing.T) {
+	t.Run("050 translation_of to a draft warns", func(t *testing.T) {
 		r := NewRouter()
-		r.MustPage("/hidden", PageConfig{Title: "H", Description: "x", Source: "# a", Order: 1, Metadata: ContentMetadata{Draft: true}})
-		r.MustPage("/es/x", PageConfig{Title: "X", Description: "x", Source: "# a", Order: 2,
-			Metadata: ContentMetadata{Locale: "es", TranslationOf: "/hidden"}})
-		if err := r.Validate(); err == nil {
-			t.Fatal("Validate accepted a translation of a draft")
+		r.MustPage("/draft", PageConfig{Title: "D", Description: "d", Order: 1, Source: "# D", Metadata: ContentMetadata{Draft: true}})
+		r.MustPage("/es/draft", PageConfig{Title: "D", Description: "d", Order: 2, Source: "# D", Metadata: ContentMetadata{Locale: "es", TranslationOf: "/draft"}})
+		if err := r.Validate(); err != nil {
+			t.Fatalf("Validate() = %v, translating a not-yet-published page should warn, not fail", err)
 		}
+		for _, warning := range r.Warnings() {
+			if strings.Contains(warning, "/draft") {
+				return
+			}
+		}
+		t.Fatal("Warnings() never mentions the draft translation")
 	})
 }
 

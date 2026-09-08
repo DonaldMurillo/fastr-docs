@@ -331,9 +331,12 @@ func dedupeMarkdownHeadingIDs(markdown string) string {
 	return out.String()
 }
 
-// plainText strips the tags from a rendered fragment, leaving the words a
-// reader sees.
+// plainText strips the tags from a rendered fragment and decodes the
+// entities the renderer left behind, leaving the words a reader sees. An
+// escaped apostrophe (&#39;) that survives into a slug turns "What's" into
+// "what39s".
 func plainText(fragment string) string {
+	fragment = decodeTextEntities(fragment)
 	var b strings.Builder
 	depth := 0
 	for _, r := range fragment {
@@ -355,7 +358,8 @@ func headingSlug(text string) string {
 	var out strings.Builder
 	previousDash := true
 	// Folded like search and tags: the anchor for "Diseño" is #diseno, so
-	// a reader typing the ASCII form lands on the section.
+	// a reader typing the ASCII form lands on the section. Apostrophes
+	// vanish rather than turning into dashes: "What's new" is whats-new.
 	for _, char := range foldRunes(text) {
 		switch {
 		case unicode.IsLetter(char) || unicode.IsDigit(char):
@@ -401,3 +405,28 @@ func plainHeadingTitle(title string) string {
 var plainImageAlt = regexp.MustCompile(`!\[([^\]]*)\]\([^)]*\)`)
 
 var plainLink = regexp.MustCompile(`\[([^\]]+)\]\([^)]*\)`)
+
+var textEntityPattern = regexp.MustCompile(`&(#?[0-9a-zA-Z]+);`)
+
+func decodeTextEntities(fragment string) string {
+	return textEntityPattern.ReplaceAllStringFunc(fragment, func(entity string) string {
+		switch entity {
+		case "&amp;":
+			return "&"
+		case "&quot;":
+			return "\""
+		case "&lt;":
+			return "<"
+		case "&gt;":
+			return ">"
+		case "&apos;", "&#39;":
+			return "'"
+		}
+		if strings.HasPrefix(entity, "&#") {
+			if code, err := strconv.Atoi(entity[2 : len(entity)-1]); err == nil {
+				return string(rune(code))
+			}
+		}
+		return entity
+	})
+}

@@ -24,6 +24,17 @@ func main() {
 	}
 	server := built.server
 	if dir := exportDir(os.Args[1:]); dir != "" {
+		for i := 0; i < len(os.Args[1:]); i++ {
+			args := os.Args[1:]
+			if args[i] == "--export" || args[i] == "--export-base" {
+				if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+					panic(fmt.Errorf("%s requires a value", args[i]))
+				}
+			}
+		}
+		if strings.TrimSpace(os.Getenv("PUBLIC_SITE_URL")) == "" {
+			fmt.Println("warning: PUBLIC_SITE_URL is unset; feeds and the sitemap carry http://localhost:3079 URLs")
+		}
 		base := normalizeBase(exportBase(os.Args[1:]))
 		if err := server.ExportStatic(context.Background(), dir, base); err != nil {
 			panic(err)

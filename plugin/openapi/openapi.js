@@ -244,6 +244,11 @@
           if (headers && headers.Accept) lines.push(`  -H 'Accept: ${headers.Accept}'`);
           const tokenInput = root.querySelector('[data-openapi-token]');
           if (tokenInput && tokenInput.value.trim()) lines.push(`  -H 'Authorization: Bearer ${tokenInput.value.trim()}'`);
+          const apiKeyInput = root.querySelector('[data-openapi-api-key-value]');
+          if (apiKeyInput && apiKeyInput.value.trim()) {
+            const apiKeyHeader = root.getAttribute('data-openapi-api-key') || 'X-Api-Key';
+            lines.push(`  -H '${apiKeyHeader}: ${apiKeyInput.value.trim()}'`);
+          }
           const bodyInput = group && group.querySelector('[data-openapi-body]');
           if (bodyInput && bodyInput.value.trim()) lines.push(`  -d '${bodyInput.value.trim().replace(/'/g, `'\\''`)}'`);
           const command = lines.join(' \\\n');

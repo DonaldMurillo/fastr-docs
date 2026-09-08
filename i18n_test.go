@@ -93,8 +93,10 @@ func TestUntranslatedFamiliesReportsCoverage(t *testing.T) {
 	if len(coverage["fr"]) != 1 {
 		t.Fatalf("LocaleCoverage() = %v, want one French gap", coverage)
 	}
-	if _, ok := coverage["en"]; ok {
-		t.Fatalf("LocaleCoverage() reported a gap for a complete locale: %v", coverage)
+	// The default locale appears with an empty gap list: the key set is
+	// the language inventory, and "en" being complete is information.
+	if gaps, ok := coverage["en"]; !ok || len(gaps) != 0 {
+		t.Fatalf("LocaleCoverage()[en] = %v (present=%v), want an empty gap list", gaps, ok)
 	}
 }
 

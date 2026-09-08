@@ -63,6 +63,7 @@ func (r *Router) ContentIssues() []ContentIssue {
 		source := pageSource(route.page)
 		issues = append(issues, shortcodeIssues(route, source)...)
 		issues = append(issues, imageIssues(route, source, r)...)
+		issues = append(issues, headingJumpIssues(route, source)...)
 		for _, link := range markdownLinks(source) {
 			resolved, fragment, kind, err := resolveContentLink(route.Path, link.Target)
 			base := ContentIssue{
@@ -137,8 +138,6 @@ func (r *Router) translationIssues() []ContentIssue {
 			issue.Message = fmt.Sprintf("translation_of points at %q, which no route serves", ref)
 		case target == route:
 			issue.Message = "translation_of points at the page itself"
-		case target.Metadata.Draft:
-			issue.Message = fmt.Sprintf("translation_of points at %q, which is a draft; publish the original before translating it", ref)
 		case r.effectiveLocale(target) == r.effectiveLocale(route):
 			issue.Message = fmt.Sprintf("translation_of points at %q, which is in the same language (%q); a translation needs its own locale", ref, r.effectiveLocale(route))
 		default:
@@ -444,6 +443,12 @@ func imageIssues(route *Route, source string, r *Router) []ContentIssue {
 				Message: fmt.Sprintf("image %q has no alt text; describe it or mark it decorative with empty brackets and a reason", image.Target)})
 			continue
 		}
+		if strings.HasPrefix(strings.ToLower(image.Target), "javascript:") {
+			issues = append(issues, ContentIssue{RoutePath: route.Path, SourcePath: route.page.SourcePath,
+				Link:    image.Target,
+				Message: fmt.Sprintf("image %q uses a javascript: URL", image.Target)})
+			continue
+		}
 		if strings.HasPrefix(image.Target, "http://") || strings.HasPrefix(image.Target, "https://") || strings.HasPrefix(image.Target, "/__") {
 			continue
 		}
@@ -496,4 +501,38 @@ func translationCycle(r *Router, start, target *Route) bool {
 		current = next
 	}
 	return false
+}
+
+// headingJumpIssues flags heading levels that skip: h2 straight to h4
+// leaves a hole in the document outline, and the toc and slug machinery
+// pair badly with it.
+func headingJumpIssues(route *Route, source string) []ContentIssue {
+	var issues []ContentIssue
+	last := 0
+	for _, line := range strings.Split(strings.ReplaceAll(source, "\r\n", "\n"), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		level := 0
+		for level < len(trimmed) && trimmed[level] == '#' {
+			level++
+		}
+		if level < 1 || level > 6 || (level < len(trimmed) && trimmed[level] != ' ') {
+			continue
+		}
+		// The h1 is the page title, not an outline level: an h4-only
+		// page deliberately organizes beneath it without flagging.
+		if level == 1 {
+			continue
+		}
+		if last > 0 && level > last+1 {
+			issues = append(issues, ContentIssue{RoutePath: route.Path, SourcePath: route.page.SourcePath,
+				Message: fmt.Sprintf("heading jumps from h%d to h%d; the outline skips a level", last, level)})
+		}
+		if level > last || last == 0 {
+			last = level
+		}
+	}
+	return issues
 }

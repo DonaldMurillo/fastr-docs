@@ -86,6 +86,9 @@ func (h *docsHeader) siteHeader(currentPath string) render.HTML {
 				"data-fastr-docs-blog-drawers":   h.router.blogDrawerNames(),
 				"data-fastr-docs-locale-drawers": localeDrawers,
 				"aria-label":                     labels.OpenNavigation,
+				// The trigger names the widget it opens, so assistive tech
+				// pairs them without guessing from data attributes.
+				"aria-controls": drawerName,
 			}, render.Raw(`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>`)),
 			render.Tag("a", map[string]string{"href": "/", "class": "fastr-docs-brand fastr-docs-brand--mobile", "aria-label": h.router.SiteName() + " home"},
 				h.brandMark(),
@@ -295,6 +298,12 @@ func (r *Router) variantSelect(label, dimension string, options []docsVariantOpt
 			"data-docs-variant-value": option.value,
 			"data-docs-variant-label": text,
 			"data-docs-variant-short": short,
+		}
+		// A language option says which language it is, so screen readers
+		// announce "Spanish" rather than reading the label in the page's
+		// own language.
+		if dimension == "locale" {
+			attrs["lang"] = option.value
 		}
 		if normalizePath(option.href) == currentPath {
 			attrs["selected"] = ""

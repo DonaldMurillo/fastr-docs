@@ -510,6 +510,9 @@ func (r *Router) RSSXML(cfg RSSConfig) ([]byte, error) {
 	if cfg.Limit < 0 {
 		return nil, errors.New("docs: RSS limit cannot be negative")
 	}
+	if !strings.HasPrefix(strings.TrimSpace(cfg.Prefix), "/") {
+		return nil, fmt.Errorf("docs: RSS prefix %q must start with a slash", cfg.Prefix)
+	}
 	prefix := normalizePath(cfg.Prefix)
 	if prefix == "" || prefix == "/" {
 		return nil, errors.New("docs: RSS prefix must be a non-root path")
@@ -628,6 +631,9 @@ func WriteStaticRSS(dir, basePath, feedPath string, body []byte) error {
 	}
 	if len(body) == 0 {
 		return errors.New("docs: WriteStaticRSS requires feed content")
+	}
+	if !strings.HasPrefix(strings.TrimSpace(feedPath), "/") {
+		return fmt.Errorf("docs: WriteStaticRSS feed path %q must start with a slash", feedPath)
 	}
 	feedPath, err := safeStaticRoutePath(feedPath)
 	if err != nil {

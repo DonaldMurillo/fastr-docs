@@ -239,6 +239,8 @@ type NotFoundStrings struct {
 	BackTo string
 	// SiteFallback is the link text of the fallback to the site root.
 	SiteFallback string
+	// Search labels the way back into search from a dead end. One word.
+	Search string
 }
 
 var defaultUIStrings = UIStrings{
@@ -321,6 +323,7 @@ var defaultUIStrings = UIStrings{
 		MessageForURL: "No page matches %s.",
 		BackTo:        "Back to %s",
 		SiteFallback:  "Documentation",
+		Search:        "Search",
 	},
 }
 

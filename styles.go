@@ -650,6 +650,16 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
 [dir="rtl"] .heading-anchor { margin-left: 0; margin-right: 6px; }
 .heading-anchor { vertical-align: middle; }
 
+/* Fourth-suite presentation: theme-aware selection, view transitions,
+   a focus token, and math layout owned by the docs layer. The math classes
+   come from plugins but live in the fastr-docs namespace, so their
+   structural treatment belongs here where every page can rely on it. */
+::selection { background: color-mix(in srgb, var(--docs-orange, #d2703a) 30%, transparent); }
+@view-transition { navigation: auto; }
+:root { --docs-focus: var(--docs-orange, #d2703a); }
+.fastr-docs-math { max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 2px 0; vertical-align: baseline; }
+.fastr-docs-math--display { display: block; margin: 14px 0; text-align: center; }
+
 /* Third-suite presentation additions: focus rings the surfaces were
    missing, palette containment, kbd chips, and shared helpers. */
 summary.ui-sidebar__link:focus-visible { outline: 2px solid var(--docs-orange); outline-offset: 2px; }

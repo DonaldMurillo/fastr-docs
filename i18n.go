@@ -135,6 +135,12 @@ func (r *Router) familyOf(route *Route) string {
 		ref := normalizePath(route.Metadata.TranslationOf)
 		target := r.routes[ref]
 		if target == nil {
+			// The reference may name an old path another route claims as
+			// its redirect; the translation pairs with the claimer.
+			if claimer := r.redirectClaimer(ref); claimer != nil {
+				route = claimer
+				continue
+			}
 			return strings.Trim(ref, "/")
 		}
 		route = target
@@ -192,9 +198,16 @@ func (r *Router) localeFamilyLocales() map[string]map[string]bool {
 		if r.version != "" && route.Metadata.Version != "" && route.Metadata.Version != r.version {
 			continue
 		}
-		locale := route.Metadata.Locale
+		locale := normalizeLocale(route.Metadata.Locale)
 		if locale == "" {
-			continue
+			// An unmarked original counts as the site's default language
+			// when one is declared: its family covers that language, and a
+			// coverage report that omits it claims a site is missing a
+			// translation it wrote first.
+			locale = normalizeLocale(r.fallbackLocale)
+			if locale == "" {
+				continue
+			}
 		}
 		family := r.familyOf(route)
 		if families[family] == nil {
@@ -275,9 +288,10 @@ func (r *Router) LocaleCoverage() map[string][]string {
 	}
 	coverage := make(map[string][]string)
 	for _, locale := range r.publishedLocales() {
-		if missing := r.UntranslatedFamilies(locale); len(missing) > 0 {
-			coverage[locale] = missing
-		}
+		// Every locale appears, fully covered ones with an empty list:
+		// translation tooling reads the key set as the site's language
+		// inventory, and a missing key says the language does not exist.
+		coverage[locale] = r.UntranslatedFamilies(locale)
 	}
 	// A locale that exists only as a label set is a translation someone
 	// started; reporting it with every family missing says so instead of
@@ -313,4 +327,18 @@ func (r *Router) publishedLocales() []string {
 	}
 	sort.Strings(locales)
 	return locales
+}
+
+// redirectClaimer returns the route that lists path among its redirect
+// sources, or nil.
+func (r *Router) redirectClaimer(path string) *Route {
+	clean := normalizePath(path)
+	for _, route := range r.routes {
+		for _, redirect := range route.Metadata.Redirects {
+			if safeRedirectPath(redirect) == clean {
+				return route
+			}
+		}
+	}
+	return nil
 }

@@ -39,12 +39,16 @@ function loadStylesheet(dir) {
 }
 
 function showError(root, message) {
-  root.textContent = message;
+  // The original TeX stays visible after the message: the reader came for
+  // the formula, and an error that erases it leaves nothing to fix.
+  const tex = root.getAttribute('data-fastr-docs-math') || '';
+  root.textContent = tex ? message + ' — ' + tex : message;
   root.setAttribute('data-fastr-docs-math-failed', 'true');
   // The failure is announced, not silent: a reader hears that the formula
   // did not render rather than meeting a bare token stream.
   root.setAttribute('role', 'alert');
   root.setAttribute('aria-live', 'polite');
+  root.removeAttribute('aria-busy');
 }
 
 function renderOne(root) {
@@ -62,6 +66,8 @@ function renderOne(root) {
       strict: false,
       trust: false,
     });
+    // The loader marked the placeholder busy until the renderer replaced it.
+    root.removeAttribute('aria-busy');
   } catch (error) {
     showError(root, String((error && error.message) || error));
   }

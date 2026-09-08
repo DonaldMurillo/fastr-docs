@@ -1277,10 +1277,21 @@ func (r *Router) Search(query string) []SearchResult {
 		matched := make([]string, 0, len(terms))
 		for _, term := range terms {
 			termScore := 0
+			occurrences := 0
 			for _, field := range fields {
 				if searchContains(field.value, term) {
 					termScore = maxInt(termScore, r.searchWeight(field.name))
+					// Occurrences count: a page that uses the term three
+					// times is more about it than one that mentions it
+					// once, and a body that repeats a term can outrank a
+					// title tuned down to the same weight.
+					occurrences += strings.Count(searchKey(field.value), term)
 				}
+			}
+			// The bonus only stacks on repeats: one occurrence is the
+			// base case, not a demotion.
+			if termScore > 0 && occurrences > 1 {
+				termScore += occurrences - 1
 			}
 			// A title that IS the term outranks a title that merely
 			// contains it: "guide" should rank Guide above Guide advanced.
@@ -1395,7 +1406,7 @@ func (r *Router) SearchLimited(query string, limit int) []SearchResult {
 func searchTerms(query string) []string {
 	var terms []string
 	seen := map[string]bool{}
-	for _, term := range strings.Fields(searchKey(query)) {
+	for _, term := range searchTermsWithPhrases(query) {
 		term = strings.Trim(term, ".,:;!?()[]{}\"")
 		if term != "" && !seen[term] {
 			seen[term] = true
@@ -1467,6 +1478,8 @@ func (r *Router) Warnings() []string {
 		return nil
 	}
 	var warnings []string
+	warnings = append(warnings, r.orderGapWarnings()...)
+	warnings = append(warnings, r.draftTranslationWarnings()...)
 	if raw := strings.TrimSpace(r.templateRaw); raw != "" {
 		warnings = append(warnings, fmt.Sprintf("template %q is not one of %s; the site renders the editorial default", raw, strings.Join(templateNames(), ", ")))
 	}
@@ -1661,6 +1674,11 @@ func (r *Router) Validate() error {
 				}
 				if node.Metadata.PageTemplate == PageTemplateSplash && node.Metadata.Hero != nil && strings.TrimSpace(node.Metadata.Hero.Title) == "" {
 					problems = append(problems, fmt.Sprintf("route %q: a splash hero needs a title", node.Path))
+				}
+				for index, action := range node.HeroActions() {
+					if strings.TrimSpace(action.Text) != "" && strings.TrimSpace(action.Link) == "" {
+						problems = append(problems, fmt.Sprintf("route %q: hero action %d (%q) has no link; a button that goes nowhere is a dead end", node.Path, index+1, action.Text))
+					}
 				}
 				if edit := strings.TrimSpace(node.Metadata.EditURL); edit != "" && !strings.HasPrefix(edit, "http://") && !strings.HasPrefix(edit, "https://") {
 					problems = append(problems, fmt.Sprintf("route %q: edit URL %q must be absolute", node.Path, edit))
@@ -2082,7 +2100,13 @@ func (s *screenMetadataComponent) ComponentID() string {
 // wrapper around a GoFastr screen.
 func (s *screenMetadataComponent) ScreenTitle() string { return s.route.Title }
 
-func (s *screenMetadataComponent) ScreenDescription() string { return s.route.Description }
+func (s *screenMetadataComponent) ScreenDescription() string {
+	// The curated excerpt wins: it is the page's own summary of itself.
+	if excerpt := strings.TrimSpace(s.route.Metadata.Excerpt); excerpt != "" {
+		return excerpt
+	}
+	return s.route.Description
+}
 
 func (s *screenMetadataComponent) ScreenType() uiapp.ScreenType {
 	if typer, ok := s.component.(uiapp.ScreenTyper); ok {
@@ -2249,8 +2273,14 @@ func pageSource(page *PageConfig) string {
 	return ""
 }
 
-func (p *pageComponent) ScreenTitle() string       { return p.route.Title }
-func (p *pageComponent) ScreenDescription() string { return p.route.Description }
+func (p *pageComponent) ScreenTitle() string { return p.route.Title }
+func (p *pageComponent) ScreenDescription() string {
+	// The curated excerpt wins: it is the page's own summary of itself.
+	if excerpt := strings.TrimSpace(p.route.Metadata.Excerpt); excerpt != "" {
+		return excerpt
+	}
+	return p.route.Description
+}
 
 // ScreenArticle exposes Markdown metadata to GoFastr's Reader Mode and SEO
 // synthesis without making content authors implement a second interface.
@@ -2281,6 +2311,11 @@ func (r *Router) metadataHeadHTML(route *Route) string {
 	var tags []string
 	title := route.Title
 	description := route.Description
+	// A curated excerpt is the page's own summary of itself; when one
+	// exists it wins over the first-paragraph fallback.
+	if excerpt := strings.TrimSpace(meta.Excerpt); excerpt != "" {
+		description = excerpt
+	}
 	canonical := safeMetadataURL(meta.CanonicalURL)
 	if canonical != "" {
 		tags = append(tags, `<link rel="canonical" href="`+stdhtml.EscapeString(canonical)+`">`)
@@ -2331,6 +2366,22 @@ func (r *Router) metadataHeadHTML(route *Route) string {
 			tags = append(tags, `<link rel="alternate" hreflang="`+stdhtml.EscapeString(locale)+`" href="`+stdhtml.EscapeString(cleanHref)+`">`)
 		}
 	}
+	// A page with no explicit canonical is its own: mirrors and query
+	// variants should not fork its identity.
+	if strings.TrimSpace(meta.CanonicalURL) == "" {
+		tags = append(tags, `<link rel="canonical" href="`+stdhtml.EscapeString(route.Path)+`">`)
+	}
+	if image := safeMetadataURL(meta.Image); image != "" {
+		tags = append(tags, `<meta property="og:image" content="`+stdhtml.EscapeString(image)+`">`)
+	}
+	if prev, next, ok := r.pagerNeighbours(route); ok {
+		if prev != "" {
+			tags = append(tags, `<link rel="prev" href="`+stdhtml.EscapeString(prev)+`">`)
+		}
+		if next != "" {
+			tags = append(tags, `<link rel="next" href="`+stdhtml.EscapeString(next)+`">`)
+		}
+	}
 	// x-default names the default-language URL for crawlers choosing
 	// between the variants, which is the one reader who has no language
 	// preference lands on.
@@ -2347,7 +2398,13 @@ func (r *Router) routeHasMetadata(route *Route) bool {
 		return false
 	}
 	meta := route.Metadata
-	return meta.Draft || meta.NoIndex || meta.EditURL != "" || meta.CanonicalURL != "" || meta.Image != "" || len(meta.Authors) > 0 || meta.DatePublished != "" || meta.DateModified != "" || meta.Locale != "" || meta.Version != "" || len(r.alternatesFor(route)) > 0
+	if meta.Draft || meta.NoIndex || meta.EditURL != "" || meta.CanonicalURL != "" || meta.Image != "" || len(meta.Authors) > 0 || meta.DatePublished != "" || meta.DateModified != "" || meta.Locale != "" || meta.Version != "" || len(r.alternatesFor(route)) > 0 {
+		return true
+	}
+	// Every page is its own canonical and sits between two neighbours, so
+	// the head carries meaning even with no front matter at all.
+	_, _, hasNeighbours := r.pagerNeighbours(route)
+	return hasNeighbours
 }
 
 func safeMetadataURL(raw string) string {
@@ -2412,6 +2469,9 @@ func (r *Router) addRoute(path string, route Route) (*Route, error) {
 	}
 	if strings.ContainsAny(path, "?#") {
 		return nil, fmt.Errorf("docs: route path %q must not contain query or fragment data", path)
+	}
+	if strings.Contains(path, "%") {
+		return nil, fmt.Errorf("docs: route path %q must not contain percent escapes; register the decoded path", path)
 	}
 	if _, exists := r.routes[path]; exists {
 		err := fmt.Errorf("docs: duplicate route %q", path)
@@ -2575,6 +2635,8 @@ func pathActive(routePath, currentPath string) bool {
 	if routePath == "/" {
 		return currentPath == "/"
 	}
+	// A prefix match keeps a section active while a nested route is open;
+	// the group's own path is an exact visit.
 	return currentPath == routePath || strings.HasPrefix(currentPath, routePath+"/")
 }
 
@@ -2722,3 +2784,128 @@ func stripSearchNoise(source string) string {
 }
 
 var htmlComment = regexp.MustCompile(`(?s)<!--.*?-->`)
+
+// pagerNeighbours returns the reading-order neighbours of a page: the
+// published routes before and after it in the tree's intentional order.
+func (r *Router) pagerNeighbours(route *Route) (prev, next string, ok bool) {
+	if r == nil || route == nil {
+		return "", "", false
+	}
+	published := r.PublishedRoutes()
+	at := -1
+	for i, candidate := range published {
+		if candidate == route {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		return "", "", false
+	}
+	if at > 0 {
+		prev = published[at-1].Path
+	}
+	if at+1 < len(published) {
+		next = published[at+1].Path
+	}
+	return prev, next, true
+}
+
+// searchTermsWithPhrases splits a query into terms, keeping quoted
+// phrases whole so "route tree" does not match pages that have the words
+// scattered. A phrase is matched with its internal spacing normalized.
+func searchTermsWithPhrases(query string) []string {
+	// The raw query, not the folded one: searchKey strips punctuation, and
+	// the quotes that mark a phrase are exactly that.
+	doubleQuote := string(rune(34))
+	if !strings.Contains(query, doubleQuote) {
+		return strings.Fields(query)
+	}
+	var terms []string
+	var phrase strings.Builder
+	inPhrase := false
+	for _, field := range strings.Fields(query) {
+		if inPhrase {
+			phrase.WriteByte(32)
+			phrase.WriteString(field)
+			if strings.HasSuffix(field, doubleQuote) {
+				terms = append(terms, strings.TrimSuffix(phrase.String(), doubleQuote))
+				phrase.Reset()
+				inPhrase = false
+			}
+			continue
+		}
+		if strings.HasPrefix(field, doubleQuote) {
+			if strings.HasSuffix(field, doubleQuote) && len(field) > 1 {
+				terms = append(terms, strings.Trim(field, doubleQuote))
+				continue
+			}
+			inPhrase = true
+			phrase.WriteString(strings.TrimPrefix(field, doubleQuote))
+			continue
+		}
+		terms = append(terms, field)
+	}
+	if phrase.Len() > 0 {
+		terms = append(terms, phrase.String())
+	}
+	return terms
+}
+
+// orderGapWarnings reports sibling sets whose explicit orders skip far
+// ahead, which almost always means a page was inserted without renumbering
+// the ones after it.
+func (r *Router) orderGapWarnings() []string {
+	if r == nil {
+		return nil
+	}
+	var warnings []string
+	seen := map[*Route]bool{}
+	for _, route := range r.routes {
+		if route.Parent == nil || seen[route.Parent] {
+			continue
+		}
+		seen[route.Parent] = true
+		orders := make([]int, 0, len(route.Parent.Children))
+		for _, child := range route.Parent.Children {
+			if child.Order > 0 {
+				orders = append(orders, child.Order)
+			}
+		}
+		if len(orders) < 2 {
+			continue
+		}
+		sort.Ints(orders)
+		if orders[len(orders)-1]-orders[0] >= 8 {
+			warnings = append(warnings, fmt.Sprintf("routes under %q jump from order %d to %d; pages inserted later may sort between them by accident", route.Parent.Path, orders[0], orders[len(orders)-1]))
+		}
+	}
+	return warnings
+}
+
+// HeroActions returns the splash hero's actions, empty when there is no
+// hero, so validation can range without a nil guard.
+func (route *Route) HeroActions() []PageHeroAction {
+	if route == nil || route.Metadata.Hero == nil {
+		return nil
+	}
+	return route.Metadata.Hero.Actions
+}
+
+// draftTranslationWarnings names translations whose original is still a
+// draft: the work is ahead of publication, not broken.
+func (r *Router) draftTranslationWarnings() []string {
+	var warnings []string
+	for _, route := range r.routes {
+		ref := strings.TrimSpace(route.Metadata.TranslationOf)
+		if ref == "" {
+			continue
+		}
+		target := r.routes[normalizePath(ref)]
+		if target != nil && target.Metadata.Draft {
+			warnings = append(warnings, fmt.Sprintf("route %q translates %q, which is still a draft; both publish together", route.Path, ref))
+		}
+	}
+	sort.Strings(warnings)
+	return warnings
+}

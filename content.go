@@ -291,6 +291,11 @@ func (r *Router) markdownCollectionFS(prefix string, content fs.FS, root string,
 		return fmt.Errorf("docs: scan Markdown collection FS %q: %w", root, err)
 	}
 	sort.Strings(files)
+	if len(files) == 0 {
+		// A collection with no documents registers a section with nothing
+		// in it: a silent dead link in the tree.
+		return fmt.Errorf("docs: Markdown collection %q contains no documents under %q", prefix, root)
+	}
 	if cfg.OrderStart < 1 {
 		cfg.OrderStart = 1
 	}
@@ -408,6 +413,9 @@ func (r *Router) registerCollectionDocument(prefix, sourceRoot, rel, sourcePath 
 
 func collectionSlug(raw string) (string, error) {
 	raw = strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	if strings.ContainsAny(raw, " \t") {
+		return "", fmt.Errorf("slug %q must not contain spaces", raw)
+	}
 	if raw == "" || raw == "." {
 		return "", errors.New("slug must not be empty")
 	}
@@ -423,7 +431,7 @@ func collectionSlug(raw string) (string, error) {
 			return "", fmt.Errorf("slug %q must stay inside the collection", raw)
 		}
 	}
-	clean := pathpkg.Clean(raw)
+	clean := foldRunes(pathpkg.Clean(raw))
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || strings.Contains(clean, "/../") {
 		return "", fmt.Errorf("slug %q must stay inside the collection", raw)
 	}

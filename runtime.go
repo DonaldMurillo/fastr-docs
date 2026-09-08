@@ -960,7 +960,11 @@ const docsRuntimeJS = `(function(){
     if (window.__fastrDocsThemeStorage) return;
     window.__fastrDocsThemeStorage = true;
     window.addEventListener('storage', function(event){
-      if (event && event.key && event.key.toLowerCase().indexOf('theme') !== -1) {
+      // GoFastr persists its color scheme under gofastr.colorScheme; the
+      // namespaced fastr-docs-theme alias covers projects that mirror the
+      // choice themselves. Any other key that merely contains "theme"
+      // belongs to a plugin and must not bounce the reader's page.
+      if (event && event.key && (event.key === 'fastr-docs-theme' || event.key === 'gofastr.colorScheme')) {
         location.reload();
       }
     });
@@ -1016,6 +1020,14 @@ const docsRuntimeJS = `(function(){
       }
     });
   }
+  // Printing captures whatever is open; drawers and the palette are
+  // chrome, so they close before the print dialog renders the page.
+  function closeOverlaysForPrint(){
+    document.querySelectorAll('[data-fui-widget]').forEach(function(widget){
+      if (!widget.hasAttribute('hidden')) widget.setAttribute('hidden', '');
+    });
+  }
+  window.addEventListener('beforeprint', closeOverlaysForPrint);
   function init(){
     watchScrollRestoration();
     initHeadingAnchors();

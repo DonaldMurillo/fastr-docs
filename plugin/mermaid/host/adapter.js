@@ -30,6 +30,9 @@
 
   function mount(root) {
     if (frames.has(root)) return;
+    // The frame says what it is while it loads and after: assistive tech
+    // gets a name, and the reader knows a diagram is coming.
+    root.setAttribute('aria-busy', 'true');
     var source = root.getAttribute('data-fastr-docs-mermaid') || root.textContent || '';
     var iframe = document.createElement('iframe');
     iframe.className = 'fastr-docs-mermaid__frame';
@@ -66,6 +69,9 @@
         send(entry.iframe, 'render', { source: entry.source, theme: currentTheme() });
       } else if (data.method === 'resize' && data.params && data.params.height > 0) {
         entry.iframe.style.height = data.params.height + 'px';
+        // The diagram has drawn: the container stops announcing itself as
+        // busy the first time it reports a size.
+        roots[i].removeAttribute('aria-busy');
       } else if (data.method === 'error') {
         roots[i].setAttribute('data-fastr-docs-mermaid-failed', 'true');
       }

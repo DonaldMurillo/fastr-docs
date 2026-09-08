@@ -144,6 +144,8 @@ func (s NotFoundScreen) render(path string) render.HTML {
 		`<p class="fastr-docs-not-found__message">` + message + `</p>` +
 		`<a class="fastr-docs-not-found__link" href="` + render.Escape(home) + `">` +
 		render.Escape(formatLabel(labels.BackTo, name)) + `</a>` +
+		`<a class="fastr-docs-not-found__search" href="` + render.Escape(home) + `" data-fastr-docs-not-found-search>` +
+		render.Escape(labels.Search) + `</a>` +
 		`</div>`)
 }
 
@@ -318,4 +320,44 @@ func (r *Router) NotFoundScreen() NotFoundScreen {
 		return screen.Locales[i].Prefix < screen.Locales[j].Prefix
 	})
 	return screen
+}
+
+// WriteStaticRedirect materializes one declared redirect as a tiny
+// meta-refresh page, so a static host with no redirect configuration still
+// honors the redirects a page declares in front matter. The manifest lists
+// them for real hosting adapters; this is the floor everyone else gets.
+func WriteStaticRedirect(dir, basePath, from, to string) error {
+	if strings.TrimSpace(dir) == "" {
+		return fmt.Errorf("docs: WriteStaticRedirect requires an output directory")
+	}
+	clean, err := safeStaticRoutePathForRedirect(from)
+	if err != nil {
+		return err
+	}
+	target := safeRedirectPath(to)
+	if target == "" {
+		return fmt.Errorf("docs: WriteStaticRedirect target %q must be a site-relative path", to)
+	}
+	basePath = normalizeBasePath(basePath)
+	href := basePath + target
+	out := filepath.Join(append([]string{dir}, splitStaticPath(basePath+clean)...)...)
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		return fmt.Errorf("docs: create redirect directory: %w", err)
+	}
+	page := `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Moved</title>` +
+		`<link rel="canonical" href="` + stdhtml.EscapeString(href) + `">` +
+		`<meta http-equiv="refresh" content="0; url=` + stdhtml.EscapeString(href) + `">` +
+		`</head><body><p>This page moved to <a href="` + stdhtml.EscapeString(href) + `">` + stdhtml.EscapeString(href) + `</a>.</p></body></html>`
+	if err := os.WriteFile(filepath.Join(out, "index.html"), []byte(page), 0o644); err != nil {
+		return fmt.Errorf("docs: write redirect stub %q: %w", clean, err)
+	}
+	return nil
+}
+
+func safeStaticRoutePathForRedirect(raw string) (string, error) {
+	clean := normalizePath(raw)
+	if clean == "" || clean == "/" || strings.ContainsAny(clean, "?#\\") || strings.HasPrefix(clean, "//") {
+		return "", fmt.Errorf("docs: redirect source %q must be an internal path", raw)
+	}
+	return clean, nil
 }

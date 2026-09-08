@@ -501,9 +501,13 @@ func (r *Router) blogPostActions(route *Route) render.HTML {
 			ToastTitle:   labels.LinkCopied,
 			Class:        "fastr-docs-blog-post__copy",
 		}),
-		render.Tag("span", map[string]string{
-			"id":                           targetID,
-			"class":                        "ui-visually-hidden",
+		render.Tag("a", map[string]string{
+			"id":    targetID,
+			"class": "ui-visually-hidden",
+			"href":  route.Path,
+			// Defense in depth: this hidden self link is the copy source,
+			// and anything that retargets it must not gain a window handle.
+			"rel":                          "noopener",
 			"data-fastr-docs-share-target": "",
 			"data-fastr-docs-share-path":   route.Path,
 		}, render.Text(route.Path)),

@@ -692,6 +692,11 @@ func (d document) searchText(operations []Operation) string {
 	var b strings.Builder
 	for _, op := range operations {
 		fmt.Fprintf(&b, "%s %s %s %s %s\n", op.Method, op.Path, op.Summary, op.Description, op.OperationID)
+		// Parameter names are how readers remember an endpoint ("the one
+		// with the limit param"); they belong in the filter's haystack.
+		for _, parameter := range op.ParameterSpecs {
+			fmt.Fprintf(&b, "%s ", parameter.Name)
+		}
 	}
 	for name, item := range d.Components.Schemas {
 		fmt.Fprintf(&b, "%s %s %s\n", name, item.Type, item.Description)

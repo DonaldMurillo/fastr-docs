@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"regexp"
 	"context"
 	"fmt"
 	"io/fs"
@@ -23,6 +25,10 @@ func main() {
 	}
 	server := built.server
 	if dir := exportDir(os.Args[1:]); dir != "" {
+		if err := validateExportArgs(os.Args[1:]); err != nil {
+			panic(err)
+		}
+		warnPublicSiteURL()
 		base := normalizeBase(exportBase(os.Args[1:]))
 		if err := server.ExportStatic(context.Background(), dir, base); err != nil {
 			panic(err)
@@ -42,7 +48,10 @@ func main() {
 		if err := fastrdocs.WriteAgentAssets(dir, base, server.Router()); err != nil {
 			panic(err)
 		}
-		if err := rewriteRuntimeURLs(dir, base); err != nil {
+		if err := writeRedirectStubs(dir, base, built.manifestBody); err != nil {
+			panic(err)
+		}
+		if err := rewriteRuntimeURLs(dir, base, built.router.AssetPrefix()); err != nil {
 			panic(err)
 		}
 		if err := fastrdocs.RewriteStaticCSP(dir, fastrdocs.ContentSecurityPolicy(built.serverConnectOrigins...)); err != nil {
@@ -85,6 +94,7 @@ type generatedSite struct {
 	serverConnectOrigins []string
 	notFound       fastrdocs.NotFoundScreen
 	notFoundCSS    string
+	manifestBody   []byte
 }
 
 func buildSite() (*generatedSite, error) {
@@ -186,7 +196,11 @@ func buildSite() (*generatedSite, error) {
 			return nil, err
 		}
 	}
-	return &generatedSite{server: server, router: router, rss: rss, serverConnectOrigins: router.ConnectOrigins(), notFound: notFound, notFoundCSS: router.CSS() + "\n" + router.BrandCSS()}, nil
+	manifestBody, err := router.ExportManifestJSON("")
+	if err != nil {
+		return nil, err
+	}
+return &generatedSite{server: server, router: router, rss: rss, serverConnectOrigins: router.ConnectOrigins(), notFound: notFound, notFoundCSS: router.CSS() + "\n" + router.BrandCSS(), manifestBody: manifestBody}, nil
 }
 
 
@@ -227,11 +241,16 @@ func publicSiteURL() string {
 	return "http://localhost:3070"
 }
 
-func rewriteRuntimeURLs(dir, base string) error {
+func rewriteRuntimeURLs(dir, base string, assetPrefix string) error {
 	base = normalizeBase(base)
 	if base == "" {
 		return nil
 	}
+	// Attribute-shaped rewrites: whatever search index or pagefind path the
+	// project configured rides on its own attribute, so the rewrite covers
+	// custom values instead of chasing the defaults one literal at a time.
+	attrRe := regexp.MustCompile(`(data-fastr-docs-(?:index|pagefind)-path=")/`)
+	assetPrefix = "/" + strings.Trim(assetPrefix, "/") + "/"
 	return filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -243,14 +262,50 @@ func rewriteRuntimeURLs(dir, base string) error {
 		if err != nil {
 			return err
 		}
-		updated := strings.ReplaceAll(string(body), `"/__fastr-docs/`, `"`+base+`/__fastr-docs/`)
+		updated := string(body)
+		updated = strings.ReplaceAll(updated, `"`+assetPrefix, `"`+base+assetPrefix)
+		updated = attrRe.ReplaceAllString(updated, `$1`+base+`/`)
 		updated = strings.ReplaceAll(updated, `data-fastr-docs-base=""`, `data-fastr-docs-base="`+base+`"`)
-		updated = strings.ReplaceAll(updated, `data-fastr-docs-pagefind-path="/pagefind/"`, `data-fastr-docs-pagefind-path="`+base+`/pagefind/"`)
 		if updated == string(body) {
 			return nil
 		}
 		return os.WriteFile(path, []byte(updated), 0o644)
 	})
+}
+
+func validateExportArgs(args []string) error {
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--export" || args[i] == "--export-base" {
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return fmt.Errorf("%s requires a value", args[i])
+			}
+		}
+	}
+	return nil
+}
+
+func writeRedirectStubs(dir, base string, manifest []byte) error {
+	var m struct {
+		Redirects []struct {
+			From string `json:"from"`
+			To   string `json:"to"`
+		} `json:"redirects"`
+	}
+	if err := json.Unmarshal(manifest, &m); err != nil {
+		return err
+	}
+	for _, redirect := range m.Redirects {
+		if err := fastrdocs.WriteStaticRedirect(dir, base, strings.TrimPrefix(redirect.From, base), redirect.To); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func warnPublicSiteURL() {
+	if strings.TrimSpace(os.Getenv("PUBLIC_SITE_URL")) == "" {
+		fmt.Println("warning: PUBLIC_SITE_URL is unset; feeds and the sitemap carry http://localhost:3070 URLs")
+	}
 }
 
 func rewriteStaticCSP(dir, policy string) error {

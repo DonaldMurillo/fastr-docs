@@ -343,13 +343,22 @@ const docsRuntimeJS = `(function(){
       if (event.target && event.target.id === 'fastr-docs-command-palette-input') localizePalette();
     });
     // Closing the palette strands focus at the top of the document; hand
-    // it back to the trigger that opened it.
+    // it back to the trigger that opened it, and keep the trigger's
+    // aria-expanded honest in both directions.
+    var syncTriggerExpanded = function(open){
+      document.querySelectorAll('.fastr-docs-command-trigger').forEach(function(node){
+        node.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+    };
     var palette = document.querySelector('[data-fui-widget="fastr-docs-command-palette"]');
     if (palette && window.MutationObserver) {
       var returnFocus = function(){
         if (palette.hasAttribute('hidden')) {
+          syncTriggerExpanded(false);
           var trigger = document.querySelector('.fastr-docs-command-trigger');
           if (trigger) trigger.focus();
+        } else {
+          syncTriggerExpanded(true);
         }
       };
       new MutationObserver(returnFocus).observe(palette, {attributes: true, attributeFilter: ['hidden']});
@@ -422,10 +431,17 @@ const docsRuntimeJS = `(function(){
     list.innerHTML = '<li role="option" aria-disabled="true" class="fastr-docs-search-empty"><span class="combobox__opt-label">No matching documentation</span></li>';
     list.removeAttribute('data-fui-static-options');
   }
+  // The empty row reads its label from the trigger so it follows the page
+  // language instead of the runtime's English.
+  function searchEmptyLabel(){
+    var trigger = searchTriggerElement();
+    var label = trigger && trigger.getAttribute('data-fastr-docs-search-empty');
+    return label || 'No matching documentation';
+  }
   function renderPagefindResults(list, results){
     if (!list) return;
     if (!results || !results.length){
-      list.innerHTML = '<li role="option" aria-disabled="true" class="fastr-docs-search-empty"><span class="combobox__opt-label">No matching documentation</span></li>';
+      list.innerHTML = '<li role="option" aria-disabled="true" class="fastr-docs-search-empty"><span class="combobox__opt-label">' + escapeHTML(searchEmptyLabel()) + '</span></li>';
       list.removeAttribute('data-fui-static-options');
       list.removeAttribute('hidden');
       return;
@@ -495,7 +511,7 @@ const docsRuntimeJS = `(function(){
       return {entry: entry, score: score, index: index, title: title};
     }).filter(Boolean).sort(function(left, right){ return right.score - left.score || left.index - right.index; }).slice(0, 8);
     if (!ranked.length){
-      list.innerHTML = '<li role="option" aria-disabled="true" class="fastr-docs-search-empty"><span class="combobox__opt-label">No matching documentation</span></li>';
+      list.innerHTML = '<li role="option" aria-disabled="true" class="fastr-docs-search-empty"><span class="combobox__opt-label">' + escapeHTML(searchEmptyLabel()) + '</span></li>';
       list.removeAttribute('data-fui-static-options');
       list.removeAttribute('hidden');
       return;
@@ -577,6 +593,7 @@ const docsRuntimeJS = `(function(){
         var query = (input.value || '').trim();
         if (!query){ restorePalette(list); return; }
         var current = ++requestID;
+        document.querySelectorAll('.fastr-docs-search-count').forEach(function(node){ node.setAttribute('aria-busy', 'true'); });
         if (searchAbortController) searchAbortController.abort();
         searchAbortController = jsonSearchAbortController();
         var index = jsonSearchModule(searchAbortController);
@@ -585,6 +602,8 @@ const docsRuntimeJS = `(function(){
           if (current === requestID) renderJSONResults(list, localeEntries(entries), query);
         }).catch(function(){
           if (current === requestID) restorePalette(list, query);
+        }).finally(function(){
+          document.querySelectorAll('.fastr-docs-search-count').forEach(function(node){ node.removeAttribute('aria-busy'); });
         });
       }, 150);
     });
@@ -675,6 +694,13 @@ const docsRuntimeJS = `(function(){
       // duplicate of the whole line breaks text-based queries.
       region.textContent = matchLabel.replace('%d', visible);
     }
+    // Typing filters live, debounced: the whole list re-renders and
+    // re-announces otherwise.
+    var blogDebounce = null;
+    input.addEventListener('input', function(){
+      if (blogDebounce) clearTimeout(blogDebounce);
+      blogDebounce = setTimeout(function(){ apply(input.value.trim()); }, 150);
+    });
     function onSubmit(event){
       event.preventDefault();
       var query = input.value.trim();
@@ -953,6 +979,12 @@ const docsRuntimeJS = `(function(){
         if (savedScroll != null) { window.scrollTo(0, savedScroll); savedScroll = null; }
       });
     });
+    // Passive listeners keep scroll bookkeeping off the main thread, and a
+    // theme change re-syncs the browser chrome color with the page.
+    window.addEventListener('scroll', function(){ savedScroll = window.scrollY; }, { passive: true });
+    var resyncThemeColor = function(){ syncChrome(); };
+    window.addEventListener('gofastr:theme', resyncThemeColor);
+    window.addEventListener('fastr:theme', resyncThemeColor);
   }
   // Heading anchors copy their link instead of scrolling: the reader is
   // already at the section and wants the URL out of the page.
@@ -1020,6 +1052,10 @@ const docsRuntimeJS = `(function(){
   else init();
   window.fastrDocs = window.fastrDocs || {};
   window.fastrDocs.initTocSelect = initTocSelect;
+  // Shared for plugins: the base and path helpers every asset needs.
+  window.fastrDocs.base = docsBase;
+  window.fastrDocs.withBase = withBase;
+  window.fastrDocs.normalizePath = normalizeDocsPath;
   window.fastrDocs.initSectionSelects = initSectionSelects;
   window.fastrDocs.syncSectionSelects = syncSectionSelects;
   window.fastrDocs.initPagefindSearch = initPagefindSearch;

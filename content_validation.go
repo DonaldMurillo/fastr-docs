@@ -62,6 +62,7 @@ func (r *Router) ContentIssues() []ContentIssue {
 		}
 		source := pageSource(route.page)
 		issues = append(issues, shortcodeIssues(route, source)...)
+		issues = append(issues, imageIssues(route, source, r)...)
 		for _, link := range markdownLinks(source) {
 			resolved, fragment, kind, err := resolveContentLink(route.Path, link.Target)
 			base := ContentIssue{
@@ -77,6 +78,11 @@ func (r *Router) ContentIssues() []ContentIssue {
 				continue
 			}
 			target := r.routes[resolved]
+			if target == nil && r.redirectClaimed(resolved) {
+				// An old path some route claims as its redirect is not a
+				// broken link; the host answers it with a 301.
+				continue
+			}
 			if target == nil || !r.routePublished(target) {
 				base.Message = fmt.Sprintf("internal link resolves to unpublished route %q", resolved)
 				issues = append(issues, base)
@@ -85,7 +91,7 @@ func (r *Router) ContentIssues() []ContentIssue {
 			if fragment == "" || target.page == nil || target.page.Body != nil {
 				continue
 			}
-			if !markdownAnchorIDs(pageSource(target.page))[fragment] {
+			if !markdownAnchorIDs(pageSource(target.page))[foldRunes(fragment)] {
 				base.Message = fmt.Sprintf("heading anchor %q does not exist on %q", fragment, resolved)
 				issues = append(issues, base)
 			}
@@ -116,6 +122,16 @@ func (r *Router) translationIssues() []ContentIssue {
 			issue.SourcePath = route.page.SourcePath
 		}
 		target := r.routes[normalizePath(ref)]
+		if target == route {
+			issue.Message = "translation_of points at the page itself"
+			issues = append(issues, issue)
+			continue
+		}
+		if target != nil && translationCycle(r, route, target) {
+			issue.Message = fmt.Sprintf("translation_of cycle: %q and its target point at each other", route.Path)
+			issues = append(issues, issue)
+			continue
+		}
 		switch {
 		case target == nil:
 			issue.Message = fmt.Sprintf("translation_of points at %q, which no route serves", ref)
@@ -160,9 +176,45 @@ type markdownLink struct {
 	Column int
 }
 
+// stripCodeSpans blanks inline code with same-length spaces, so links that
+// are documented as syntax inside backticks are not checked while column
+// positions stay honest.
+func stripCodeSpans(line string) string {
+	bytes := []byte(line)
+	for i := 0; i < len(bytes); i++ {
+		if bytes[i] != '`' {
+			continue
+		}
+		run := 1
+		for i+run < len(bytes) && bytes[i+run] == '`' {
+			run++
+		}
+		close := strings.Index(string(bytes[i+run:]), strings.Repeat("`", run))
+		if close < 0 {
+			return string(bytes)
+		}
+		for k := i; k < i+run+close+run && k < len(bytes); k++ {
+			bytes[k] = ' '
+		}
+		i = i + run + close + run - 1
+	}
+	return string(bytes)
+}
+
+// markdownReferenceTargets collects reference-style link definitions
+// ([ref]: /target), which inline scanning never sees.
+var markdownReferenceTargets = regexp.MustCompile(`(?m)^\s{0,3}\[([^\]]+)\]:\s*(\S+)`)
+
 var markdownLinkPattern = regexp.MustCompile(`(?:^|[^!])\[[^\]\r\n]*\]\(\s*(?:<([^>\r\n]+)>|([^\s)]+))`)
 
 func markdownLinks(source string) []markdownLink {
+	source = strings.ReplaceAll(source, "\r\n", "\n")
+	// Reference definitions behave like links for checking purposes.
+	var refs []markdownLink
+	for _, match := range markdownReferenceTargets.FindAllStringSubmatch(source, -1) {
+		refs = append(refs, markdownLink{Target: match[2], Line: 0, Column: 0})
+	}
+	source = markdownReferenceTargets.ReplaceAllString(source, "")
 	var links []markdownLink
 	inFence := false
 	lineStart := 0
@@ -174,7 +226,8 @@ func markdownLinks(source string) []markdownLink {
 			continue
 		}
 		if !inFence {
-			for _, match := range markdownLinkPattern.FindAllStringSubmatchIndex(line, -1) {
+			scannable := stripCodeSpans(line)
+			for _, match := range markdownLinkPattern.FindAllStringSubmatchIndex(scannable, -1) {
 				valueStart, valueEnd := match[2], match[3]
 				if valueStart < 0 {
 					valueStart, valueEnd = match[4], match[5]
@@ -191,7 +244,7 @@ func markdownLinks(source string) []markdownLink {
 		}
 		lineStart += len(line)
 	}
-	return links
+	return append(links, refs...)
 }
 
 func resolveContentLink(currentPath, raw string) (string, string, contentLinkKind, error) {
@@ -275,9 +328,24 @@ var shortcodePropValuePattern = regexp.MustCompile(`\{\{<\s*(callout|card|steps)
 var shortcodeTabsBlockPattern = regexp.MustCompile(`(?s)\{\{<\s*tabs[^>]*>\}\}(.*?)\{\{<\s*/tabs\s*>\}\}`)
 var shortcodeTabLabelPattern = regexp.MustCompile(`\{\{<\s*tab[^>]*?label="([^"]*)"`)
 
+// builtinShortcodeProps names the props each built-in shortcode accepts, so
+// a typo'd prop is caught at build time instead of doing nothing.
+var builtinShortcodeProps = map[string]map[string]bool{
+	"callout":  {"variant": true, "title": true, "icon": true},
+	"card":     {"variant": true, "title": true, "href": true, "description": true},
+	"steps":    {"variant": true},
+	"tabs":     {},
+	"tab":      {"label": true},
+	"filetree": {},
+	"diff":     {"file": true, "lang": true, "left": true, "right": true},
+	"math":     {"display": true},
+	"mermaid":  {"title": true},
+}
+
 // shortcodeIssues checks the built-in shortcodes' prop values: variant
-// values the sanitizer would quietly replace, and tab labels repeated
-// within one tabs block.
+// values the sanitizer would quietly replace, tab labels repeated within
+// one tabs block, props no built-in knows, and block shortcodes inside
+// headings.
 func shortcodeIssues(route *Route, source string) []ContentIssue {
 	var issues []ContentIssue
 	for _, match := range shortcodePropValuePattern.FindAllStringSubmatch(source, -1) {
@@ -297,5 +365,135 @@ func shortcodeIssues(route *Route, source string) []ContentIssue {
 			seen[label[1]] = true
 		}
 	}
+	issues = append(issues, shortcodePropNameIssues(route, source)...)
+	issues = append(issues, shortcodeInHeadingIssues(route, source)...)
 	return issues
+}
+
+var shortcodeOpenPattern = regexp.MustCompile(`\{\{<\s*([A-Za-z][A-Za-z0-9_-]*)((?:[^>]*)?)>\}\}`)
+var shortcodePropScan = regexp.MustCompile(`([A-Za-z][A-Za-z0-9_-]*)\s*=`)
+
+func shortcodePropNameIssues(route *Route, source string) []ContentIssue {
+	var issues []ContentIssue
+	for _, match := range shortcodeOpenPattern.FindAllStringSubmatch(source, -1) {
+		name, attrs := match[1], match[2]
+		allowed, known := builtinShortcodeProps[name]
+		if !known {
+			continue
+		}
+		for _, prop := range shortcodePropScan.FindAllStringSubmatch(attrs, -1) {
+			// Prop names fold case at parse time, so the check compares
+			// the folded name.
+			if !allowed[strings.ToLower(prop[1])] {
+				issues = append(issues, ContentIssue{RoutePath: route.Path, SourcePath: route.page.SourcePath,
+					Message: fmt.Sprintf("shortcode %q has no prop %q", name, prop[1])})
+			}
+		}
+	}
+	return issues
+}
+
+var headingWithShortcodePattern = regexp.MustCompile(`(?m)^#{1,6}.*\{\{<`)
+
+func shortcodeInHeadingIssues(route *Route, source string) []ContentIssue {
+	var issues []ContentIssue
+	for _, line := range strings.Split(strings.ReplaceAll(source, "\r\n", "\n"), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "#") || !strings.Contains(trimmed, "{{<") {
+			continue
+		}
+		issues = append(issues, ContentIssue{RoutePath: route.Path, SourcePath: route.page.SourcePath,
+			Message: fmt.Sprintf("a heading carries a block shortcode; move it below the heading so the section ids stay stable")})
+	}
+	return issues
+}
+
+// markdownImageRef is one image in a page: its alt text and target.
+type markdownImageRef struct {
+	Alt, Target string
+	Line        int
+}
+
+var markdownImagePattern = regexp.MustCompile(`!\[([^\]]*)\]\(\s*([^)\s]+)\s*\)`)
+
+func markdownImages(source string) []markdownImageRef {
+	var images []markdownImageRef
+	line := 1
+	for _, char := range source {
+		if char == '\n' {
+			line++
+		}
+	}
+	_ = line
+	offset := 0
+	for _, match := range markdownImagePattern.FindAllStringSubmatchIndex(source, -1) {
+		_ = offset
+		images = append(images, markdownImageRef{Alt: source[match[2]:match[3]], Target: source[match[4]:match[5]]})
+	}
+	return images
+}
+
+// imageIssues flags images with no alt text and internal image sources no
+// route serves.
+func imageIssues(route *Route, source string, r *Router) []ContentIssue {
+	var issues []ContentIssue
+	for _, image := range markdownImages(source) {
+		if strings.TrimSpace(image.Alt) == "" {
+			issues = append(issues, ContentIssue{RoutePath: route.Path, SourcePath: route.page.SourcePath,
+				Link:    image.Target,
+				Message: fmt.Sprintf("image %q has no alt text; describe it or mark it decorative with empty brackets and a reason", image.Target)})
+			continue
+		}
+		if strings.HasPrefix(image.Target, "http://") || strings.HasPrefix(image.Target, "https://") || strings.HasPrefix(image.Target, "/__") {
+			continue
+		}
+		resolved, _, kind, err := resolveContentLink(route.Path, image.Target)
+		if err != nil || kind == contentLinkExternal {
+			continue
+		}
+		if target := r.routes[resolved]; target == nil || !r.routePublished(target) {
+			issues = append(issues, ContentIssue{RoutePath: route.Path, SourcePath: route.page.SourcePath,
+				Link:    image.Target,
+				Message: fmt.Sprintf("image resolves to unpublished route %q", resolved)})
+		}
+	}
+	return issues
+}
+
+// redirectClaimed reports whether any registered route lists path as one of
+// its redirect sources.
+func (r *Router) redirectClaimed(path string) bool {
+	for _, route := range r.routes {
+		for _, redirect := range route.Metadata.Redirects {
+			if safeRedirectPath(redirect) == normalizePath(path) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// translationCycle reports whether following TranslationOf from target ever
+// returns to start.
+func translationCycle(r *Router, start, target *Route) bool {
+	seen := map[*Route]bool{start: true}
+	current := target
+	for current != nil && current.Metadata.TranslationOf != "" {
+		if current == start {
+			return true
+		}
+		if seen[current] {
+			return false
+		}
+		seen[current] = true
+		next := r.routes[normalizePath(current.Metadata.TranslationOf)]
+		if next == nil {
+			return false
+		}
+		if next == start {
+			return true
+		}
+		current = next
+	}
+	return false
 }

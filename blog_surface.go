@@ -397,7 +397,12 @@ func (r *Router) blogPostCard(post *Route, featured bool) render.HTML {
 	if post == nil {
 		return render.Text("")
 	}
-	meta := render.Tag("div", map[string]string{"class": "fastr-docs-blog-card__meta"}, render.Text(r.formatBlogDate(r.blogPrefixForPost(post), post.Metadata.DatePublished)+" · "+formatLabel(r.blogLabels(r.blogPrefixForPost(post)).ReadingTime, blogReadingTime(post))))
+	// The date is a machine-readable <time>; crawlers and readers both
+	// parse it then.
+	meta := render.Tag("div", map[string]string{"class": "fastr-docs-blog-card__meta"},
+		render.Tag("time", map[string]string{"datetime": post.Metadata.DatePublished, "class": "fastr-docs-blog-card__date"},
+			render.Text(r.formatBlogDate(r.blogPrefixForPost(post), post.Metadata.DatePublished))),
+		render.Text(" · "+formatLabel(r.blogLabels(r.blogPrefixForPost(post)).ReadingTime, blogReadingTime(post))))
 	header := render.Join(meta, render.Tag("h3", nil, render.Text(post.Title)))
 	excerpt := post.Metadata.Excerpt
 	if excerpt == "" {
@@ -631,11 +636,11 @@ func truncateBlogSearchText(value string, limit int) string {
 }
 
 func blogQueryMatch(post *Route, query string) bool {
-	terms := strings.Fields(strings.ToLower(query))
+	terms := strings.Fields(foldRunes(query))
 	if len(terms) == 0 {
 		return true
 	}
-	text := strings.ToLower(blogSearchText(post))
+	text := foldRunes(blogSearchText(post))
 	for _, term := range terms {
 		if !strings.Contains(text, term) {
 			return false
@@ -692,6 +697,9 @@ func (r *Router) blogPostsForTerm(prefix string, authors bool, term string) []*R
 	term = strings.ToLower(strings.TrimSpace(term))
 	posts := make([]*Route, 0)
 	for _, post := range r.blogPublicPosts(prefix) {
+		if blogPostDatedFuture(post) {
+			continue
+		}
 		values := post.Metadata.Tags
 		if authors {
 			values = post.Metadata.Authors

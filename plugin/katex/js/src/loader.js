@@ -45,6 +45,9 @@ function load() {
 function check() {
   if (document.querySelector(SELECTOR)) {
     load();
+    // Each placeholder is busy until the renderer replaces it, so
+    // assistive tech does not read the raw TeX twice.
+    document.querySelectorAll(SELECTOR).forEach((node) => node.setAttribute('aria-busy', 'true'));
     return true;
   }
   return false;

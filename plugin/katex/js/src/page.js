@@ -41,6 +41,10 @@ function loadStylesheet(dir) {
 function showError(root, message) {
   root.textContent = message;
   root.setAttribute('data-fastr-docs-math-failed', 'true');
+  // The failure is announced, not silent: a reader hears that the formula
+  // did not render rather than meeting a bare token stream.
+  root.setAttribute('role', 'alert');
+  root.setAttribute('aria-live', 'polite');
 }
 
 function renderOne(root) {

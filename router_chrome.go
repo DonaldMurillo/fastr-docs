@@ -605,6 +605,8 @@ func (r *Router) searchTrigger(currentPath string) render.HTML {
 	return render.Tag("button", map[string]string{
 		"type":                          "button",
 		"class":                         "fastr-docs-command-trigger",
+		"aria-expanded":                 "false",
+		"aria-haspopup":                 "dialog",
 		"data-fui-open":                 "fastr-docs-command-palette",
 		"data-fui-shortcut-click":       "Meta+K",
 		"data-fastr-docs-backend":       string(r.SearchBackend()),
@@ -713,6 +715,11 @@ func (r *Router) localeDrawerHomes() []*Route {
 		}
 		family := r.familyOf(home)
 		if family != "" && seenVersionFamily[family] {
+			continue
+		}
+		// The current version's tree is already the default drawer; a
+		// second drawer for it would duplicate every link.
+		if r.isCurrentVersionHome(home) {
 			continue
 		}
 		if drawer := docsDrawerName("v-" + home.Metadata.Version); !drawers[drawer] {
@@ -1087,4 +1094,34 @@ func sidebarIcon(kind RouteKind, badge NavBadge, navPath string, activeParent bo
 		markup += `<span class="fastr-docs-nav-badge fastr-docs-nav-badge--` + string(badge.Tone) + `" aria-hidden="true" data-badge-label="` + render.Escape(badge.Label) + `" title="` + render.Escape(badge.Label) + `"></span>`
 	}
 	return render.Raw(markup)
+}
+
+// familyHasCurrentVariant reports whether the family contains a route with
+// no version segment: the tree the default drawer already serves.
+func (r *Router) familyHasCurrentVariant(family string) bool {
+	if family == "" {
+		return false
+	}
+	for _, route := range r.Routes() {
+		if r.familyOf(route) == family && strings.TrimSpace(route.Metadata.Version) == "" && r.variantPublished(route) {
+			return true
+		}
+	}
+	return false
+}
+
+// isCurrentVersionHome reports whether home belongs to a versioned
+// collection whose current version is mounted at the plain prefix, which
+// the default drawer already serves.
+func (r *Router) isCurrentVersionHome(home *Route) bool {
+	version := strings.TrimSpace(home.Metadata.Version)
+	if version == "" {
+		return false
+	}
+	for prefix, current := range r.currentVersions {
+		if current == version && pathActive(prefix, home.Path) {
+			return true
+		}
+	}
+	return false
 }

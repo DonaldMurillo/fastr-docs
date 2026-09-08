@@ -136,6 +136,11 @@
         root.setAttribute('aria-busy', 'true');
         send.disabled = true;
         const headers = { Accept: 'application/json' };
+        const apiKeyInput = root.querySelector('[data-openapi-api-key-value]');
+        if (apiKeyInput && apiKeyInput.value.trim()) {
+          const headerName = root.getAttribute('data-openapi-api-key') || 'X-Api-Key';
+          headers[headerName] = apiKeyInput.value.trim();
+        }
         const tokenInput = root.querySelector('[data-openapi-token]');
         if (tokenInput && tokenInput.value.trim()) {
           headers['Authorization'] = `Bearer ${tokenInput.value.trim()}`;
@@ -185,7 +190,16 @@
             try {
               displayBody = JSON.stringify(JSON.parse(responseBody), null, 2);
             } catch (_) { /* not JSON: show it verbatim */ }
-            response.textContent = `${method} ${url}\n\n${result.status} ${result.statusText}\n${displayBody}`;
+            // The headers the server actually sent, because rate limits
+            // and pagination live there.
+            let headerLines = '';
+            if (result.headers && typeof result.headers.forEach === 'function') {
+              const shown = [];
+              result.headers.forEach((value, name) => { shown.push(name + ': ' + value); });
+              if (shown.length) headerLines = shown.join('\n') + '\n\n';
+            }
+            const contentType = result.headers ? (result.headers.get('content-type') || '') : '';
+            response.textContent = `${method} ${url}\n\n${result.status} ${result.statusText}${contentType ? ' · ' + contentType : ''}\n${headerLines}${displayBody}`;
           } catch (error) {
             const detail = error && error.message ? ` (${error.message})` : '';
             response.textContent = `${method} ${url}\n\nRequest failed. Check the server URL, network access, and CORS policy.${detail}`;

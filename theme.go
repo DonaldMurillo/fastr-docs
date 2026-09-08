@@ -1,6 +1,8 @@
 package docs
 
 import (
+	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -39,7 +41,12 @@ type ThemeOverrides = uitheme.Overrides
 // template's baseline with this config's overrides applied. Tooling can
 // diff or preview a theme without parsing CSS.
 func (c ThemeConfig) Variables() map[string]string {
-	vars := map[string]string{}
+	vars := map[string]string{
+		// The template's own name travels with the variables, so tooling
+		// and agents can say which theme a page wears without guessing
+		// from colors.
+		"template": string(ParseTemplate(string(c.Template))),
+	}
 	for k, v := range templateVariables(c.Template) {
 		vars[k] = v
 	}
@@ -106,7 +113,10 @@ func ThemeTemplates() []Template {
 // ParseTemplate normalizes a template name from configuration or an
 // environment variable. Unknown or empty values intentionally fall back to
 // the safe editorial default.
+// ParseTemplate folds case and whitespace; an unknown name still resolves
+// to the editorial default, and Warnings says so.
 func ParseTemplate(value string) Template {
+	value = strings.ToLower(strings.TrimSpace(value))
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case string(TemplateTerminal):
 		return TemplateTerminal
@@ -146,7 +156,14 @@ func WithTemplate(template Template) Option {
 		if r == nil {
 			return
 		}
-		r.themeConfig.Template = ParseTemplate(string(template))
+		raw := strings.TrimSpace(string(template))
+		parsed := ParseTemplate(raw)
+		if raw != "" && parsed != Template(raw) {
+			// Keep the typo for Warnings to name; the rendered theme is
+			// still the safe default.
+			r.templateRaw = raw
+		}
+		r.themeConfig.Template = parsed
 	}
 }
 
@@ -581,4 +598,93 @@ func cloneThemeStringMap(values map[string]string) map[string]string {
 		clone[key] = value
 	}
 	return clone
+}
+
+// templateNames lists the available templates for warnings.
+func templateNames() []string {
+	names := make([]string, 0, len(ThemeTemplates()))
+	for _, template := range ThemeTemplates() {
+		names = append(names, string(template))
+	}
+	return names
+}
+
+// lowContrastOverrides reports "text on background" when the configured
+// override pair fails WCAG AA, or "" when it passes or is unmeasurable.
+func (r *Router) lowContrastOverrides() string {
+	if r == nil {
+		return ""
+	}
+	config := r.ThemeConfig()
+	vars := config.Variables()
+	text, hasText := vars["color-text"]
+	background, hasBackground := vars["color-background"]
+	if !hasText || !hasBackground {
+		return ""
+	}
+	ratio, ok := contrastRatio(text, background)
+	if !ok || ratio >= 4.5 {
+		return ""
+	}
+	return fmt.Sprintf("text %q on background %q (ratio %.2f:1)", text, background, ratio)
+}
+
+// contrastRatio computes the WCAG relative-luminance ratio of two hex
+// colors. Non-hex values report ok=false rather than a wrong number.
+func contrastRatio(fg, bg string) (float64, bool) {
+	f, ok1 := hexLuminance(fg)
+	g, ok2 := hexLuminance(bg)
+	if !ok1 || !ok2 {
+		return 0, false
+	}
+	lighter, darker := f, g
+	if darker > lighter {
+		lighter, darker = darker, lighter
+	}
+	return (lighter + 0.05) / (darker + 0.05), true
+}
+
+func hexLuminance(hex string) (float64, bool) {
+	value := strings.TrimPrefix(strings.TrimSpace(hex), "#")
+	if len(value) == 3 {
+		expanded := make([]byte, 0, 6)
+		for i := range value {
+			expanded = append(expanded, value[i], value[i])
+		}
+		value = string(expanded)
+	}
+	if len(value) != 6 {
+		return 0, false
+	}
+	var channels [3]float64
+	for i := range 3 {
+		parsed := 0
+		for _, c := range []byte(value[i*2 : i*2+2]) {
+			digit, ok := hexDigit(c)
+			if !ok {
+				return 0, false
+			}
+			parsed = parsed*16 + digit
+		}
+		linear := float64(parsed) / 255.0
+		if linear <= 0.04045 {
+			linear /= 12.92
+		} else {
+			linear = math.Pow((linear+0.055)/1.055, 2.4)
+		}
+		channels[i] = linear
+	}
+	return 0.2126*channels[0] + 0.7152*channels[1] + 0.0722*channels[2], true
+}
+
+func hexDigit(c byte) (int, bool) {
+	switch {
+	case c >= '0' && c <= '9':
+		return int(c - '0'), true
+	case c >= 'a' && c <= 'f':
+		return int(c-'a') + 10, true
+	case c >= 'A' && c <= 'F':
+		return int(c-'A') + 10, true
+	}
+	return 0, false
 }

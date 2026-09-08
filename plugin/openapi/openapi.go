@@ -5,6 +5,7 @@
 package openapi
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -131,6 +132,7 @@ func (p Plugin) Apply(r *docs.Router) error {
 	if locale != "" && !docs.IsValidLocale(locale) {
 		return fmt.Errorf("locale %q is not a BCP 47 shaped tag", locale)
 	}
+	apiKeyHeader, apiKeyName := spec.apiKeyHeader()
 	serverURL := spec.serverURL(p.ServerURL)
 	if serverURL == "" {
 		// No declared server and no override means the API lives where
@@ -146,6 +148,7 @@ func (p Plugin) Apply(r *docs.Router) error {
 		Description: description,
 		Component: &Reference{Title: title, Description: description, Version: spec.version(), ServerURL: serverURL,
 			Servers: spec.serverURLs(), BearerScheme: spec.bearerScheme(),
+			APIKeyHeader: apiKeyHeader, APIKeyName: apiKeyName,
 			Operations: operations, Schemas: spec.Components.Schemas, Strings: p.Strings.withDefaults(), IDPrefix: idPrefix},
 		SearchText: spec.searchText(operations),
 		Plugin:     "openapi",
@@ -186,6 +189,8 @@ func checkDuplicateOperationIDs(operations []Operation) error {
 }
 
 func decodeSpec(data []byte, target any) error {
+	// Editors on Windows save a BOM; JSON does not allow one.
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 	if err := json.Unmarshal(data, target); err == nil {
 		return nil
 	}
@@ -459,10 +464,27 @@ func (d document) bearerScheme() string {
 	return ""
 }
 
+// apiKeyHeader names an apiKey-in-header security scheme the console can
+// offer as a plain header field, or "".
+func (d document) apiKeyHeader() (name, in string) {
+	for _, requirement := range d.Security {
+		for schemeName := range requirement {
+			scheme, ok := d.Components.SecuritySchemes[schemeName]
+			if ok && strings.EqualFold(scheme.Type, "apikey") && strings.EqualFold(scheme.In, "header") {
+				return scheme.Name, schemeName
+			}
+		}
+	}
+	return "", ""
+}
+
 func (d document) operations() ([]Operation, error) {
 	var out []Operation
 	paths := make([]string, 0, len(d.Paths))
 	for path := range d.Paths {
+		if strings.ContainsAny(path, "?#") {
+			return nil, fmt.Errorf("path %q carries a query or fragment; paths are locations, not URLs", path)
+		}
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)

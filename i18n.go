@@ -231,6 +231,15 @@ func (r *Router) localeAllows(route *Route) bool {
 // UntranslatedFamilies reports the route families that have no variant in the
 // given locale, so a project can see its translation coverage rather than
 // discovering gaps in production. Families are returned sorted.
+// localePrimary returns the primary subtag of a BCP 47 tag: "es" for both
+// "es" and "es-MX". A regional translation counts toward its language.
+func localePrimary(locale string) string {
+	if dash := strings.IndexByte(locale, '-'); dash > 0 {
+		return locale[:dash]
+	}
+	return locale
+}
+
 func (r *Router) UntranslatedFamilies(locale string) []string {
 	locale = strings.TrimSpace(locale)
 	if r == nil || locale == "" {
@@ -238,7 +247,19 @@ func (r *Router) UntranslatedFamilies(locale string) []string {
 	}
 	var missing []string
 	for family, locales := range r.localeFamilyLocales() {
-		if !locales[locale] {
+		if locales[locale] {
+			continue
+		}
+		// A regional variant stands in for its language: es-MX satisfies
+		// an es reader better than English does.
+		satisfied := false
+		for present := range locales {
+			if localePrimary(present) == localePrimary(locale) {
+				satisfied = true
+				break
+			}
+		}
+		if !satisfied {
 			missing = append(missing, family)
 		}
 	}
@@ -277,12 +298,19 @@ func (r *Router) LocaleCoverage() map[string][]string {
 func (r *Router) publishedLocales() []string {
 	locales := r.Locales()
 	if r == nil || r.fallbackLocale == "" {
+		sort.Strings(locales)
 		return locales
 	}
+	complete := false
 	for _, locale := range locales {
 		if locale == r.fallbackLocale {
-			return locales
+			complete = true
+			break
 		}
 	}
-	return append(locales, r.fallbackLocale)
+	if !complete {
+		locales = append(locales, r.fallbackLocale)
+	}
+	sort.Strings(locales)
+	return locales
 }

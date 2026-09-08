@@ -44,7 +44,13 @@ func (r *Router) MarkdownVersionedCollection(prefix, dir string, cfg VersionedCo
 	}
 	available := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+		if !entry.IsDir() {
+			// A file at the collection root is neither a version nor an
+			// index; letting it through would make it the body of every
+			// version's collection config.
+			return fmt.Errorf("docs: versioned collection %q contains a stray root file %q; only version directories belong at the root", dir, entry.Name())
+		}
+		if !strings.HasPrefix(entry.Name(), ".") {
 			available = append(available, entry.Name())
 		}
 	}
@@ -52,6 +58,10 @@ func (r *Router) MarkdownVersionedCollection(prefix, dir string, cfg VersionedCo
 	if err != nil {
 		return err
 	}
+	if r.currentVersions == nil {
+		r.currentVersions = map[string]string{}
+	}
+	r.currentVersions[normalizePath(prefix)] = cfg.Current
 	for index, version := range versions {
 		versionDir := filepath.Join(dir, version)
 		info, err := os.Stat(versionDir)
@@ -102,7 +112,10 @@ func (r *Router) MarkdownVersionedCollectionFS(prefix string, content fs.FS, roo
 	}
 	available := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+		if !entry.IsDir() {
+			return fmt.Errorf("docs: versioned collection %q contains a stray root file %q; only version directories belong at the root", root, entry.Name())
+		}
+		if !strings.HasPrefix(entry.Name(), ".") {
 			available = append(available, entry.Name())
 		}
 	}
@@ -110,6 +123,10 @@ func (r *Router) MarkdownVersionedCollectionFS(prefix string, content fs.FS, roo
 	if err != nil {
 		return err
 	}
+	if r.currentVersions == nil {
+		r.currentVersions = map[string]string{}
+	}
+	r.currentVersions[normalizePath(prefix)] = cfg.Current
 	for index, version := range versions {
 		versionRoot := pathpkg.Join(root, version)
 		info, err := fs.Stat(content, versionRoot)

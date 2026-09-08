@@ -107,6 +107,9 @@ func runInit(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("resolve target: %w", err)
 	}
+	if strings.ContainsAny(*name, `\/`) {
+		return fmt.Errorf("init: site name %q must not contain path separators", *name)
+	}
 	if *name == "" {
 		*name = humanize(filepath.Base(absTarget))
 	}

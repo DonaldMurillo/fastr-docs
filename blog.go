@@ -456,6 +456,8 @@ func blogIndexSource(body, title, description string, posts []*Route) string {
 }
 
 func markdownText(value string) string {
+	value = plainImageAlt.ReplaceAllString(value, "$1")
+	value = plainLink.ReplaceAllString(value, "$1")
 	value = strings.ReplaceAll(value, "\\", "\\\\")
 	value = strings.ReplaceAll(value, "[", "\\[")
 	value = strings.ReplaceAll(value, "]", "\\]")
@@ -521,6 +523,11 @@ func (r *Router) RSSXML(cfg RSSConfig) ([]byte, error) {
 	}
 	title := strings.TrimSpace(cfg.Title)
 	if title == "" {
+		if collection, ok := r.blogs[prefix]; ok {
+			title = strings.TrimSpace(collection.cfg.Title)
+		}
+	}
+	if title == "" {
 		title = r.SiteName() + " blog"
 	}
 	description := strings.TrimSpace(cfg.Description)
@@ -568,6 +575,7 @@ func (r *Router) RSSXML(cfg RSSConfig) ([]byte, error) {
 			Link:          rssLink(siteURL, prefix),
 			Description:   description,
 			Language:      language,
+			Generator:     "fastr-docs",
 			LastBuildDate: lastBuild,
 			Items:         items,
 			// Validators require the channel to name itself; readers
@@ -686,6 +694,10 @@ func routeDescription(route *Route) string {
 	if route == nil {
 		return ""
 	}
+	// A curated excerpt wins: the author wrote it for exactly this slot.
+	if strings.TrimSpace(route.Metadata.Excerpt) != "" {
+		return strings.TrimSpace(route.Metadata.Excerpt)
+	}
 	if route.Description != "" {
 		return route.Description
 	}
@@ -725,6 +737,7 @@ type rssChannel struct {
 	Language string `xml:"language,omitempty"`
 	// LastBuildDate is the newest publish date among the items, so a
 	// reader can sort feeds by activity without fetching every post.
+	Generator     string    `xml:"generator,omitempty"`
 	LastBuildDate string    `xml:"lastBuildDate,omitempty"`
 	AtomLink      atomLink  `xml:"atom:link"`
 	Items         []rssItem `xml:"item"`

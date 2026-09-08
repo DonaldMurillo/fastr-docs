@@ -252,6 +252,11 @@ func diagram(raw, frameSrc, title string) render.HTML {
 		"data-fastr-docs-mermaid":       source,
 		"data-fastr-docs-mermaid-frame": frameSrc,
 		"data-fastr-docs-mermaid-title": label,
+		// The frame replaces the source text, but before it loads (and
+		// without JavaScript forever) the container announces itself as a
+		// titled image rather than a wall of graph syntax.
+		"role":       "img",
+		"aria-label": label,
 	}
 	// Without JavaScript the source stays visible as preformatted text, which
 	// is more useful than an empty box.

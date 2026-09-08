@@ -482,7 +482,9 @@ func TestPageMetadataEmitsSEOWithoutDuplicatingNativeArticleData(t *testing.T) {
 
 func TestMountRegistersPagesAndTypedScreensWithGoFastr(t *testing.T) {
 	r := NewRouter()
-	r.MustPage("/", PageConfig{Title: "Home", Description: "Home", Source: "# Home\n\n## Setup\n\nRead this guide.", Order: 1})
+	// Two headings: the toc select renders only when it has something to
+	// choose between.
+	r.MustPage("/", PageConfig{Title: "Home", Description: "Home", Source: "# Home\n\n## Setup\n\nRead this guide.\n\n## Next\n\nMore.", Order: 1})
 	r.MustScreen("/playground", ScreenConfig{Title: "Playground", Description: "Interactive", Component: &testScreen{}, Order: 2})
 	site := uiapp.NewApp("Test docs")
 	if err := r.Mount(site, r.Layout()); err != nil {

@@ -28,6 +28,9 @@ type UIStrings struct {
 	// SectionHelp is the helper line under the drawer's section select,
 	// wired as the select's accessible description.
 	SectionHelp string
+	// AnchorLabel names the copy-anchor button beside each heading, so a
+	// screen reader announces an action rather than a glyph.
+	AnchorLabel string
 	// Sections labels the section select at the top of the mobile drawer,
 	// where the whole site's navigation lives because the header tabs are
 	// hidden below md.
@@ -244,6 +247,7 @@ var defaultUIStrings = UIStrings{
 	Next:               "Next →",
 	Home:               "Home",
 	SkipToContent:      "Skip to main content",
+	AnchorLabel:        "Copy link to this section",
 	SectionHelp:        "Jump to a top-level section.",
 	Sections:           "Sections",
 	OnThisPage:         "On this page",
@@ -434,6 +438,8 @@ func uiStringKeys() []string {
 		}
 	}
 	walk(reflect.TypeOf(UIStrings{}), "")
+	// Sorted, so diffing two builds of a locale is stable field by field.
+	sort.Strings(keys)
 	return keys
 }
 
@@ -652,6 +658,16 @@ func (r *Router) UIStringsForLocale(locale string) UIStrings {
 		return r.ui
 	}
 	overrides, ok := r.localeUI[locale]
+	// A regional page reads the primary language's furniture rather than
+	// the Router-wide English one.
+	if !ok {
+		if primary := localePrimary(locale); primary != locale {
+			if regional, regionalOK := r.localeUI[primary]; regionalOK {
+				overrides = regional
+				ok = true
+			}
+		}
+	}
 	if !ok {
 		return r.ui
 	}
@@ -667,6 +683,13 @@ func (r *Router) LocaleName(locale string) string {
 	}
 	if name := strings.TrimSpace(r.localeNames[locale]); name != "" {
 		return name
+	}
+	// A regional reader gets the primary language's display name rather
+	// than a bare code.
+	if primary := localePrimary(locale); primary != locale {
+		if name := strings.TrimSpace(r.localeNames[primary]); name != "" {
+			return name
+		}
 	}
 	return locale
 }

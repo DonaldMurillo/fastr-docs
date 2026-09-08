@@ -2,6 +2,7 @@ package docs
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -67,6 +68,11 @@ func (r *Router) wrapDocPage(route *Route, body render.HTML, headings []Heading)
 }
 
 func (r *Router) docsTocSelect(headings []Heading, label string) render.HTML {
+	// A one-heading page has nothing to choose between; the rail alone
+	// carries it, and the select stays out of the layout.
+	if len(headings) < 2 {
+		return ""
+	}
 	options := make([]ui.SelectOption, 0, len(headings))
 	for i, heading := range headings {
 		options = append(options, ui.SelectOption{
@@ -238,7 +244,10 @@ func markdownHeadings(source string) []Heading {
 // headingAnchorButtons adds a copyable anchor to every h2 and h3 the page
 // carries. Headings come from GoFastr's renderer without one, and a reader
 // linking a section by hand has to fish the URL out of the TOC otherwise.
-func headingAnchorButtons(markdown string) string {
+func headingAnchorButtons(markdown, anchorLabel string) string {
+	if strings.TrimSpace(anchorLabel) == "" {
+		anchorLabel = "Copy link to this section"
+	}
 	var out strings.Builder
 	for offset := 0; offset < len(markdown); {
 		next := nextHeadingWithID(markdown[offset:], 2, 3, 4)
@@ -273,7 +282,7 @@ func headingAnchorButtons(markdown string) string {
 		// A button, not a link: the anchor copies the URL rather than
 		// scrolling (the reader is already here), and it is reachable by
 		// keyboard with a name a screen reader announces.
-		out.WriteString(`<button type="button" class="heading-anchor" data-fastr-docs-anchor="#` + render.Escape(id) + `" aria-label="Copy link to this section">#</button>`)
+		out.WriteString(`<button type="button" class="heading-anchor" data-fastr-docs-anchor="#` + render.Escape(id) + `" aria-label="` + render.Escape(anchorLabel) + `">#</button>`)
 		offset = idEnd + closeRel + closerEnd + 1
 	}
 	return out.String()
@@ -376,12 +385,19 @@ func nextHeadingWithID(markdown string, levels ...int) int {
 }
 
 // plainHeadingTitle strips the syntax a writer can leave in a heading:
-// shortcode markers and emphasis pairs. The table of contents and the slug
-// should show words, not markup.
+// shortcode markers, emphasis pairs, code spans, strikethroughs, math
+// delimiters, and images (keeping their alt text). The table of contents and
+// the slug should show words, not markup.
 func plainHeadingTitle(title string) string {
 	title = markdownShortcodeToken.ReplaceAllString(title, "")
-	for _, marker := range []string{"**", "__"} {
+	title = plainImageAlt.ReplaceAllString(title, "$1")
+	title = plainLink.ReplaceAllString(title, "$1")
+	for _, marker := range []string{"**", "__", "~~", "`", "$"} {
 		title = strings.ReplaceAll(title, marker, "")
 	}
 	return strings.TrimSpace(title)
 }
+
+var plainImageAlt = regexp.MustCompile(`!\[([^\]]*)\]\([^)]*\)`)
+
+var plainLink = regexp.MustCompile(`\[([^\]]+)\]\([^)]*\)`)

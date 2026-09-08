@@ -101,6 +101,7 @@ func closingFenceIndex(lines []string, from int, marker string) int {
 
 // splitFenceInfo separates the language from everything after it.
 func splitFenceInfo(info string) (string, string) {
+	info = strings.TrimSpace(info)
 	if info == "" {
 		return "", ""
 	}
@@ -115,11 +116,13 @@ func splitFenceInfo(info string) (string, string) {
 	if strings.Contains(first, "=") {
 		return "", info
 	}
-	return first, rest
+	// Language matching downstream is exact, so GO and go highlight alike.
+	return strings.ToLower(first), rest
 }
 
 func parseFenceOptions(language, options string) codeFence {
-	fence := codeFence{language: language, highlight: map[int]bool{}}
+	// Language matching downstream is exact; GO, Go, and go highlight alike.
+	fence := codeFence{language: strings.ToLower(strings.TrimSpace(language)), highlight: map[int]bool{}}
 	for _, field := range splitFenceOptions(options) {
 		switch {
 		case strings.HasPrefix(field, "{") && strings.HasSuffix(field, "}"):

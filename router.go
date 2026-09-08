@@ -16,6 +16,7 @@ import (
 	"os"
 	pathpkg "path"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -551,11 +552,16 @@ type Router struct {
 	localeFamilies        map[string]map[string]bool
 	brand                 BrandConfig
 	themeConfig           ThemeConfig
-	ui                    UIStrings
-	layoutConfig          LayoutConfig
-	plugins               []Plugin
-	blogs                 map[string]blogCollection
-	blogViews             map[string]blogView
+	templateRaw           string
+	// currentVersions maps a versioned collection prefix to the version it
+	// mounts at that prefix; drawer mounting uses it to avoid a second
+	// drawer for the tree the default drawer already serves.
+	currentVersions map[string]string
+	ui              UIStrings
+	layoutConfig    LayoutConfig
+	plugins         []Plugin
+	blogs           map[string]blogCollection
+	blogViews       map[string]blogView
 }
 
 // NewRouter creates a strict Router. Strict validation is intentionally the
@@ -820,7 +826,7 @@ func (r *Router) Sitemap() []byte {
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
 	b.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">` + "\n")
 	for _, route := range r.PublishedRoutes() {
-		if route == nil || route.Metadata.NoIndex {
+		if route == nil || route.Metadata.NoIndex || blogPostDatedFuture(route) || r.isBlogView(route.Path) {
 			continue
 		}
 		b.WriteString(`<url><loc>` + stdhtml.EscapeString(route.Path) + `</loc>`)
@@ -969,12 +975,21 @@ func (r *Router) Page(path string, cfg PageConfig) error {
 			cfg.Description = firstParagraph(cfg.Source)
 		}
 	}
-	cfg.Tags = trimTags(cfg.Tags)
+	cfg.Tags = foldTags(trimTags(cfg.Tags))
 	if len(cfg.Tags) == 0 {
-		cfg.Tags = trimTags(metadata.Tags)
+		cfg.Tags = foldTags(trimTags(metadata.Tags))
+	}
+	if len(metadata.Authors) > 0 {
+		metadata.Authors = dedupeStrings(metadata.Authors)
+	}
+	if strings.Contains(metadata.Excerpt, "\n") {
+		metadata.Excerpt = strings.Join(strings.Fields(metadata.Excerpt), " ")
 	}
 	if cfg.Order < 1 && metadata.Order > 0 {
 		cfg.Order = metadata.Order
+	}
+	if title := strings.TrimSpace(cfg.Title); title != "" {
+		cfg.Title = title
 	}
 	_, err = r.addRoute(path, Route{
 		Title:       cfg.Title,
@@ -1002,7 +1017,10 @@ func (r *Router) MustPage(path string, cfg PageConfig) {
 
 // Markdown is a named convenience for Page when the source is Markdown.
 func (r *Router) Markdown(path string, title string, source string) error {
-	return r.Page(path, PageConfig{Title: title, Source: source})
+	// The one-liner helper has no Order knob, so strict validation would
+	// reject every page it registers; the next sibling order keeps it
+	// usable without loosening anything else.
+	return r.Page(path, PageConfig{Title: title, Source: source, Order: r.nextChildOrder(pathpkg.Dir(normalizePath(path)), 1)})
 }
 
 // PageFile registers a Markdown page whose source is loaded and validated
@@ -1183,7 +1201,7 @@ func (r *Router) NavigationAt(currentPath string) []NavItem {
 func (r *Router) SearchIndex() []SearchEntry {
 	entries := make([]SearchEntry, 0, len(r.Routes()))
 	for _, route := range r.PublishedRoutes() {
-		if !r.routePublished(route) || route.Metadata.NoIndex {
+		if !r.routePublished(route) || route.Metadata.NoIndex || blogPostDatedFuture(route) || r.isBlogView(route.Path) {
 			continue
 		}
 		entry := SearchEntry{
@@ -1199,7 +1217,7 @@ func (r *Router) SearchIndex() []SearchEntry {
 			Alternates: r.alternatesFor(route),
 		}
 		if route.page != nil {
-			entry.Text = stripShortcodeSyntax(pageSource(route.page))
+			entry.Text = stripSearchNoise(pageSource(route.page))
 			for _, heading := range markdownHeadings(pageSource(route.page)) {
 				entry.Headings = append(entry.Headings, heading.Title)
 			}
@@ -1449,6 +1467,33 @@ func (r *Router) Warnings() []string {
 		return nil
 	}
 	var warnings []string
+	if raw := strings.TrimSpace(r.templateRaw); raw != "" {
+		warnings = append(warnings, fmt.Sprintf("template %q is not one of %s; the site renders the editorial default", raw, strings.Join(templateNames(), ", ")))
+	}
+	for locale, set := range r.localeUI {
+		setCount, total := 0, 0
+		var count func(v reflect.Value)
+		count = func(v reflect.Value) {
+			for i := range v.NumField() {
+				switch v.Field(i).Kind() {
+				case reflect.String:
+					total++
+					if v.Field(i).String() != "" {
+						setCount++
+					}
+				case reflect.Struct:
+					count(v.Field(i))
+				}
+			}
+		}
+		count(reflect.ValueOf(set))
+		if setCount > 0 && setCount < total {
+			warnings = append(warnings, fmt.Sprintf("locale %q translates %d of %d chrome labels", locale, setCount, total))
+		}
+	}
+	if lowContrastPair := r.lowContrastOverrides(); lowContrastPair != "" {
+		warnings = append(warnings, "theme override "+lowContrastPair+" has a contrast ratio below 4.5:1; check the text is readable")
+	}
 	knownFields := map[string]bool{"title": true, "headings": true, "description": true, "tags": true, "body": true, "path": true}
 	weightFields := make([]string, 0, len(r.searchWeights))
 	for field := range r.searchWeights {
@@ -1505,6 +1550,13 @@ func (r *Router) Validate() error {
 			problems = append(problems, fmt.Sprintf("search weight for field %q must not be negative", field))
 		}
 	}
+	scriptNames := map[string]string{}
+	for _, script := range r.PageScripts() {
+		if previous, seen := scriptNames[script.Name]; seen {
+			problems = append(problems, fmt.Sprintf("page scripts %q and %q share the name %q", previous, script.Name, script.Name))
+		}
+		scriptNames[script.Name] = script.Name
+	}
 	if r.registrationErr != nil {
 		problems = append(problems, r.registrationErr.Error())
 	}
@@ -1551,7 +1603,7 @@ func (r *Router) Validate() error {
 				seenTitles[node.Title] = node.Path
 			}
 			if r.strict && (node.Kind == KindPage || node.Kind == KindPlugin) && node.page != nil && node.page.Source == "" && node.page.Body == nil && node.page.ContextBody == nil && node.page.SourcePath == "" {
-				problems = append(problems, fmt.Sprintf("page %q: Source, SourcePath, or Body is required", node.Path))
+				problems = append(problems, fmt.Sprintf("page %q is empty; Source, SourcePath, or Body is required", node.Path))
 			}
 			if r.strict && (node.Kind == KindPage || node.Kind == KindPlugin) && node.page != nil && node.page.Source == "" && node.page.Body == nil && node.page.SourcePath != "" {
 				if _, err := os.Stat(node.page.SourcePath); err != nil {
@@ -1569,10 +1621,21 @@ func (r *Router) Validate() error {
 			if r.strict {
 				problems = append(problems, r.metadataIssues(node)...)
 			}
+			seenRedirects := map[string]bool{}
 			for _, redirect := range node.Metadata.Redirects {
 				trimmed := strings.TrimSpace(redirect)
+				if seenRedirects[trimmed] {
+					problems = append(problems, fmt.Sprintf("route %q lists the redirect %q twice", node.Path, trimmed))
+				}
+				seenRedirects[trimmed] = true
+				if strings.Contains(strings.TrimSpace(strings.TrimPrefix(trimmed, "/")), " ") {
+					problems = append(problems, fmt.Sprintf("route %q: redirect %q must be a single path with no inner whitespace", node.Path, redirect))
+				}
 				if !strings.HasPrefix(trimmed, "/") {
 					problems = append(problems, fmt.Sprintf("route %q: redirect %q must start with a slash", node.Path, redirect))
+				}
+				if target := r.routes[normalizePath(trimmed)]; target != nil && target.Metadata.Draft && !r.includeDrafts {
+					problems = append(problems, fmt.Sprintf("route %q redirects to %q, which is a draft and serves nothing", node.Path, trimmed))
 				}
 				if strings.Contains(trimmed, "://") || strings.HasPrefix(trimmed, "//") {
 					problems = append(problems, fmt.Sprintf("route %q: redirect %q must be a site-relative path, not an absolute URL", node.Path, redirect))
@@ -1585,8 +1648,27 @@ func (r *Router) Validate() error {
 				}
 			}
 			if r.strict {
-				if canonical := strings.TrimSpace(node.Metadata.CanonicalURL); canonical != "" && !strings.HasPrefix(canonical, "http://") && !strings.HasPrefix(canonical, "https://") {
-					problems = append(problems, fmt.Sprintf("route %q: canonical URL %q must be absolute", node.Path, canonical))
+				if canonical := strings.TrimSpace(node.Metadata.CanonicalURL); canonical != "" {
+					if !strings.HasPrefix(canonical, "http://") && !strings.HasPrefix(canonical, "https://") {
+						problems = append(problems, fmt.Sprintf("route %q: canonical URL %q must be absolute", node.Path, canonical))
+					}
+					if strings.ContainsAny(canonical, "#?") {
+						problems = append(problems, fmt.Sprintf("route %q: canonical URL %q must name the document, not a fragment or query", node.Path, canonical))
+					}
+				}
+				if template := strings.TrimSpace(node.Metadata.PageTemplate); template != "" && template != PageTemplateSplash {
+					problems = append(problems, fmt.Sprintf("route %q: unknown page template %q (empty or %q)", node.Path, template, PageTemplateSplash))
+				}
+				if node.Metadata.PageTemplate == PageTemplateSplash && node.Metadata.Hero != nil && strings.TrimSpace(node.Metadata.Hero.Title) == "" {
+					problems = append(problems, fmt.Sprintf("route %q: a splash hero needs a title", node.Path))
+				}
+				if edit := strings.TrimSpace(node.Metadata.EditURL); edit != "" && !strings.HasPrefix(edit, "http://") && !strings.HasPrefix(edit, "https://") {
+					problems = append(problems, fmt.Sprintf("route %q: edit URL %q must be absolute", node.Path, edit))
+				}
+				if node.page != nil && node.page.Body == nil && node.page.SourcePath == "" && node.Kind != KindScreen {
+					if document, err := ParseMarkdown(node.page.Source); err == nil && strings.TrimSpace(document.Body) == "" {
+						problems = append(problems, fmt.Sprintf("page %q is empty; Source, SourcePath, or Body is required", node.Path))
+					}
 				}
 				for lang, target := range node.Metadata.Alternates {
 					if !localeShape.MatchString(lang) {
@@ -2128,7 +2210,7 @@ func (p *pageComponent) content(ctx context.Context) render.HTML {
 			panic(fmt.Sprintf("docs: render Markdown components for %q: %v", p.route.Path, err))
 		}
 	}
-	markdown = render.HTML(headingAnchorButtons(dedupeMarkdownHeadingIDs(string(markdown))))
+	markdown = render.HTML(headingAnchorButtons(dedupeMarkdownHeadingIDs(string(markdown)), p.router.uiForRoute(p.route).AnchorLabel))
 	if blogPost {
 		return p.router.wrapBlogPost(p.route, markdown, source)
 	}
@@ -2596,3 +2678,47 @@ func trimTags(tags []string) []string {
 	}
 	return out
 }
+
+// foldTags drops empty and whitespace-only tags and folds two spellings
+// that differ only by case into the first.
+func foldTags(tags []string) []string {
+	out := make([]string, 0, len(tags))
+	seen := map[string]bool{}
+	for _, tag := range tags {
+		trimmed := strings.TrimSpace(tag)
+		if trimmed == "" {
+			continue
+		}
+		key := foldRunes(trimmed)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, trimmed)
+	}
+	return out
+}
+
+// dedupeStrings removes repeated entries, case-sensitive: authors are
+// names, and two people may share a first name.
+func dedupeStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		if seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+// stripSearchNoise removes what a reader never sees as prose: shortcode
+// markers and HTML comments.
+func stripSearchNoise(source string) string {
+	source = stripShortcodeSyntax(source)
+	return htmlComment.ReplaceAllString(source, "")
+}
+
+var htmlComment = regexp.MustCompile(`(?s)<!--.*?-->`)

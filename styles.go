@@ -68,7 +68,8 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
 /* The native GoFastr palette owns search behavior. This shell owns the
    discoverable close affordance and keeps the long route list inside the
    viewport, including the framework's full-screen mobile variant. */
-[data-fui-widget="fastr-docs-command-palette"] > .fui-panel { position: relative; display: flex; flex-direction: column; width: min(36rem, 92vw); max-width: 100%; max-height: calc(100vh - 32px); overflow: hidden; border: 1px solid var(--docs-line); border-radius: 12px; background: var(--docs-paper); box-shadow: var(--docs-shadow); }
+[data-fui-widget="fastr-docs-command-palette"] { overscroll-behavior: contain; }
+[data-fui-widget="fastr-docs-command-palette"] > .fui-panel { overscroll-behavior: contain; position: relative; display: flex; flex-direction: column; width: min(36rem, 92vw); max-width: 100%; max-height: calc(100vh - 32px); overflow: hidden; border: 1px solid var(--docs-line); border-radius: 12px; background: var(--docs-paper); box-shadow: var(--docs-shadow); }
 [data-fui-widget="fastr-docs-command-palette"] > .fui-panel > .fui-slot { min-width: 0; }
 .fastr-docs-command-palette__close-slot { position: absolute; z-index: 2; top: 8px; right: 12px; }
 .fastr-docs-command-palette__close { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; width: 40px; height: 40px; padding: 0; border: 1px solid var(--docs-line); border-radius: 7px; color: var(--docs-muted); background: transparent; cursor: pointer; }
@@ -247,9 +248,9 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
 .layout-docs .ui-markdown { color: var(--docs-ink-soft); font-size: 14px; line-height: 1.72; }
 .layout-docs .ui-markdown h1, .layout-docs .ui-markdown h2, .layout-docs .ui-markdown h3, .layout-docs .ui-markdown h4 { color: var(--docs-ink); font-family: var(--font-heading, Inter, sans-serif); letter-spacing: -.045em; }
 .layout-docs .ui-markdown h1 { margin: 0 0 16px; font-size: clamp(40px, 5vw, 64px); line-height: 1.02; }
-.layout-docs .ui-markdown h2 { margin-top: 58px; margin-bottom: 13px; padding-top: 0; scroll-margin-top: 110px; font-size: 26px; line-height: 1.1; }
-.layout-docs .ui-markdown h4 { scroll-margin-top: 110px; }
-.layout-docs .ui-markdown h3 { margin-top: 34px; margin-bottom: 9px; scroll-margin-top: 110px; font-size: 18px; }
+.layout-docs .ui-markdown h2 { margin-top: 58px; margin-bottom: 13px; padding-top: 0; scroll-margin-top: var(--docs-sticky-offset, 110px); font-size: 26px; line-height: 1.1; text-wrap: balance; }
+.layout-docs .ui-markdown h4 { scroll-margin-top: var(--docs-sticky-offset, 110px); }
+.layout-docs .ui-markdown h3 { margin-top: 34px; margin-bottom: 9px; scroll-margin-top: var(--docs-sticky-offset, 110px); font-size: 18px; text-wrap: balance; }
 .layout-docs .ui-markdown p { max-width: 73ch; margin: 0 0 16px; }
 .layout-docs .ui-markdown a { color: var(--docs-orange-deep); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--docs-orange) 45%, transparent); text-underline-offset: 3px; }
 .layout-docs .ui-markdown code { padding: 2px 5px; border-radius: 4px; color: var(--docs-orange-deep); background: var(--docs-orange-wash); font-size: .86em; }
@@ -420,9 +421,11 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
    Content goes full width and collapsed sidebar groups expand so the whole
    tree reads on paper. */
 @media print {
-  .layout-docs > header, .layout-docs .layout-body > nav, .fastr-docs-doc-layout > .fastr-docs-toc-select, .fastr-docs-doc-layout > .scrollspy, [data-fui-widget], .fastr-docs-command-trigger, .fastr-docs-theme-toggle, .fastr-docs-variant-selectors, .heading-anchor, .fastr-docs-blog__toolbar, .fastr-docs-blog__feed-link, .fastr-docs-blog-card__tags { display: none !important; }
+  .layout-docs > header, .layout-docs .layout-body > nav, .fastr-docs-doc-layout > .fastr-docs-toc-select, .fastr-docs-doc-layout > .scrollspy, [data-fui-widget], .fastr-docs-command-trigger, .fastr-docs-theme-toggle, .fastr-docs-variant-selectors, .heading-anchor, .fastr-docs-blog__toolbar, .fastr-docs-blog__feed-link, .fastr-docs-blog-card__tags, .fastr-docs-blog-post__share { display: none !important; }
   .fastr-docs-doc-layout .ui-markdown, .fastr-docs-doc-layout .ui-doc-layout__crumbs { width: 100%; }
   .ui-sidebar details > ul[hidden] { display: block; }
+  .layout-docs .ui-markdown { font-size: 11pt; line-height: 1.45; }
+  .ui-markdown a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 9pt; color: var(--docs-muted, #555); word-break: break-all; }
 }
 /* Windows high contrast and friends: badges that live on color alone become
    bordered, the active page gains an underline, and focus rings use the
@@ -646,4 +649,23 @@ code, kbd, pre { font-family: var(--font-mono, ui-monospace, monospace); }
 [dir="rtl"] .fastr-docs-doc-layout .ui-anchored-rail__list a { border-left: 0; border-right: 2px solid var(--docs-line, transparent); padding-left: 0; padding-right: 8px; }
 [dir="rtl"] .heading-anchor { margin-left: 0; margin-right: 6px; }
 .heading-anchor { vertical-align: middle; }
+
+/* Third-suite presentation additions: focus rings the surfaces were
+   missing, palette containment, kbd chips, and shared helpers. */
+summary.ui-sidebar__link:focus-visible { outline: 2px solid var(--docs-orange); outline-offset: 2px; }
+[data-fastr-docs-share]:focus-visible { outline: 2px solid var(--docs-orange); outline-offset: 2px; }
+kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--docs-line, #ccc);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--docs-paper-2, #f6f6f4);
+  font-size: 0.85em;
+  line-height: 1.4;
+}
+[data-fui-widget="fastr-docs-command-palette"], .fastr-docs-command-palette { overscroll-behavior: contain; }
+[data-fui-widget="fastr-docs-command-palette"] .combobox__listbox { overscroll-behavior: contain; }
+.fastr-docs-search-empty, .fastr-docs-search-loading { color: var(--docs-muted, inherit); padding: 8px 12px; }
+.ui-markdown mark { background: color-mix(in srgb, var(--docs-orange, #d2703a) 25%, transparent); color: inherit; padding: 0 2px; border-radius: 3px; }
 `

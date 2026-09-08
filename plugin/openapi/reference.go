@@ -180,6 +180,9 @@ type Reference struct {
 	// BearerScheme names an HTTP bearer security scheme the document
 	// requires; the console offers a token field for it.
 	BearerScheme string
+	// APIKeyHeader names an apiKey security header the console offers as a
+	// plain field; APIKeyName is its scheme name for the label.
+	APIKeyHeader, APIKeyName string
 	// Operations are the document's operations, in document order.
 	Operations []Operation
 	// Schemas are the document's component schemas.
@@ -202,12 +205,18 @@ func (r *Reference) Render() render.HTML {
 	attrs := map[string]string{
 		"class":                  "fastr-openapi-reference",
 		"data-openapi-reference": "true",
+		// The console flips this while a request is in flight; markup
+		// carries the state even before scripts run.
+		"aria-busy": "false",
 	}
 	if r.ServerURL != "" {
 		attrs["data-openapi-server-url"] = r.ServerURL
 	}
 	if r.BearerScheme != "" {
 		attrs["data-openapi-bearer"] = r.BearerScheme
+	}
+	if r.APIKeyHeader != "" {
+		attrs["data-openapi-api-key"] = r.APIKeyHeader
 	}
 	return render.Tag("div", attrs,
 		render.Tag("header", map[string]string{"class": "fastr-openapi-reference__header"},
@@ -245,7 +254,7 @@ func (r *Reference) requestConsole() render.HTML {
 			"role":                "option",
 			"data-openapi-method": strings.ToUpper(op.Method),
 			"data-openapi-path":   op.Path,
-		}, render.Text(strings.ToUpper(op.Method)+" · "+op.Path)))
+		}, render.Text(strings.ToUpper(op.Method)+" · "+op.Path+optionSummary(op))))
 	}
 	children := []render.HTML{
 		render.Tag("strong", nil, render.Text(r.Strings.TryRequest)),
@@ -264,6 +273,11 @@ func (r *Reference) requestConsole() render.HTML {
 		children = append(children, render.Tag("label", map[string]string{"class": "fastr-openapi-reference__field"},
 			render.Text(r.BearerScheme+" token"),
 			render.Tag("input", map[string]string{"type": "password", "data-openapi-token": "true", "autocomplete": "off", "placeholder": r.Strings.TokenPlaceholder})))
+	}
+	if r.APIKeyHeader != "" {
+		children = append(children, render.Tag("label", map[string]string{"class": "fastr-openapi-reference__field"},
+			render.Text(firstNonEmpty(r.APIKeyName, r.APIKeyHeader)+" header ("+r.APIKeyHeader+")"),
+			render.Tag("input", map[string]string{"type": "text", "data-openapi-api-key-value": "true", "autocomplete": "off", "placeholder": r.APIKeyHeader})))
 	}
 	if len(options) > 0 {
 		children = append(children,
@@ -470,6 +484,18 @@ func (r *Reference) operationCards() []render.HTML {
 
 // operationGroup names the bucket an operation renders under: the
 // document's own tag when present, else the first path segment.
+// optionSummary names an operation in the console select so two routes
+// with the same method and path stay tellable apart.
+func optionSummary(op Operation) string {
+	if summary := strings.TrimSpace(op.Summary); summary != "" {
+		return " — " + summary
+	}
+	if id := strings.TrimSpace(op.OperationID); id != "" {
+		return " — " + id
+	}
+	return ""
+}
+
 func operationGroup(op Operation) string {
 	if len(op.Tags) > 0 && strings.TrimSpace(op.Tags[0]) != "" {
 		return strings.TrimSpace(op.Tags[0])
@@ -600,5 +626,17 @@ func CSS() string {
 		".fastr-openapi-reference__console p { margin: 0; color: var(--color-text-muted, #71717a); font-size: .8rem; line-height: 1.6; } .fastr-openapi-reference__server { overflow-wrap: anywhere; font-family: ui-monospace, monospace; } .fastr-openapi-reference__response { max-height: 220px; overflow: auto; padding: 10px; border: 1px solid var(--color-border, #e4e4e7); border-radius: 6px; background: var(--color-surface-soft, #f4f4f5); color: var(--color-text, #18181b); font-size: .72rem; white-space: pre-wrap; }",
 		"@media (max-width: 1050px) { .fastr-openapi-reference__layout { grid-template-columns: 190px minmax(0, 1fr); }.fastr-openapi-reference__layout > .scrollspy { position: static; }.fastr-openapi-reference__console { grid-column: 1 / -1; position: static; } }",
 		"@media (max-width: 680px) { .fastr-openapi-reference__layout { display: block; }.fastr-openapi-reference__index { margin-bottom: 12px; }.fastr-openapi-reference__index a:nth-child(n+7) { display: none; } }",
+		// Grouped operations: the section heading names its slice of the API.
+		".fastr-openapi-group { margin-top: 34px; }",
+		".fastr-openapi-group__title { margin: 0 0 10px; font-size: 15px; font-weight: 650; letter-spacing: .02em; text-transform: uppercase; color: var(--color-text-muted, #52525b); }",
+		".fastr-openapi-group[hidden] { display: none; }",
+		// A retired operation says so in more than an attribute.
+		".fastr-openapi-operation[data-deprecated] { opacity: .72; }",
+		".fastr-openapi-operation__deprecated { margin: 4px 0 0; font-size: 12px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: #b3261e; }",
+		// Typed inputs keep the console column's shape.
+		".fastr-openapi-reference__field input[type=\"date\"], .fastr-openapi-reference__field input[type=\"datetime-local\"] { min-width: 0; width: 100%; }",
+		// The filtered-to-nothing and in-flight states have a look.
+		".fastr-openapi-reference__operationsEmpty, .fastr-openapi-empty { padding: 18px 4px; color: var(--color-text-muted, #52525b); font-style: italic; }",
+		".fastr-openapi-reference__response[data-state=\"loading\"] { opacity: .7; }",
 	}, "\n")
 }

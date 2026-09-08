@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"sort"
 	"strings"
 )
 
@@ -101,12 +102,17 @@ func (r *Router) ExportManifestJSON(basePath string) ([]byte, error) {
 		SearchIndex:   basePath + r.SearchIndexPath(),
 		SearchBackend: r.SearchBackend(),
 		SearchPath:    basePath + r.PagefindPath(),
-		AssetsPrefix:  basePath + "/assets/",
+		AssetsPrefix:  basePath + strings.TrimRight(r.AssetPrefix(), "/") + "/",
 		Locales:       r.publishedLocales(),
 		Versions:      r.Versions(),
 		Drawers:       r.navigationDrawerNames(),
 	}
-	for _, route := range r.PublishedRoutes() {
+	published := r.PublishedRoutes()
+	sort.Slice(published, func(i, j int) bool { return published[i].Path < published[j].Path })
+	for _, route := range published {
+		if r.isBlogView(route.Path) {
+			continue
+		}
 		manifest.Routes = append(manifest.Routes, ManifestRoute{
 			ID: route.ID, Path: basePath + route.Path, Title: route.Title,
 			Description: route.Description, Kind: route.Kind,
@@ -124,6 +130,8 @@ func (r *Router) ExportManifestJSON(basePath string) ([]byte, error) {
 			}
 		}
 	}
+	sort.Slice(manifest.Redirects, func(i, j int) bool { return manifest.Redirects[i].From < manifest.Redirects[j].From })
+	sort.Strings(manifest.Locales)
 	return json.MarshalIndent(manifest, "", "  ")
 }
 

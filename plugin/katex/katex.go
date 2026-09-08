@@ -86,8 +86,15 @@ func (p Plugin) Apply(r *docs.Router) error {
 	if name == "" {
 		name = "math"
 	}
-	if err := r.RegisterMarkdownRawComponent(name, func(_ map[string]string, raw string) render.HTML {
-		return formula(stripFence(raw), true)
+	if err := r.RegisterMarkdownRawComponent(name, func(props map[string]string, raw string) render.HTML {
+		// Display is the default; display=false renders inline, so a
+		// formula can sit mid-sentence through the shortcode too.
+		display := true
+		switch strings.ToLower(strings.TrimSpace(props["display"])) {
+		case "false", "no", "0", "inline":
+			display = false
+		}
+		return formula(stripFence(raw), display)
 	}); err != nil {
 		return err
 	}
@@ -181,6 +188,7 @@ func formula(tex string, display bool) render.HTML {
 		"data-fastr-docs-math":         tex,
 		"data-fastr-docs-katex":        "1",
 		"aria-label":                   tex,
+		"role":                         "math",
 		"data-fastr-docs-math-display": boolAttr(display),
 	}
 	return render.Tag("span", attrs, render.Text(tex))

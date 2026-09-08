@@ -1,6 +1,18 @@
 import { test, expect } from '@playwright/test';
 import { runtime } from '../support/runtime.mjs';
 
+
+// Option labels carry the operation's summary after the path, so match by
+// prefix rather than exact label.
+async function selectOptionMatching(select, pattern) {
+  const value = await select.evaluateOptions ? null : null;
+  const options = await select.locator('option').evaluateAll((opts, reSource) =>
+    opts.filter((o) => new RegExp(reSource).test(o.textContent)).map((o) => o.value),
+  pattern.source);
+  if (!options.length) throw new Error(`no option matching ${pattern}`);
+  await select.selectOption(options[0]);
+}
+
 test('OpenAPI reference filters operations and sends a request to the configured server', async ({ page }) => {
   await page.goto('/api-reference');
   await expect(page.getByRole('heading', { name: 'API reference', exact: true })).toBeVisible();
@@ -26,7 +38,7 @@ test('OpenAPI reference collects path parameters and JSON request bodies', async
   const select = page.locator('[data-openapi-operation-select]');
   const response = page.locator('[data-openapi-response]');
 
-  await select.selectOption({ label: 'GET · /projects/{id}' });
+  await selectOptionMatching(select, /^GET · \/projects\/\{id\}/);
   const pathInput = page.locator('[data-openapi-inputs-for] [data-openapi-param-name="id"]');
   await expect(pathInput).toBeVisible();
   await pathInput.fill('prj_e2e');
@@ -35,14 +47,14 @@ test('OpenAPI reference collects path parameters and JSON request bodies', async
   await expect(response).toContainText('E2E project detail');
   await expect(response).toContainText('/v1/projects/prj_e2e');
 
-  await select.selectOption({ label: 'GET · /projects' });
+  await selectOptionMatching(select, /^GET · \/projects(?!\/)/);
   const limitInput = page.locator('[data-openapi-inputs-for="fastr-openapi-operation-api-reference-1"] [data-openapi-param-name="limit"]');
   await limitInput.fill('5');
   await page.locator('[data-openapi-try]').click();
   await expect(response).toContainText('200');
   await expect(response).toContainText('/v1/projects?limit=5');
 
-  await select.selectOption({ label: 'POST · /projects' });
+  await selectOptionMatching(select, /^POST · \/projects(?!\/)/);
   const body = page.locator('[data-openapi-inputs-for] [data-openapi-body]');
   await expect(body).toBeVisible();
   await body.fill('{"name":"Created from docs"}');

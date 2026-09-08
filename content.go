@@ -609,6 +609,12 @@ func mergeContentMetadata(base, override ContentMetadata) ContentMetadata {
 	if override.TranslationOf != "" {
 		merged.TranslationOf = override.TranslationOf
 	}
+	if override.PageTemplate != "" {
+		merged.PageTemplate = override.PageTemplate
+	}
+	if override.Hero != nil {
+		merged.Hero = override.Hero
+	}
 	if len(override.Alternates) > 0 {
 		merged.Alternates = cloneStringMap(override.Alternates)
 	}

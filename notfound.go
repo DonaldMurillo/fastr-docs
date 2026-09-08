@@ -291,7 +291,15 @@ func (r *Router) NotFoundScreen() NotFoundScreen {
 		screen.Locales = append(screen.Locales, r.customNotFound.Locales...)
 		return screen
 	}
-	screen := NotFoundScreen{SiteName: r.SiteName(), Strings: r.UIStrings().NotFound}
+	strings_ := r.UIStrings().NotFound
+	// A single-language site that set its document language reads that
+	// language's 404 labels rather than the English defaults.
+	if language := normalizeLocale(r.Language()); language != "" {
+		if localized := r.UIStringsForLocale(language).NotFound; localized.Heading != "" {
+			strings_ = localized
+		}
+	}
+	screen := NotFoundScreen{SiteName: r.SiteName(), Strings: strings_}
 	if r == nil {
 		return screen
 	}

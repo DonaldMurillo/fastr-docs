@@ -10,7 +10,7 @@ Una superficie de documentación a medida sigue siendo una ruta. Empieza por la
 tarea de la persona, elige la estrategia de renderizado y mantén la ruta
 conectada al modelo de navegación y búsqueda que comparte el proyecto.
 
-## Decide el contrato de la ruta
+## Decide la interfaz de la ruta
 
 1. Nombra la tarea en el título y la descripción de la ruta.
 2. Elige una página de Markdown para explicar algo duradero, o una pantalla

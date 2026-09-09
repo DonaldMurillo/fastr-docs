@@ -921,7 +921,7 @@ type navigationDrawerBody struct {
 func (b navigationDrawerBody) Render() render.HTML {
 	return render.Join(
 		render.Tag("div", map[string]string{"class": "fastr-docs-drawer-sections"}, b.sections),
-		// The drawer-body class is the styling contract gofastr's own
+		// The drawer-body class is the styling hook gofastr's own
 		// drawer slot uses; styles.go keys a block of drawer styling on
 		// it. ui.SidebarBody supplies the nav and the component style
 		// marker, and its own wrapper class is unstyled.

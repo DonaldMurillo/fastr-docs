@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ContentMetadata is the portable metadata contract shared by Markdown,
+// ContentMetadata is the portable metadata schema shared by Markdown,
 // typed screens, search, SEO, drafts, versions, and localized content.
 // Markdown pages can provide the same fields in a YAML front matter block.
 type ContentMetadata struct {

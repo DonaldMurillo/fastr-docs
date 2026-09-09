@@ -397,7 +397,7 @@ func TestStrictValidationCanBeExplicitlyOptedOut(t *testing.T) {
 }
 
 func TestOpenAPIPluginContributesToTheSameRouter(t *testing.T) {
-	spec := []byte(`{"openapi":"3.1.0","info":{"title":"Public API","description":"The contract."},"paths":{"/v1/projects":{"get":{"summary":"List projects","operationId":"listProjects"}}}}`)
+	spec := []byte(`{"openapi":"3.1.0","info":{"title":"Public API","description":"The spec."},"paths":{"/v1/projects":{"get":{"summary":"List projects","operationId":"listProjects"}}}}`)
 	r := NewRouter()
 	if err := r.Use(OpenAPIPlugin{Spec: spec}); err != nil {
 		t.Fatalf("Use(OpenAPIPlugin) error = %v", err)
@@ -846,4 +846,52 @@ func TestCommandPaletteTriggerPublishesConfiguredSearchIndexPath(t *testing.T) {
 	if strings.Contains(markup, "/__fastr-docs/search.json") {
 		t.Fatalf("command palette trigger kept the hardcoded index path: %s", markup)
 	}
+}
+
+func TestContentSecurityPolicyCanHardenMixedContent(t *testing.T) {
+	if !strings.Contains(ContentSecurityPolicy(), "upgrade-insecure-requests") {
+		t.Fatal("no opt-in for mixed-content hardening")
+	}
+}
+
+func TestRoutePathsRefusePercentEscapes(t *testing.T) {
+	r := NewRouter()
+	if err := r.Page("/a%20b", PageConfig{Title: "X", Description: "d", Order: 1, Source: "# X"}); err == nil {
+		t.Fatal("a percent escape in a route path registers a URL nobody can link to")
+	}
+}
+
+func TestThemeOverridesAreEnumerableAndWarned(t *testing.T) {
+	t.Run("theme variables name their template", func(t *testing.T) {
+		r := NewRouter(WithTemplate(TemplateEditorial))
+		vars := r.ThemeConfig().Variables()
+		if vars["template"] != "editorial" {
+			t.Fatalf("Variables() = %v, want the template named", vars)
+		}
+	})
+	t.Run("low-contrast theme overrides are warned", func(t *testing.T) {
+		r := NewRouter(WithTheme(ThemeConfig{Overrides: ThemeOverrides{Background: "#ffffff", Text: "#ffffff"}}))
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G"})
+		for _, warning := range r.Warnings() {
+			if strings.Contains(warning, "contrast") {
+				return
+			}
+		}
+		t.Fatal("white-on-white text ships without a word")
+	})
+	t.Run("an unknown template is warned", func(t *testing.T) {
+		r := NewRouter(WithTemplate(Template("fancy")))
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G"})
+		for _, warning := range r.Warnings() {
+			if strings.Contains(warning, "fancy") {
+				return
+			}
+		}
+		t.Fatal("a typo'd template silently becomes the default")
+	})
+	t.Run("the theme choice syncs across open tabs", func(t *testing.T) {
+		if !strings.Contains(RuntimeJS(), "addEventListener('storage'") && !strings.Contains(RuntimeJS(), "BroadcastChannel") {
+			t.Fatal("theme changes in one tab do not reach the others")
+		}
+	})
 }

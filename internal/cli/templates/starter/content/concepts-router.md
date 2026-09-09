@@ -1,6 +1,6 @@
 # The router
 
-`docs.Router` is the central object of a fastr-docs project. It is intentionally more than a URL registry: it is the contract from which the shell, navigation, search index, breadcrumbs, previous/next links, plugins, and static export are derived.
+`docs.Router` is the central object of a fastr-docs project. It is intentionally more than a URL registry: it is the interface from which the shell, navigation, search index, breadcrumbs, previous/next links, plugins, and static export are derived.
 
 ## Register once
 
@@ -35,7 +35,7 @@ guides.MustPage("deploy", docs.PageConfig{
 | Page | Durable prose and reference | Markdown content |
 | Screen | State, actions, and custom UI | Playground or dashboard |
 | Group | Navigation hierarchy | Concepts or Guides |
-| Plugin | External contract-driven surfaces | OpenAPI reference |
+| Plugin | External spec-driven surfaces | OpenAPI reference |
 
 Read [content authoring](/docs/concepts/content) for the page model and [screens and components](/docs/build/screens) for interactive surfaces.
 

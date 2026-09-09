@@ -9,7 +9,7 @@ Un plugin extiende un proyecto sin crear un segundo sistema de contenido. Puede
 registrar páginas o pantallas, añadir texto de búsqueda, declarar orígenes
 externos, validar reglas del proyecto y montar recursos de navegador.
 
-## El contrato básico
+## La interfaz básica
 
 ```go
 type Plugin interface {

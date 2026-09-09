@@ -182,6 +182,28 @@ func TestTranslationOfThatCannotPairIsAnIssue(t *testing.T) {
 	}
 }
 
+func TestTranslationOfFollowsRedirectSourcesAndRefusesCycles(t *testing.T) {
+	t.Run("translation_of follows redirect sources", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G"})
+		r.MustPage("/other", PageConfig{Title: "O", Description: "d", Order: 2, Source: "# O", Metadata: ContentMetadata{Redirects: []string{"/old"}}})
+		r.MustPage("/es/old", PageConfig{Title: "E", Description: "d", Order: 3, Source: "# E", Metadata: ContentMetadata{Locale: "es", TranslationOf: "/old"}})
+		if r.familyOf(r.routeAtPath("/es/old")) != r.familyOf(r.routeAtPath("/other")) {
+			t.Fatal("a translation naming a redirect source pairs with nothing")
+		}
+	})
+	t.Run("translation_of cycles are flagged", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/a", PageConfig{Title: "A", Description: "d", Order: 1, Source: "# A",
+			Metadata: ContentMetadata{Locale: "es", TranslationOf: "/b"}})
+		r.MustPage("/b", PageConfig{Title: "B", Description: "d", Order: 2, Source: "# B",
+			Metadata: ContentMetadata{TranslationOf: "/a"}})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "translation") {
+			t.Fatalf("Validate() = %v, want a translation cycle complaint", err)
+		}
+	})
+}
+
 func contains(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {

@@ -22,12 +22,12 @@ fastr-docs export . --out dist --pagefind
 without the watcher uses the app's default <http://localhost:3070>.
 
 `fastr-docs dev` watches Go, Markdown, HTML, CSS, JavaScript, and JSON/YAML
-contract files. After each successful rebuild it restarts the server and
+spec files. After each successful rebuild it restarts the server and
 refreshes open browser tabs. Use `go run .` for a single process without file
 watching.
 
 `fastr-docs dev` is the fastr-docs wrapper around GoFastr's CLI. It adds
-contract-file watching for JSON/YAML inputs. If you install GoFastr separately,
+spec-file watching for JSON/YAML inputs. If you install GoFastr separately,
 `gofastr dev` runs the framework server directly and watches its native file
 set.
 
@@ -65,7 +65,7 @@ Keep the installed `gofastr` CLI on the same release as the module in
 - `content/` contains Markdown pages.
 - `content/blog/` contains optional publication posts. `MarkdownBlog` builds the archive and RSS feed from these files.
 - `openapi.json` feeds the in-project OpenAPI reference plugin.
-- `API_SERVER_URL` optionally overrides the OpenAPI contract's default server for staging or production.
+- `API_SERVER_URL` optionally overrides the OpenAPI spec's default server for staging or production.
 - `public/` contains white-label assets served at `/assets/` and copied into static exports.
 - `agents/claude.md` and `.agents/skills/` describe the project conventions to AI agents.
 

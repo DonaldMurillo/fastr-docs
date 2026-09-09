@@ -22,7 +22,7 @@ and keep the same route model available to humans and agents.
 | Documentation versions | Version metadata, version filters, route-aware selectors, `MarkdownVersionedCollection`, and a version inventory in the export manifest. |
 | SEO and publishing | Titles, descriptions, canonical URLs, `noindex`, authors, published/updated dates, social images, redirects, sitemap, robots rules, Markdown blogs, and RSS feeds. |
 | Offline delivery | GoFastr PWA integration and static export of offline-eligible routes and assets. |
-| API references | In-project OpenAPI plugin with JSON or YAML contracts and an optional server URL override. |
+| API references | In-project OpenAPI plugin with JSON or YAML specs and an optional server URL override. |
 | Extensibility | Plugins, Markdown component adapters, custom layout factories, assets, validation, and search contributions. |
 | Agent workflows | Generated `agents/claude.md`, authoring guidance, `/llms.txt`, agent card, and optional MCP discovery. |
 | Quality gates | Strict route/content validation, CLI checks, static export checks, and desktop/mobile browser tests. |
@@ -69,4 +69,4 @@ Snapshot creation stays in the content or VCS workflow so the framework does
 not rewrite arbitrary Go route code.
 
 The starter and the non-CLI fixture are both tested through real browser flows.
-Keep both paths covered when changing the public Router contract.
+Keep both paths covered when changing the public Router API.

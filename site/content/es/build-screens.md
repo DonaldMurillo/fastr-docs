@@ -22,7 +22,7 @@ router.MustScreen("/examples/playground", docs.ScreenConfig{
 })
 ```
 
-El `Component` implementa el contrato de renderizado normal de GoFastr. Construye
+El `Component` implementa la interfaz de renderizado normal de GoFastr. Construye
 la superficie con las primitivas de UI del framework y deja el CSS propio de la
 ruta junto a la pantalla.
 

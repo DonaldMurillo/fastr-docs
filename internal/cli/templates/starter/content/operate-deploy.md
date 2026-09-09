@@ -25,4 +25,4 @@ Use `--base` when the site is served beneath a path. Verify direct navigation to
 - Set `API_SERVER_URL` in the deployment environment.
 - Preserve route titles, descriptions, order, and offline metadata when rebranding.
 
-The fastest route to a coherent product is to change identity and content while preserving the proven interaction contracts.
+The fastest route to a coherent product is to change identity and content while preserving the proven interaction patterns.

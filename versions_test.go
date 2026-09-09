@@ -126,3 +126,33 @@ func TestMarkdownVersionedCollectionRejectsAmbiguousConfiguration(t *testing.T) 
 		})
 	}
 }
+
+func TestVersionedCollectionRejectsStrayRootFiles(t *testing.T) {
+	mapFS := fstest.MapFS{
+		"readme.md":   &fstest.MapFile{Data: []byte("# stray")},
+		"v1/index.md": &fstest.MapFile{Data: []byte("---\ntitle: V1\ndescription: d\n---\n\nBody.")},
+	}
+	r := NewRouter()
+	err := r.MarkdownVersionedCollectionFS("/docs", mapFS, ".", VersionedCollectionConfig{Current: "v1"})
+	if err == nil {
+		t.Fatal("a stray file at the collection root becomes the index of every version")
+	}
+}
+
+func TestVersionedCollectionsPairTheirVersionsInDrawers(t *testing.T) {
+	mapFS := fstest.MapFS{
+		"v1/index.md": &fstest.MapFile{Data: []byte("---\ntitle: One\ndescription: d\n---\n\nBody.")},
+		"v2/index.md": &fstest.MapFile{Data: []byte("---\ntitle: Two\ndescription: d\n---\n\nBody.")},
+	}
+	r := NewRouter()
+	if err := r.MarkdownVersionedCollectionFS("/docs", mapFS, ".", VersionedCollectionConfig{Current: "v2", Versions: []string{"v1", "v2"}}); err != nil {
+		t.Fatal(err)
+	}
+	r.MustPage("/", PageConfig{Title: "Home", Description: "d", Order: 1, Source: "# H"})
+	for _, name := range r.NavigationDrawerNames() {
+		if strings.Contains(name, "v1") {
+			return
+		}
+	}
+	t.Fatalf("version drawers missing: %v", r.NavigationDrawerNames())
+}

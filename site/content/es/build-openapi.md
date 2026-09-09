@@ -5,7 +5,7 @@ locale: es
 
 # Referencia OpenAPI
 
-El plugin de OpenAPI convierte un contrato en una ruta del mismo Router. Dibuja
+El plugin de OpenAPI convierte una especificación en una ruta del mismo Router. Dibuja
 un índice de operaciones, tarjetas por endpoint, parámetros, esquemas y una
 consola de peticiones opcional. La referencia es una ruta normal: participa en
 la navegación superior, en la barra lateral contextual, en la búsqueda local, en
@@ -23,14 +23,14 @@ router.Use(openapi.Plugin{
 })
 ```
 
-El plugin acepta contratos en JSON y en YAML. Por defecto usa la primera URL de
-`servers`. `ServerURL` la sustituye para staging o producción sin tocar el
-contrato versionado ni el árbol de rutas.
+El plugin acepta especificaciones en JSON y en YAML. Por defecto usa la primera URL de
+`servers`. `ServerURL` la sustituye para staging o producción sin tocar la
+especificación versionada ni el árbol de rutas.
 
 ## Usar la consola de peticiones
 
 La consola sigue a la operación seleccionada y dibuja los valores que describe
-el contrato:
+la especificación:
 
 - parámetros de ruta, de consulta, de cabecera y de cookie
 - marcas de obligatorio y comprobaciones en el cliente
@@ -50,7 +50,7 @@ pueda incluirlo en su política estricta de `connect-src`. Si no hay URL de
 servidor configurada, la referencia sigue siendo legible y la consola explica
 por qué no se pueden hacer peticiones.
 
-Este sitio incluye un contrato de ejemplo pequeño y un servidor simulado local
+Este sitio incluye una especificación de ejemplo pequeña y un servidor simulado local
 para poder ejercitar el plugin de principio a fin. Son fixtures, no una API HTTP
 que ofrezca fastr-docs.
 

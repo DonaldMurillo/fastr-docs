@@ -2440,7 +2440,7 @@ func safeRedirectPath(raw string) string {
 func (r *Router) addRoute(path string, route Route) (*Route, error) {
 	path = normalizePath(path)
 	// Slug renames the last segment wherever it is set, not only inside
-	// collections: the field's contract is "overrides the last segment of
+	// collections: the field's rule is "overrides the last segment of
 	// the route path", and a standalone page honoring it only some of the
 	// time is how two pages silently share one intended address.
 	// Blogs resolve their own slugs while building post paths, so the

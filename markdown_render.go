@@ -12,7 +12,7 @@ import (
 // Markdown rendering belongs to GoFastr, including parsing, highlighting,
 // component CSS, and the clipboard runtime. fastr-docs only changes the
 // presentation of the code-block copy affordance to match the docs shell's
-// icon-first contract. Keeping that adapter here lets fastr-docs use the
+// icon-first form. Keeping that adapter here lets fastr-docs use the
 // released GoFastr API instead of requiring a framework fork or local replace.
 var docsCopyButton = regexp.MustCompile(`(?s)<button\b[^>]*\bclass="[^"]*\bui-copy-btn\b[^"]*"[^>]*>.*?</button>`)
 

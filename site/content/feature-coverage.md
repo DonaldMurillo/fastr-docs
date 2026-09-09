@@ -26,7 +26,7 @@ the project using fastr-docs.
 | Documentation versions | Version metadata, version filters, route-aware selectors, `MarkdownVersionedCollection`, and a version inventory in the export manifest. |
 | SEO and publishing | Titles, descriptions, canonical URLs, `noindex`, authors, published/updated dates, social images, redirects, sitemap, robots rules, Markdown blogs, and RSS feeds. |
 | Offline delivery | GoFastr PWA integration and static export of offline-eligible routes and assets. |
-| API references | In-project OpenAPI plugin with JSON or YAML contracts and an optional server URL override. |
+| API references | In-project OpenAPI plugin with JSON or YAML specs and an optional server URL override. |
 | Extensibility | Plugins, three shortcode shapes, custom layout factories, validation, search contributions, and a collected runtime-asset pipeline. |
 | Page templates | A front-matter `splash` shell for landing pages, alongside typed screens for anything it cannot express. |
 | Code blocks | Fence options for a title, line numbers, line highlighting, and internal scrolling. |
@@ -76,7 +76,7 @@ router := docs.NewRouter(docs.WithLayouts(docs.LayoutConfig{
 ### Make missing routes useful
 
 Install `NotFoundScreen` in the GoFastr host, or replace it with a branded
-screen that follows the same contract:
+screen that meets the same shape:
 
 ```go
 host := uihost.New(site,
@@ -125,7 +125,7 @@ calling `MarkdownBlog`; sites that do not publish updates do not carry a feed.
 The starter contains Markdown pages, nested groups, a typed playground,
 framework UI examples, an OpenAPI reference, local search, PWA export, agent
 references, and browser tests. The non-CLI fixture exercises the same public
-Router API by hand. Keep both projects in the test suite when changing a
-public contract.
+Router API by hand. Keep both projects in the test suite when changing the
+public Router API.
 
 Continue with [The router](/docs/concepts/router), [Content authoring](/docs/concepts/content), [Framework UI](/docs/build/framework-ui), or [Testing](/docs/operate/testing).

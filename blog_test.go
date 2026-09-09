@@ -2,6 +2,7 @@ package docs
 
 import (
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"net/http"
 	"net/url"
@@ -206,6 +207,110 @@ func TestMarkdownBlogRegistersPublicationViewsAndUsesBlogTemplate(t *testing.T) 
 	if !strings.Contains(searchHTML, "Results for") || !strings.Contains(searchHTML, "Router notes") || second < 0 || !strings.Contains(searchHTML[second:], `hidden=""`) {
 		t.Fatalf("blog search did not filter server-side: %s", searchHTML)
 	}
+}
+
+func TestYearArchivesListOnlyTheirYear(t *testing.T) {
+	t.Run("a year archive route exists", func(t *testing.T) {
+		r := blogAcrossTwoYears(t)
+		if r.routeAtPath("/blog/archive/2025") == nil {
+			t.Fatal("no route serves the year archive")
+		}
+	})
+	t.Run("a year archive lists only that year", func(t *testing.T) {
+		r := blogAcrossTwoYears(t)
+		html := renderRouterPage(t, r, "/blog/archive/2025")
+		cards := html[strings.Index(html, "fastr-docs-blog-card"):]
+		if !strings.Contains(cards, "Viejo") || strings.Contains(cards, "Nuevo") {
+			t.Fatal("the year archive mixes posts from other years")
+		}
+	})
+	t.Run("the year archive carries the year in its title", func(t *testing.T) {
+		r := blogAcrossTwoYears(t)
+		route := r.routeAtPath("/blog/archive/2025")
+		if route == nil || !strings.Contains(route.Title, "2025") {
+			t.Fatalf("year route title = %+v", route)
+		}
+	})
+}
+
+func TestUnpublishedPostsStayHidden(t *testing.T) {
+	t.Run("future posts stay out of search", func(t *testing.T) {
+		r := blogAcrossTwoYears(t)
+		route := r.routeAtPath("/blog/newer")
+		route.Metadata.DatePublished = "2030-01-01"
+		for _, entry := range r.SearchIndex() {
+			if entry.Path == "/blog/newer" {
+				t.Fatal("a future-dated post is searchable")
+			}
+		}
+	})
+	t.Run("future posts stay out of the sitemap", func(t *testing.T) {
+		r := blogAcrossTwoYears(t)
+		route := r.routeAtPath("/blog/newer")
+		route.Metadata.DatePublished = "2030-01-01"
+		if strings.Contains(string(r.Sitemap()), "/blog/newer") {
+			t.Fatal("a future-dated post is offered to crawlers")
+		}
+	})
+	t.Run("term pages hide future posts", func(t *testing.T) {
+		r := blogAcrossTwoYears(t)
+		route := r.routeAtPath("/blog/newer")
+		route.Metadata.DatePublished = "2030-01-01"
+		html := renderRouterPage(t, r, "/blog/tags/go")
+		cards := html[strings.Index(html, "fastr-docs-blog"):]
+		if strings.Contains(cards, "Nuevo") {
+			t.Fatal("a future-dated post appears on a tag page")
+		}
+	})
+}
+
+func TestBlogSearchAndCards(t *testing.T) {
+	t.Run("server-side blog search folds accents", func(t *testing.T) {
+		post := &Route{Title: "Nuevo", Metadata: ContentMetadata{Tags: []string{"Diseño"}}}
+		if !blogQueryMatch(post, "diseno") {
+			t.Fatal("a folded query misses an accented tag before JavaScript runs")
+		}
+	})
+	t.Run("blog cards expose their dates to machines", func(t *testing.T) {
+		r := blogAcrossTwoYears(t)
+		html := renderRouterPage(t, r, "/blog")
+		if !strings.Contains(html, "<time") {
+			t.Fatal("card dates render as bare text")
+		}
+	})
+}
+
+func TestGeneratedBlogViewsStayOutOfIndexes(t *testing.T) {
+	t.Run("generated views stay out of search", func(t *testing.T) {
+		r := blogAcrossTwoYears(t)
+		for _, entry := range r.SearchIndex() {
+			if strings.HasPrefix(entry.Path, "/blog/tags") || strings.HasPrefix(entry.Path, "/blog/authors") || strings.HasPrefix(entry.Path, "/blog/search") {
+				t.Fatalf("generated view %q pollutes the search index", entry.Path)
+			}
+		}
+	})
+	t.Run("generated views stay out of the manifest", func(t *testing.T) {
+		r := blogAcrossTwoYears(t)
+		body, err := r.ExportManifestJSON("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var manifest ExportManifest
+		if err := json.Unmarshal(body, &manifest); err != nil {
+			t.Fatal(err)
+		}
+		for _, route := range manifest.Routes {
+			if strings.HasPrefix(route.Path, "/blog/tags") || strings.HasPrefix(route.Path, "/blog/search") {
+				t.Fatalf("generated view %q ships in the manifest", route.Path)
+			}
+		}
+	})
+	t.Run("generated views stay out of the sitemap", func(t *testing.T) {
+		r := blogAcrossTwoYears(t)
+		if strings.Contains(string(r.Sitemap()), "/blog/tags") || strings.Contains(string(r.Sitemap()), "/blog/search") {
+			t.Fatal("generated listing pages are offered to crawlers as content")
+		}
+	})
 }
 
 func minInt(a, b int) int {

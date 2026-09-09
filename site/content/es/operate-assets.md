@@ -29,7 +29,7 @@ func (Plugin) RuntimeAssets() (map[string][]byte, error) {
 }
 ```
 
-Ese es todo el contrato. Nada del `main.go` generado cambia cuando añades un
+Eso es todo. Nada del `main.go` generado cambia cuando añades un
 plugin que trae código de navegador.
 
 {{< warning title="Los nombres se validan" >}}

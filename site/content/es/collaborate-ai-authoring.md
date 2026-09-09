@@ -15,7 +15,7 @@ navegador.
 
 - `docs/router.go` gobierna el registro y el orden de las rutas.
 - `content/` gobierna el Markdown y el front matter.
-- `openapi.json` gobierna el contrato de la API que consume el plugin.
+- `openapi.json` gobierna la especificación de la API que consume el plugin.
 - `agents/claude.md` explica las convenciones del proyecto.
 - `.agents/skills/docs-authoring/SKILL.md` describe las tareas seguras.
 
@@ -47,6 +47,6 @@ que no existe.
 ## Verifica el resultado
 
 Los agentes deberían ejecutar `fastr-docs doctor .`, las pruebas del proyecto y
-la suite de navegador cuando cambie el comportamiento. El árbol de rutas es un
-contrato: una página no está terminada cuando existe su archivo, sino cuando
+la suite de navegador cuando cambie el comportamiento. El árbol de rutas es una
+promesa: una página no está terminada cuando existe su archivo, sino cuando
 funcionan su navegación, su búsqueda, su exportación y su recorrido.

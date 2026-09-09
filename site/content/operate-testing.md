@@ -4,7 +4,7 @@ tags: [testing, e2e, validation]
 
 # Testing
 
-The product contract is browser behavior, not only successful compilation. Test the Router model in Go, then exercise a generated or hand-authored project through a real browser.
+The product is browser behavior, not only successful compilation. Test the Router model in Go, then exercise a generated or hand-authored project through a real browser.
 
 ## Fast checks
 
@@ -29,4 +29,4 @@ The suite covers desktop and mobile navigation, active nested routes, command-pa
 
 ## Test both project paths
 
-The suite creates a project with the CLI and also builds the hand-authored non-CLI fixture. Keep both flows covered when changing the public Router contract. For visual changes, review the desktop and mobile snapshots instead of accepting a baseline blindly.
+The suite creates a project with the CLI and also builds the hand-authored non-CLI fixture. Keep both flows covered when changing the public Router API. For visual changes, review the desktop and mobile snapshots instead of accepting a baseline blindly.

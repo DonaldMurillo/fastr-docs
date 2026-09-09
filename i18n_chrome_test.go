@@ -480,3 +480,36 @@ func TestTheSearchTriggerCarriesThePalettesStrings(t *testing.T) {
 		t.Fatalf("English trigger changed: %s", english)
 	}
 }
+
+// The language selector's options announce which language they lead to.
+func TestVariantOptionsCarryTheirLanguage(t *testing.T) {
+	r := NewRouter(WithLocaleFallback("en"))
+	r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G"})
+	r.MustPage("/es/g", PageConfig{Title: "G", Description: "d", Order: 2, Source: "# G", Metadata: ContentMetadata{Locale: "es"}})
+	html := renderRouterPage(t, r, "/g")
+	if !strings.Contains(html, `lang="es"`) {
+		t.Fatal("the language selector offers options with no lang attribute")
+	}
+}
+
+func TestTheLanguageSelectorHasAnAccessibleName(t *testing.T) {
+	r := bilingualDocsSite(t)
+	html := string(r.variantSelectors("/es/docs/guide"))
+	if !strings.Contains(html, "aria-label") {
+		t.Fatal("the language selector has no accessible name")
+	}
+}
+
+func TestTheSearchTriggerExposesItsExpandedState(t *testing.T) {
+	r := NewRouter()
+	r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G"})
+	html := renderRouterPage(t, r, "/g")
+	if !strings.Contains(html, "fastr-docs-command-trigger") {
+		t.Fatal("no trigger rendered")
+	}
+	index := strings.Index(html, "fastr-docs-command-trigger")
+	chunk := html[index-100 : index+400]
+	if !strings.Contains(chunk, "aria-expanded") {
+		t.Fatal("the palette trigger hides its expanded state from assistive tech")
+	}
+}

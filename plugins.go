@@ -51,7 +51,7 @@ func (p MarkdownCollectionPlugin) Apply(r *Router) error {
 
 // MarkdownComponentsPlugin registers a shared component vocabulary for
 // Markdown shortcodes. It lets a plugin own both its component implementation
-// and the authoring contract without requiring pages to repeat a map.
+// and the authoring interface without requiring pages to repeat a map.
 type MarkdownComponentsPlugin struct {
 	// Components maps each shortcode name to its implementation;
 	// applying the plugin retires any earlier meaning the names had.

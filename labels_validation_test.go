@@ -1,8 +1,9 @@
 package docs
 
-// Label and locale inventory contracts: nested Keys, month
-// calendars, plural forms, hreflang defaults, and RTL coverage.
+// Labels and locale inventories: nested Keys, month calendars, plural
+// forms, hreflang defaults, RTL coverage, and per-route label resolution.
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -35,7 +36,7 @@ func TestLabelInventory(t *testing.T) {
 	})
 
 	t.Run("pages carry an x-default hreflang", func(t *testing.T) {
-		r := r2Bilingual()
+		r := bilingualPair()
 		head := r.metadataHeadHTML(r.routeAtPath("/docs/guide"))
 		if !strings.Contains(head, `hreflang="x-default"`) {
 			t.Fatalf("head alternates lack x-default: %s", head)
@@ -79,6 +80,116 @@ func TestLabelInventory(t *testing.T) {
 	t.Run("counted labels accept a zero form", func(t *testing.T) {
 		if got := formatCount("0 posts|1 post|%d posts", 0); got != "0 posts" {
 			t.Fatalf("formatCount three-form = %q, want %q", got, "0 posts")
+		}
+	})
+
+	t.Run("count labels pluralize", func(t *testing.T) {
+		if got := formatCount(defaultUIStrings.Blog.PostCount, 1); got != "1 post" {
+			t.Fatalf("singular renders as %q", got)
+		}
+		if got := formatCount(defaultUIStrings.Blog.PostCount, 5); got != "5 posts" {
+			t.Fatalf("plural renders as %q", got)
+		}
+		if got := formatCount("%d posts", 2); got != "2 posts" {
+			t.Fatalf("plain labels keep working: %q", got)
+		}
+	})
+
+	t.Run("Keys is sorted", func(t *testing.T) {
+		keys := UIStrings{}.Keys()
+		for i := 1; i < len(keys); i++ {
+			if keys[i-1] > keys[i] {
+				t.Fatalf("Keys() is not sorted around %q", keys[i])
+			}
+		}
+	})
+}
+
+func TestMonthCalendarsAreValidated(t *testing.T) {
+	t.Run("a short month list is flagged", func(t *testing.T) {
+		r := NewRouter(WithLocaleUIStrings("es", UIStrings{Months: []string{"enero", "febrero"}}))
+		r.MustPage("/es/post", PageConfig{Title: "P", Description: "d", Source: "# P", Order: 1,
+			Metadata: ContentMetadata{Locale: "es", DatePublished: "2026-12-01"}})
+		if err := r.Validate(); err == nil {
+			t.Fatal("Validate accepted a two-month calendar")
+		}
+	})
+	t.Run("a short short-months list is flagged", func(t *testing.T) {
+		r := NewRouter(WithLocaleUIStrings("es", UIStrings{ShortMonths: []string{"ene"}}))
+		r.MustPage("/es/p", PageConfig{Title: "P", Description: "d", Source: "# P", Order: 1, Metadata: ContentMetadata{Locale: "es"}})
+		if err := r.Validate(); err == nil {
+			t.Fatal("Validate accepted a one-entry ShortMonths")
+		}
+	})
+	t.Run("month names are validated for uniqueness", func(t *testing.T) {
+		r := NewRouter(WithLocaleUIStrings("es", UIStrings{Months: []string{"x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x", "x"}}))
+		r.MustPage("/es/p", PageConfig{Title: "P", Description: "d", Source: "# P", Order: 1, Metadata: ContentMetadata{Locale: "es"}})
+		if err := r.Validate(); err == nil {
+			t.Fatal("Validate accepted twelve identical month names")
+		}
+	})
+}
+
+func TestLocaleLabelsResolvePerRoute(t *testing.T) {
+	t.Run("locale labels merge router-wide, locale, then default", func(t *testing.T) {
+		r := NewRouter(
+			WithUIStrings(UIStrings{Sections: "Router sections"}),
+			WithLocaleUIStrings("es", UIStrings{Sections: "Secciones"}),
+		)
+		r.MustPage("/es/p", PageConfig{Title: "P", Description: "d", Source: "# P", Order: 1, Metadata: ContentMetadata{Locale: "es"}})
+		if got := r.uiAt("/es/p").Sections; got != "Secciones" {
+			t.Fatalf("locale label = %q", got)
+		}
+		if got := r.UIStringsForLocale("fr").Sections; got != "Router sections" {
+			t.Fatalf("unknown locale label = %q, want the router-wide value", got)
+		}
+	})
+	t.Run("region label sets fall back to the primary locale", func(t *testing.T) {
+		r := NewRouter(WithLocaleUIStrings("es", UIStrings{OnThisPage: "En esta página"}))
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G"})
+		r.MustPage("/es-MX/g", PageConfig{Title: "G", Description: "d", Order: 2, Source: "# G", Metadata: ContentMetadata{Locale: "es-MX"}})
+		if got := r.UIStringsForLocale("es-mx").OnThisPage; got != "En esta página" {
+			t.Fatalf("region labels = %q, want the primary locale's set", got)
+		}
+	})
+	t.Run("uiAt accepts query strings", func(t *testing.T) {
+		r := bilingualDocsSite(t)
+		if got := r.uiAt("/es/docs/guide?x=1").Contents; got != "Contenido" {
+			t.Fatalf("uiAt with query = %q", got)
+		}
+	})
+	t.Run("partial blog translations are reported", func(t *testing.T) {
+		r := NewRouter(WithLocaleUIStrings("es", UIStrings{Blog: BlogStrings{Title: "Blog"}}))
+		r.MustPage("/es/p", PageConfig{Title: "P", Description: "d", Source: "# P", Order: 1, Metadata: ContentMetadata{Locale: "es"}})
+		for _, warning := range r.Warnings() {
+			if strings.Contains(warning, "blog labels") {
+				return
+			}
+		}
+		t.Fatal("a one-field Blog translation raises no warning")
+	})
+	t.Run("partial chrome translations warn", func(t *testing.T) {
+		r := NewRouter(WithLocaleUIStrings("es", UIStrings{Home: "Inicio"}))
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G"})
+		for _, warning := range r.Warnings() {
+			if strings.Contains(warning, "chrome") || strings.Contains(warning, "labels") {
+				return
+			}
+		}
+		t.Fatal("a locale translating one chrome label of seventy passes silently")
+	})
+	t.Run("the heading anchor label is translatable", func(t *testing.T) {
+		labels := UIStrings{}
+		field := reflect.ValueOf(&labels).Elem().FieldByName("AnchorLabel")
+		if !field.IsValid() || !field.CanSet() {
+			t.Fatal("UIStrings has no settable AnchorLabel; the anchor button is English on every page")
+		}
+		field.SetString("Copiar enlace a esta sección")
+		r := NewRouter(WithLocaleUIStrings("es", labels))
+		r.MustPage("/es/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "## Sección\n\nTexto.", Metadata: ContentMetadata{Locale: "es"}})
+		html := renderRouterPage(t, r, "/es/g")
+		if !strings.Contains(html, "Copiar enlace") {
+			t.Fatal("the anchor button ignores the locale's label")
 		}
 	})
 }

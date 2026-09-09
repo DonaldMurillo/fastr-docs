@@ -7,7 +7,7 @@ locale: es
 
 Usa `MarkdownBlog` cuando un sitio de documentación también publique novedades.
 Registra una ruta de archivo en el prefijo y convierte cada archivo Markdown del
-directorio en una entrada. Las entradas usan el mismo contrato de front matter,
+directorio en una entrada. Las entradas usan el mismo esquema de front matter,
 así que el mismo Router se ocupa de títulos, descripciones, autores, fechas,
 etiquetas, borradores, idiomas, versiones, búsqueda, navegación y SEO.
 

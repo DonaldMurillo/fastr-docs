@@ -42,7 +42,7 @@ type Plugin struct {
 	// SpecPath reads the OpenAPI document from a file; Spec wins when
 	// both are set.
 	SpecPath string
-	// Spec is the OpenAPI document as bytes, for embedded contracts.
+	// Spec is the OpenAPI document as bytes, for embedded specs.
 	Spec []byte
 	// Path mounts the reference; defaults to /api-reference.
 	Path string
@@ -51,8 +51,8 @@ type Plugin struct {
 	// Description overrides the document's info.description.
 	Description string
 	// ServerURL overrides the first OpenAPI servers entry. This is useful for
-	// staging/production deployments where the same contract is rendered from
-	// different docs hosts. Empty uses the contract's resolved default server.
+	// staging/production deployments where the same spec is rendered from
+	// different docs hosts. Empty uses the spec's resolved default server.
 	ServerURL string
 	// Locale declares the language of this mount's route, so a translated
 	// reference at /es/api-reference pairs with the original section and the
@@ -73,7 +73,7 @@ type Plugin struct {
 func (Plugin) Name() string { return "openapi" }
 
 // Apply validates the OpenAPI document, registers the reference as a screen
-// with this mount's locale and surface labels, and allows the contract's
+// with this mount's locale and surface labels, and allows the spec's
 // server origin for the browser request console. Spec wins over SpecPath,
 // and every unset field falls back to the document's own info, then to
 // framework defaults.
@@ -115,7 +115,7 @@ func (p Plugin) Apply(r *docs.Router) error {
 		description = spec.Info.Description
 	}
 	if description == "" {
-		description = "Generated from the project OpenAPI contract."
+		description = "Generated from the project OpenAPI spec."
 	}
 	operations, err := spec.operations()
 	if err != nil {
@@ -171,7 +171,7 @@ func mountIDPrefix(path string) string {
 	return value
 }
 
-// checkDuplicateOperationIDs fails loudly on a contract that reuses an
+// checkDuplicateOperationIDs fails loudly on a spec that reuses an
 // operation id: the console and anchors key off ids, and a silent collision
 // makes one operation unreachable.
 func checkDuplicateOperationIDs(operations []Operation) error {
@@ -356,7 +356,7 @@ type Operation struct {
 	ParameterSpecs []Parameter
 	// RequestBody says the operation expects a body.
 	RequestBody bool
-	// RequestBodyRequired says the contract demands the body.
+	// RequestBodyRequired says the spec demands the body.
 	RequestBodyRequired bool
 	// RequestBodyContentType is the body's media type.
 	RequestBodyContentType string
@@ -367,17 +367,17 @@ type Operation struct {
 	// ResponseHeaders names the documented response headers, so a reader
 	// can find rate limits and pagination before the first call.
 	ResponseHeaders []string
-	// Deprecated marks an operation the contract retired.
+	// Deprecated marks an operation the spec retired.
 	Deprecated bool
 	// Tags carry the document's own grouping.
 	Tags []string
 }
 
-// Parameter is the normalized request input contract shown by Reference.
+// Parameter is the normalized request input model shown by Reference.
 // In is one of path, query, header, or cookie; unsupported parameter kinds are
 // retained in the reference but are not sent by the browser console.
 type Parameter struct {
-	// Name is the parameter as the contract spells it.
+	// Name is the parameter as the spec spells it.
 	Name string
 	// In is where the parameter travels: path, query, header, or
 	// cookie.
@@ -386,7 +386,7 @@ type Parameter struct {
 	Description string
 	// Type is the parameter's JSON type.
 	Type string
-	// Default is the contract's default value.
+	// Default is the spec's default value.
 	Default string
 	// Example seeds the console's input.
 	Example string
@@ -395,7 +395,7 @@ type Parameter struct {
 	// Format refines Type, and picks the input: a date format renders a
 	// date picker rather than free text.
 	Format string
-	// Enum lists the values the contract allows; the console offers them
+	// Enum lists the values the spec allows; the console offers them
 	// as a select instead of trusting free text.
 	Enum []string
 }

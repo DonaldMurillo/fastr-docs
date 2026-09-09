@@ -27,4 +27,4 @@ Different route groups can have different local navigation, content density, or 
 - Mobile layouts move the section tree into the native GoFastr drawer.
 - Header navigation and the local sidebar remain separate responsibilities.
 
-The browser suite checks these contracts at desktop, tablet, and mobile widths. When changing layout CSS, inspect all three states visually as well as asserting their DOM behavior.
+The browser suite checks these behaviors at desktop, tablet, and mobile widths. When changing layout CSS, inspect all three states visually as well as asserting their DOM behavior.

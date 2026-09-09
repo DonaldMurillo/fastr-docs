@@ -434,7 +434,7 @@ func runDev(args []string, stdout, stderr io.Writer) error {
 // createDevReloadMarker gives the fastr-docs wrapper a harmless .go file that
 // GoFastr's watcher can observe. It is ignored by the Go build, but touching
 // it causes the normal GoFastr rebuild, accessibility gate, and browser
-// refresh flow to run when a docs contract changes.
+// refresh flow to run when a docs spec changes.
 func createDevReloadMarker(target string) (string, error) {
 	if err := removeDevReloadMarkers(target); err != nil {
 		return "", err
@@ -465,7 +465,7 @@ func removeDevReloadMarkers(target string) error {
 
 // watchDevExtraFiles covers documentation inputs that GoFastr v0.76 does not
 // watch itself. Markdown, Go, HTML, CSS, and JavaScript remain on GoFastr's
-// native watcher; this bridge only adds JSON/YAML contract files such as an
+// native watcher; this bridge only adds JSON/YAML spec files such as an
 // OpenAPI document.
 func watchDevExtraFiles(dir, marker string, stop <-chan struct{}) {
 	previous := scanDevExtraModTimes(dir)

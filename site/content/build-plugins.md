@@ -6,7 +6,7 @@ tags: [plugins, extensions, router]
 
 Plugins extend a project without creating a second content system. A plugin can register pages or screens, add search text, declare external origins, validate project rules, and mount browser assets.
 
-## Implement the basic contract
+## Implement the basic interface
 
 ```go
 type Plugin interface {

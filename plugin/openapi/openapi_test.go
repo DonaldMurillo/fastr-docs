@@ -10,7 +10,7 @@ import (
 )
 
 func TestPluginRegistersRichReferenceScreen(t *testing.T) {
-	spec := []byte(`{"openapi":"3.1.0","info":{"title":"Public API","description":"The contract."},"servers":[{"url":"https://api.example.com/{version}","variables":{"version":{"default":"v1"}}}],"paths":{"/projects":{"get":{"summary":"List projects","operationId":"listProjects","responses":{"200":{"description":"ok"}}}}},"components":{"schemas":{"Project":{"type":"object","description":"A project","properties":{"id":{"type":"string"}}}}}}`)
+	spec := []byte(`{"openapi":"3.1.0","info":{"title":"Public API","description":"The spec."},"servers":[{"url":"https://api.example.com/{version}","variables":{"version":{"default":"v1"}}}],"paths":{"/projects":{"get":{"summary":"List projects","operationId":"listProjects","responses":{"200":{"description":"ok"}}}}},"components":{"schemas":{"Project":{"type":"object","description":"A project","properties":{"id":{"type":"string"}}}}}}`)
 	router := docs.NewRouter()
 	if err := router.Use(Plugin{
 		Spec:  spec,
@@ -20,7 +20,7 @@ func TestPluginRegistersRichReferenceScreen(t *testing.T) {
 		t.Fatalf("Use() error = %v", err)
 	}
 	if got := router.ConnectOrigins(); len(got) != 1 || got[0] != "https://api.example.com" {
-		t.Fatalf("OpenAPI connect origins = %#v, want contract server origin", got)
+		t.Fatalf("OpenAPI connect origins = %#v, want spec server origin", got)
 	}
 	if err := router.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
@@ -118,7 +118,7 @@ func TestPluginAcceptsYAMLSpec(t *testing.T) {
 	spec := []byte(`openapi: 3.1.0
 info:
   title: YAML API
-  description: A YAML contract.
+  description: A YAML spec.
 servers:
   - url: https://api.example.com/v1
 paths:
@@ -146,13 +146,13 @@ paths:
 // original section, and carries its own surface labels: the plugin's chrome
 // is otherwise English whatever the spec says.
 func TestTranslatedMountCarriesLocaleAndStrings(t *testing.T) {
-	spec := []byte(`{"openapi":"3.1.0","info":{"title":"API de contenido de ejemplo","description":"Un contrato pequeño."},"paths":{"/v1/projects":{"get":{"summary":"Listar proyectos","operationId":"listProjects","responses":{"200":{"description":"ok"}}}}}}`)
+	spec := []byte(`{"openapi":"3.1.0","info":{"title":"API de contenido de ejemplo","description":"Una especificación pequeña."},"paths":{"/v1/projects":{"get":{"summary":"Listar proyectos","operationId":"listProjects","responses":{"200":{"description":"ok"}}}}}}`)
 	router := docs.NewRouter()
 	if err := router.Use(Plugin{
 		Spec:        spec,
 		Path:        "/es/api-reference",
 		Title:       "Referencia de la API de ejemplo",
-		Description: "Un contrato pequeño.",
+		Description: "Una especificación pequeña.",
 		Locale:      "es",
 		// A label at a time: the fields left empty keep the English
 		// defaults, the way a partly translated site behaves.
@@ -160,7 +160,7 @@ func TestTranslatedMountCarriesLocaleAndStrings(t *testing.T) {
 			Eyebrow:      "Referencia OpenAPI",
 			TryRequest:   "Prueba una petición",
 			SendRequest:  "Enviar la petición",
-			NoOperations: "Este contrato no tiene operaciones.",
+			NoOperations: "Esta especificación no tiene operaciones.",
 		},
 	}); err != nil {
 		t.Fatalf("Use() error = %v", err)

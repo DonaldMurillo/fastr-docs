@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -129,5 +130,32 @@ func mapKeys(m map[string][]byte) func(func(string) bool) {
 				return
 			}
 		}
+	}
+}
+
+func TestPageScriptsAreUniqueAndReachThePage(t *testing.T) {
+	t.Run("duplicate page script names error", func(t *testing.T) {
+		r := NewRouter(WithPageScript("poll", "a"), WithPageScript("poll", "b"))
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G"})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "poll") {
+			t.Fatalf("Validate() = %v, want the duplicate script name flagged", err)
+		}
+	})
+	t.Run("a per-page script hook exists", func(t *testing.T) {
+		r := NewRouter(WithPageScript("analytics", "window.q=[];"))
+		scripts := r.PageScripts()
+		if len(scripts) != 1 || scripts[0].Name != "analytics" || scripts[0].JS != "window.q=[];" {
+			t.Fatalf("PageScripts() = %+v", scripts)
+		}
+	})
+}
+
+func TestTwoPluginsMayNotClaimOneAssetName(t *testing.T) {
+	r := assetRouter(t,
+		fakeAssetPlugin{name: "one", files: map[string][]byte{"clash": []byte("one")}},
+		fakeAssetPlugin{name: "two", files: map[string][]byte{"clash": []byte("two")}},
+	)
+	if _, err := r.RuntimeAssets(""); err == nil || !strings.Contains(err.Error(), "collides") {
+		t.Fatal("two plugins writing different bytes under one asset name silently overwrite each other")
 	}
 }

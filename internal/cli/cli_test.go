@@ -202,7 +202,7 @@ func TestGofastrUpgradeCommandPassesProjectRoot(t *testing.T) {
 	}
 }
 
-func TestDevExtraFileScanWatchesJSONAndYAMLContracts(t *testing.T) {
+func TestDevExtraFileScanWatchesJSONAndYAMLSpecs(t *testing.T) {
 	target := t.TempDir()
 	if err := os.Mkdir(filepath.Join(target, "dist"), 0o755); err != nil {
 		t.Fatal(err)
@@ -252,6 +252,13 @@ func TestInitEscapesSiteNameForGeneratedGoAndJSON(t *testing.T) {
 	}
 	if !strings.Contains(string(body), `Acme \"Docs\" API`) {
 		t.Fatalf("generated OpenAPI JSON did not preserve escaped site name: %s", body)
+	}
+}
+
+func TestInitRejectsNamesWithPathSeparators(t *testing.T) {
+	var out, errOut strings.Builder
+	if err := Run([]string{"init", "--name", "a/b", t.TempDir()}, &out, &errOut); err == nil {
+		t.Fatal("a name carrying a path separator writes into the filesystem")
 	}
 }
 

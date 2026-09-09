@@ -28,7 +28,7 @@ import (
 // GoFastr component APIs exactly as an adopters' project would.
 //
 //go:embed openapi.json content/blog/*
-var contractFS embed.FS
+var projectFS embed.FS
 
 func main() {
 	built, err := buildSite()
@@ -95,7 +95,7 @@ type builtSite struct {
 }
 
 func buildSite() (*builtSite, error) {
-	contract, err := fs.ReadFile(contractFS, "openapi.json")
+	spec, err := fs.ReadFile(projectFS, "openapi.json")
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +131,7 @@ func buildSite() (*builtSite, error) {
 	router.MustPage("/", docs.PageConfig{
 		Title:       "Manual Docs",
 		Description: "A hand-authored project exercising the public Router API.",
-		Source:      "# Manual Docs\n\nThis is a hand-authored documentation site built with the public `docs.Router` API. Start with the guide, try the interactive framework surface, or browse the API reference.\n\n## Start here\n\nNew to this project? Read the [Getting started guide](/guides/getting-started) to follow the route tree from a nested Markdown page to a typed screen.\n\n- [Getting started](/guides/getting-started) — register pages, groups, and screens.\n- [Patterns](/guides/patterns) — see how explicit order keeps a growing tree readable.\n- [Framework lab](/framework-lab) — try the interactive GoFastr surfaces used by this fixture.\n\n## Choose a surface\n\nUse the route that matches what you need to do:\n\n- [Guides](/guides/getting-started) — learn the authoring model and navigation tree.\n- [Framework lab](/framework-lab) — exercise tabs, forms, charts, filters, and typed state.\n- [Localized guides](/locales/pt-BR/v1/guide) — switch language and version while staying in the same page family.\n- [Manual fixture API](/api-reference) — search the OpenAPI contract and send a safe GET request.\n\n## What this project demonstrates\n\nMarkdown pages, typed screens, nested groups, local search, PWA export, and OpenAPI all share one route tree. The sidebar shows the full tree here, then narrows to the active section as you read.\n\n## Next steps\n\n1. [Read Getting started](/guides/getting-started).\n2. [Open the Framework lab](/framework-lab).\n3. [Inspect the API reference](/api-reference).\n4. Press `Ctrl+K` or select Search in the header to jump to any route.",
+		Source:      "# Manual Docs\n\nThis is a hand-authored documentation site built with the public `docs.Router` API. Start with the guide, try the interactive framework surface, or browse the API reference.\n\n## Start here\n\nNew to this project? Read the [Getting started guide](/guides/getting-started) to follow the route tree from a nested Markdown page to a typed screen.\n\n- [Getting started](/guides/getting-started) — register pages, groups, and screens.\n- [Patterns](/guides/patterns) — see how explicit order keeps a growing tree readable.\n- [Framework lab](/framework-lab) — try the interactive GoFastr surfaces used by this fixture.\n\n## Choose a surface\n\nUse the route that matches what you need to do:\n\n- [Guides](/guides/getting-started) — learn the authoring model and navigation tree.\n- [Framework lab](/framework-lab) — exercise tabs, forms, charts, filters, and typed state.\n- [Localized guides](/locales/pt-BR/v1/guide) — switch language and version while staying in the same page family.\n- [Manual fixture API](/api-reference) — search the OpenAPI spec and send a safe GET request.\n\n## What this project demonstrates\n\nMarkdown pages, typed screens, nested groups, local search, PWA export, and OpenAPI all share one route tree. The sidebar shows the full tree here, then narrows to the active section as you read.\n\n## Next steps\n\n1. [Read Getting started](/guides/getting-started).\n2. [Open the Framework lab](/framework-lab).\n3. [Inspect the API reference](/api-reference).\n4. Press `Ctrl+K` or select Search in the header to jump to any route.",
 		Order:       1,
 		Offline:     true,
 	})
@@ -139,7 +139,7 @@ func buildSite() (*builtSite, error) {
 	guides.MustPage("getting-started", docs.PageConfig{
 		Title:       "Getting started",
 		Description: "The first guide in a nested group.",
-		Source:      "# Getting started\n\nThis page proves nested Markdown navigation and the sticky in-page rail.\n\n{{< note title=\"Manual component\" >}}\nThe hand-authored fixture registers a typed component vocabulary through the public plugin contract.\n{{< /note >}}\n\n## Compose a route tree\n\nRegister pages and screens against one router.\n\n## Add a screen\n\nTyped GoFastr screens can sit beside Markdown.",
+		Source:      "# Getting started\n\nThis page proves nested Markdown navigation and the sticky in-page rail.\n\n{{< note title=\"Manual component\" >}}\nThe hand-authored fixture registers a typed component vocabulary through the public plugin interface.\n{{< /note >}}\n\n## Compose a route tree\n\nRegister pages and screens against one router.\n\n## Add a screen\n\nTyped GoFastr screens can sit beside Markdown.",
 		Order:       1,
 	})
 	guides.MustPage("patterns", docs.PageConfig{
@@ -174,14 +174,14 @@ func buildSite() (*builtSite, error) {
 		Badge:       docs.NavBadge{Label: "Live", Tone: docs.NavBadgeToneSuccess},
 	})
 	if err := router.Use(openapi.Plugin{
-		Spec:        contract,
+		Spec:        spec,
 		ServerURL:   os.Getenv("API_SERVER_URL"),
 		Title:       "Manual fixture API",
 		Description: "The OpenAPI plugin is mounted into the same hand-authored Router.",
 	}); err != nil {
 		return nil, err
 	}
-	if err := router.MarkdownBlogFS("/blog", contractFS, "content/blog", docs.BlogConfig{
+	if err := router.MarkdownBlogFS("/blog", projectFS, "content/blog", docs.BlogConfig{
 		Title: "Manual updates", Description: "Updates from the hand-authored fixture.", Order: 5, Offline: true,
 	}); err != nil {
 		return nil, err

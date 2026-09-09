@@ -3,7 +3,7 @@
   "info": {
     "title": "Manual fixture API",
     "version": "2026.08",
-    "description": "A hand-authored OpenAPI contract mounted into the same Router."
+    "description": "A hand-authored OpenAPI spec mounted into the same Router."
   },
   "servers": [
     { "url": "http://127.0.0.1:4176/v1" }

@@ -199,3 +199,38 @@ func TestBlogChromeUsesTranslatedLabels(t *testing.T) {
 		}
 	}
 }
+
+func TestLocaleNamesAndRegionVariants(t *testing.T) {
+	t.Run("locale names fall back to the primary language", func(t *testing.T) {
+		r := NewRouter(WithLocaleNames(map[string]string{"es": "Español"}))
+		if got := r.LocaleName("es-MX"); got != "Español" {
+			t.Fatalf("LocaleName(es-MX) = %q, want the Spanish name", got)
+		}
+	})
+	t.Run("region variants count toward coverage", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G"})
+		r.MustPage("/es-MX/g", PageConfig{Title: "G", Description: "d", Order: 2, Source: "# G", Metadata: ContentMetadata{Locale: "es-MX"}})
+		if missing := r.UntranslatedFamilies("es"); len(missing) != 0 {
+			t.Fatalf("an es-MX variant does not count as Spanish coverage: %v", missing)
+		}
+	})
+	t.Run("unmarked originals count as the default locale", func(t *testing.T) {
+		r := bilingualPair()
+		if missing := r.UntranslatedFamilies("en"); len(missing) != 0 {
+			t.Fatalf("families = %v; an unmarked original page does not cover its own language", missing)
+		}
+	})
+	t.Run("locale builds keep their own and the fallback", func(t *testing.T) {
+		r := NewRouter(WithLocale("es"), WithLocaleFallback("en"))
+		r.MustPage("/en-only", PageConfig{Title: "E", Description: "e", Source: "# E", Order: 1, Metadata: ContentMetadata{Locale: "en"}})
+		r.MustPage("/es-only", PageConfig{Title: "S", Description: "s", Source: "# S", Order: 2, Metadata: ContentMetadata{Locale: "es"}})
+		paths := map[string]bool{}
+		for _, route := range r.PublishedRoutes() {
+			paths[route.Path] = true
+		}
+		if !paths["/en-only"] || !paths["/es-only"] {
+			t.Fatalf("es build must serve es routes and en fallbacks: %v", paths)
+		}
+	})
+}

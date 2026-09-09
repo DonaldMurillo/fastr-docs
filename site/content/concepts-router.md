@@ -31,7 +31,7 @@ Groups are metadata-only nodes. They provide hierarchy and disclosure behavior; 
 - `Page` renders Markdown or a page body.
 - `Screen` renders a typed GoFastr component.
 - `Group` adds a named branch to the tree.
-- `Plugin` contributes routes through the same registration contract.
+- `Plugin` contributes routes through the same registration interface.
 
 Every route can also carry search text, tags, locale/version metadata, offline eligibility, a canonical URL, redirects, and a short sidebar badge.
 

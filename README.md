@@ -52,7 +52,7 @@ authored version across; add `--prune` to also delete files that exist only
 under `.claude/skills`.
 
 `fastr-docs dev` delegates to GoFastr's development loop. It watches Go,
-Markdown, HTML, CSS, JavaScript, and JSON/YAML contract files, rebuilds the
+Markdown, HTML, CSS, JavaScript, and JSON/YAML spec files, rebuilds the
 server, and refreshes open browser tabs after a successful rebuild. Use
 `go run .` when you want a single process without file watching.
 
@@ -118,7 +118,7 @@ palette for route navigation. Their drawer behavior, active route state, and
 scrollspy should be extended through GoFastr components rather than replaced
 with page-specific JavaScript.
 
-The first-party OpenAPI plugin accepts JSON or YAML, reads the contract's
+The first-party OpenAPI plugin accepts JSON or YAML, reads the spec's
 `servers` URL, and exposes an optional request console. Set `ServerURL` to
 override it per deployment;
 the generated starter maps that override to `API_SERVER_URL`.

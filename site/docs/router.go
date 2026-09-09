@@ -215,7 +215,7 @@ func NewRouter() *docs.Router {
 	})
 	build.MustPage("openapi", docs.PageConfig{
 		Title:       "OpenAPI reference",
-		Description: "Turn an API contract into a searchable request console.",
+		Description: "Turn an API spec into a searchable request console.",
 		SourcePath:  contentFile("build-openapi.md"),
 		Order:       3,
 		Offline:     true,
@@ -345,7 +345,7 @@ func NewRouter() *docs.Router {
 	})
 	construirES.MustPage("openapi", docs.PageConfig{
 		Title:       "Referencia OpenAPI",
-		Description: "Convierte un contrato de API en una consola de peticiones.",
+		Description: "Convierte una especificación de API en una consola de peticiones.",
 		SourcePath:  siteFile("content", "es", "build-openapi.md"),
 		Order:       3,
 		Offline:     true,
@@ -614,10 +614,10 @@ func NewRouter() *docs.Router {
 		DisableTOC:  true,
 	})
 	if err := router.Use(openapi.Plugin{
-		SpecPath:    contractFile(),
+		SpecPath:    specFile(),
 		Path:        "/api-reference",
 		Title:       "Example API reference",
-		Description: "A small contract used to exercise the in-project OpenAPI plugin.",
+		Description: "A small spec used to exercise the in-project OpenAPI plugin.",
 		ServerURL:   os.Getenv("API_SERVER_URL"),
 		Order:       3,
 		Badge:       docs.NavBadge{Label: "Demo", Tone: docs.NavBadgeToneNeutral},
@@ -625,11 +625,11 @@ func NewRouter() *docs.Router {
 		panic(err)
 	}
 	if err := router.Use(openapi.Plugin{
-		SpecPath:    contractFileES(),
+		SpecPath:    specFileES(),
 		ServerURL:   os.Getenv("API_SERVER_URL"),
 		Path:        "/es/api-reference",
 		Title:       "Referencia de la API de ejemplo",
-		Description: "El mismo contrato pequeño, traducido: cada montura del plugin declara su idioma y sus etiquetas.",
+		Description: "La misma especificación pequeña, traducida: cada montura del plugin declara su idioma y sus etiquetas.",
 		Locale:      "es",
 		Order:       3,
 		Badge:       docs.NavBadge{Label: "Demo", Tone: docs.NavBadgeToneNeutral},
@@ -649,13 +649,13 @@ func NewRouter() *docs.Router {
 			CopyCurlLabel:        "Copiar como cURL",
 			SendRequest:          "Enviar la petición",
 			ResponsePrompt:       "Elige una operación y envía una petición.",
-			NoOperations:         "Este contrato no tiene operaciones.",
+			NoOperations:         "Esta especificación no tiene operaciones.",
 			CORSNote:             "Las peticiones salen del navegador y necesitan que el servidor de la API permita CORS.",
 			NoInputs:             "Esta operación no tiene entradas.",
 			OperationIDPrefix:    "ID de operación: ",
 			ParametersLabel:      "Parámetros",
 			RequestBodyLabel:     "Cuerpo de la petición",
-			RequestBodyNote:      "El contrato exige cuerpo de petición.",
+			RequestBodyNote:      "La especificación exige cuerpo de petición.",
 			ResponseLabel:        "Respuesta",
 			ValuePlaceholder:     "Valor",
 			ParameterWord:        "parámetro",

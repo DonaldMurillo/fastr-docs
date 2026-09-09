@@ -43,6 +43,6 @@ fastr-docs upgrade . --apply
 
 The first command previews release notes and affected project lines. The second applies the dependency update and runs tidy, build, and test. Keep the installed `gofastr` CLI on the same release as the module in `go.mod`.
 
-## Test the offline contract
+## Test the offline behavior
 
 The browser suite verifies that exported docs routes remain navigable and that the PWA assets are present. Add a test whenever a new runtime asset or route type becomes part of the offline experience.

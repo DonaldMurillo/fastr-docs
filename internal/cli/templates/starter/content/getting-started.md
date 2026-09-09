@@ -20,7 +20,7 @@ GoFastr's dev loop uses `http://localhost:8080` by default. Pass
 search the route tree, switch the color scheme from the header, and resize the
 page to exercise the mobile drawer and in-page navigation. The loop rebuilds
 and refreshes the browser when Go, Markdown, HTML, CSS, JavaScript, or
-JSON/YAML contract files change.
+JSON/YAML spec files change.
 
 ## Add a page
 
@@ -82,15 +82,15 @@ GoFastr fingerprints the static worker cache. After a redeploy, the browser
 installs the new worker in the background and activates it after older tabs
 close, so the current session is not interrupted.
 
-`fastr-docs dev` delegates to GoFastr and adds JSON/YAML contract watching. If
+`fastr-docs dev` delegates to GoFastr and adds JSON/YAML spec watching. If
 the GoFastr CLI is installed, `gofastr dev` runs the framework watcher directly
-without that extra contract bridge. Use `fastr-docs upgrade .` to review
+without that extra spec bridge. Use `fastr-docs upgrade .` to review
 framework migrations before updating the dependency in `go.mod`.
 
 
 ## Extend the project
 
-Plugins implement `Name` and `Apply`. The bundled OpenAPI plugin registers `/api-reference` into the same router rather than creating a parallel documentation system. It reads the contract's `servers` URL and supports an `API_SERVER_URL` override for deployment-specific API hosts.
+Plugins implement `Name` and `Apply`. The bundled OpenAPI plugin registers `/api-reference` into the same router rather than creating a parallel documentation system. It reads the spec's `servers` URL and supports an `API_SERVER_URL` override for deployment-specific API hosts.
 
 ## Before you hand it off
 

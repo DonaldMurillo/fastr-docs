@@ -225,3 +225,19 @@ func TestOrdinaryFenceIsStillNotLifted(t *testing.T) {
 		t.Fatalf("a plain fence was lifted: %q -> %q (%d replacements)", source, out, len(replacements))
 	}
 }
+
+func TestFenceLanguagesAreLenient(t *testing.T) {
+	t.Run("fence languages fold case", func(t *testing.T) {
+		language, options := splitFenceInfo("GO {1}")
+		fence := parseFenceOptions(language, options)
+		if fence.language != "go" || len(fence.highlight) != 1 {
+			t.Fatalf("fence = %+v, want go with its highlight", fence)
+		}
+	})
+	t.Run("fence languages tolerate trailing space", func(t *testing.T) {
+		language, _ := splitFenceInfo("go ")
+		if language != "go" {
+			t.Fatalf("splitFenceInfo = %q, want go", language)
+		}
+	})
+}

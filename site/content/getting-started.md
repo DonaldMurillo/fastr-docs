@@ -17,7 +17,7 @@ fastr-docs init acme-docs --name "Acme Docs" --module example.com/acme-docs
 cd acme-docs
 ```
 
-The generator creates a runnable project with a Router, Markdown content, a typed example screen, an OpenAPI contract, PWA assets, and agent references.
+The generator creates a runnable project with a Router, Markdown content, a typed example screen, an OpenAPI spec, PWA assets, and agent references.
 
 ## Run the checks
 
@@ -27,7 +27,7 @@ fastr-docs dev .
 ```
 
 `doctor` validates the project, tidies dependencies, and runs its Go tests.
-`dev` watches Go, Markdown, HTML, CSS, JavaScript, and JSON/YAML contract
+`dev` watches Go, Markdown, HTML, CSS, JavaScript, and JSON/YAML spec
 files. It rebuilds the server and refreshes open browser tabs after a
 successful change. Open the local server and use `Ctrl+K` or `⌘K` to search
 the route tree.
@@ -73,7 +73,7 @@ fully offline install, deploy the static `dist` directory. GoFastr fingerprints
 that export and installs a new worker after a redeploy; existing tabs finish on
 their current version and new tabs use the update.
 
-`fastr-docs dev` delegates development to GoFastr and adds JSON/YAML contract
+`fastr-docs dev` delegates development to GoFastr and adds JSON/YAML spec
 watching. If you install the GoFastr CLI separately, the direct framework
 command is:
 

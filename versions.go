@@ -17,7 +17,7 @@ import (
 // For example, a collection rooted at content/versions with Current "v2"
 // mounts content/versions/v2/guide.md at /docs/guide and
 // content/versions/v1/guide.md at /docs/v1/guide. Versions may be supplied to
-// make the source contract explicit. When omitted, immediate child
+// make the source layout explicit. When omitted, immediate child
 // directories are discovered in sorted order.
 type VersionedCollectionConfig struct {
 	// Current names the version the unversioned paths serve.

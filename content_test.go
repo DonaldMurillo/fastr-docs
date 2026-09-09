@@ -361,3 +361,176 @@ func TestContentIssuesRejectUnsafeLinkSchemes(t *testing.T) {
 		t.Fatalf("unsafe link issues = %#v", issues)
 	}
 }
+
+func TestPageMetadataIsNormalized(t *testing.T) {
+	t.Run("route titles are trimmed", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "  Guide  ", Description: "d", Order: 1, Source: "# G"})
+		if got := r.routeAtPath("/g").Title; got != "Guide" {
+			t.Fatalf("title = %q, want trimmed", got)
+		}
+	})
+	t.Run("excerpts collapse to one line", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G",
+			Metadata: ContentMetadata{Excerpt: "line one\nline two"}})
+		if got := r.routeAtPath("/g").Metadata.Excerpt; strings.Contains(got, "\n") {
+			t.Fatalf("excerpt keeps a newline: %q", got)
+		}
+	})
+	t.Run("excerpts strip link syntax", func(t *testing.T) {
+		if got := markdownText("Read [the guide](/guide) now."); strings.Contains(got, "](/guide)") {
+			t.Fatalf("excerpt keeps markdown link syntax: %q", got)
+		}
+	})
+	t.Run("repeated authors collapse", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G",
+			Metadata: ContentMetadata{Authors: []string{"Ada", "Ada"}}})
+		if got := r.routeAtPath("/g").Metadata.Authors; len(got) != 1 {
+			t.Fatalf("authors = %v, want deduplicated", got)
+		}
+	})
+	t.Run("tags differing only by case collapse", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G",
+			Metadata: ContentMetadata{Tags: []string{"Go", "go"}}})
+		if got := r.routeAtPath("/g").Tags; len(got) != 1 {
+			t.Fatalf("tags = %v, want folded to one", got)
+		}
+	})
+}
+
+func TestMarkdownContentRulesAreValidated(t *testing.T) {
+	t.Run("pages with empty bodies are flagged", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "---\ntitle: G\ndescription: d\n---\n"})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "empty") {
+			t.Fatalf("Validate() = %v, want an empty-page complaint", err)
+		}
+	})
+	t.Run("shortcodes inside headings are named", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "## Notes {{< callout >}}x{{< /callout >}}\n\nbody"})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "heading") {
+			t.Fatalf("Validate() = %v, want a block-shortcode-in-heading complaint", err)
+		}
+	})
+	t.Run("links inside code spans are not checked", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "Run `[check](/nope)` for detail."})
+		if err := r.Validate(); err != nil {
+			t.Fatalf("a documented dead link inside backticks fails the build: %v", err)
+		}
+	})
+	t.Run("images without alt text are named", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "![]( /img.png )"})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "alt") {
+			t.Fatalf("Validate() = %v, want an alt-text complaint", err)
+		}
+	})
+	t.Run("broken image sources are named", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "![diagram](/nope.png)"})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "/nope.png") {
+			t.Fatalf("Validate() = %v, want the missing image named", err)
+		}
+	})
+	t.Run("images reject javascript sources", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "![x](javascript:alert(1))"})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "image") {
+			t.Fatalf("Validate() = %v, want an image scheme complaint", err)
+		}
+	})
+	t.Run("fragment targets fold case", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "## Deep section\n\nSee [deep](#Deep-Section)."})
+		if err := r.Validate(); err != nil {
+			t.Fatalf("a case-mismatched fragment is treated as broken: %v", err)
+		}
+	})
+	t.Run("reference-style links are checked", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "See [guide][g].\n\n[g]: /nope"})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "/nope") {
+			t.Fatalf("Validate() = %v, want the reference target checked", err)
+		}
+	})
+	t.Run("internal links may point at a redirect source", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G",
+			Metadata: ContentMetadata{Redirects: []string{"/old"}}})
+		r.MustPage("/h", PageConfig{Title: "H", Description: "d", Order: 2, Source: "[old](/old)"})
+		if err := r.Validate(); err != nil {
+			t.Fatalf("a link to a redirect source is treated as broken: %v", err)
+		}
+	})
+	t.Run("collection slugs refuse spaces", func(t *testing.T) {
+		if _, err := collectionSlug("a b"); err == nil {
+			t.Fatal("a slug with a space becomes a path with %20 in it")
+		}
+	})
+	t.Run("collection slugs fold like every other slug", func(t *testing.T) {
+		slug, err := collectionSlug("Diseño")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if slug != "diseno" {
+			t.Fatalf("collectionSlug(Diseño) = %q; collections and blogs disagree on folding", slug)
+		}
+	})
+	t.Run("empty collections refuse to register", func(t *testing.T) {
+		r := NewRouter()
+		if err := r.MarkdownCollectionFS("/docs", fstest.MapFS{}, ".", CollectionConfig{}); err == nil {
+			t.Fatal("a collection with no documents registers a section with nothing in it")
+		}
+	})
+	t.Run("the Markdown convenience helper satisfies validation", func(t *testing.T) {
+		r := NewRouter()
+		if err := r.Markdown("/g", "Guide", "# Guide"); err != nil {
+			t.Fatal(err)
+		}
+		if err := r.Validate(); err != nil {
+			t.Fatalf("the one-liner helper cannot satisfy strict validation: %v", err)
+		}
+	})
+}
+
+func TestPageHeadMetadata(t *testing.T) {
+	t.Run("pages link their own canonical by default", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G"})
+		head := r.metadataHeadHTML(r.routeAtPath("/g"))
+		if !strings.Contains(head, `<link rel="canonical" href="/g">`) {
+			t.Fatalf("a page without an explicit canonical carries none at all: %s", head)
+		}
+	})
+	t.Run("the pager links its neighbours in the head", func(t *testing.T) {
+		r := NewRouter()
+		g := r.MustGroup("/docs", GroupConfig{Title: "D", Description: "d", Order: 1})
+		g.MustPage("a", PageConfig{Title: "A", Description: "d", Order: 1, Source: "# A"})
+		g.MustPage("b", PageConfig{Title: "B", Description: "d", Order: 2, Source: "# B"})
+		head := r.metadataHeadHTML(r.routeAtPath("/docs/a"))
+		if !strings.Contains(head, `rel="next"`) || !strings.Contains(head, "/docs/b") {
+			t.Fatalf("the head never tells crawlers the next page: %s", head)
+		}
+	})
+	t.Run("the excerpt feeds the meta description", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "plain", Order: 1, Source: "# G", Metadata: ContentMetadata{Excerpt: "Curated summary."}})
+		head := r.metadataHeadHTML(r.routeAtPath("/g"))
+		if !strings.Contains(head, "Curated summary.") {
+			t.Fatalf("a curated excerpt never reaches the page metadata: %s", head)
+		}
+	})
+	t.Run("the head carries the social image", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G", Metadata: ContentMetadata{Image: "/cover.png"}})
+		head := r.metadataHeadHTML(r.routeAtPath("/g"))
+		if !strings.Contains(head, `property="og:image"`) || !strings.Contains(head, "/cover.png") {
+			t.Fatalf("a declared social image never reaches the head: %s", head)
+		}
+	})
+}

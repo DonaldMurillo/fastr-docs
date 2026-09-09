@@ -141,11 +141,11 @@ The route remains searchable, appears in the right section navigation, receives 
 
 ## Layout primitives
 
-Use `Container`, `Stack`, `Cluster`, `Grid`, `Center`, `Box`, `Sticky`, and `Responsive` to compose a screen. Prefer the component's own layout contract before adding page-specific flex rules. `PaneHost`, `Workbench`, and `Toolbar` cover denser tool and reference views.
+Use `Container`, `Stack`, `Cluster`, `Grid`, `Center`, `Box`, `Sticky`, and `Responsive` to compose a screen. Prefer the component's own layout interface before adding page-specific flex rules. `PaneHost`, `Workbench`, and `Toolbar` cover denser tool and reference views.
 
-## Framework contracts
+## Framework interfaces
 
-The UI library is only one layer of the product. A complete docs site also depends on the Router contracts:
+The UI library is only one layer of the product. A complete docs site also depends on the Router interfaces:
 
 - One route tree for pages, screens, groups, plugins, search, and export
 - Explicit sibling order and strict validation
@@ -155,7 +155,7 @@ The UI library is only one layer of the product. A complete docs site also depen
 - Light and dark tokens, white-label branding, PWA delivery, and offline content
 - Generated and non-CLI project tests that exercise the rendered user flows
 
-See [The router](/docs/concepts/router), [Content authoring](/docs/concepts/content), [OpenAPI reference](/docs/build/openapi), and [Testing](/docs/operate/testing) for the contracts behind these components.
+See [The router](/docs/concepts/router), [Content authoring](/docs/concepts/content), [OpenAPI reference](/docs/build/openapi), and [Testing](/docs/operate/testing) for the interfaces behind these components.
 
 ## When the native set is not enough
 

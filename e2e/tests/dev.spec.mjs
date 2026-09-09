@@ -34,10 +34,10 @@ const reloadThroughDevLoop = async (page, url) => {
   }
 };
 
-test('fastr-docs dev reloads OpenAPI contract changes through GoFastr', async ({ page, request }) => {
+test('fastr-docs dev reloads OpenAPI spec changes through GoFastr', async ({ page, request }) => {
   const { devURL, target } = runtime();
-  const contractPath = path.join(target, 'openapi.json');
-  const original = await fs.readFile(contractPath, 'utf8');
+  const specPath = path.join(target, 'openapi.json');
+  const original = await fs.readFile(specPath, 'utf8');
   const spec = JSON.parse(original);
   spec.paths['/v1/dev-reload-check'] = {
     get: {
@@ -54,7 +54,7 @@ test('fastr-docs dev reloads OpenAPI contract changes through GoFastr', async ({
     await expect(page.locator('[data-openapi-reference]')).toBeVisible();
     await expect(page.locator('[data-openapi-operation]').filter({ hasText: 'devReloadCheck' })).toHaveCount(0);
 
-    await fs.writeFile(contractPath, JSON.stringify(spec, null, 2));
+    await fs.writeFile(specPath, JSON.stringify(spec, null, 2));
     await expect.poll(async () => {
       try {
         const response = await request.get(`${devURL}/api-reference`);
@@ -68,7 +68,7 @@ test('fastr-docs dev reloads OpenAPI contract changes through GoFastr', async ({
     await reloadThroughDevLoop(page, `${devURL}/api-reference`);
     await expect(page.locator('[data-openapi-operation]').filter({ hasText: 'devReloadCheck' })).toBeVisible({ timeout: 60_000 });
   } finally {
-    await fs.writeFile(contractPath, original);
+    await fs.writeFile(specPath, original);
   }
 });
 

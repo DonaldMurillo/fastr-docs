@@ -4,7 +4,7 @@ tags: [openapi, plugin, api-reference]
 
 # OpenAPI reference
 
-The first-party OpenAPI plugin turns a contract into a route in the same Router. It renders an operation index, endpoint cards, parameters, schemas, and an optional request console. The API reference is a normal route: it participates in the top navigation, contextual sidebar, local search, static export, and PWA shell.
+The first-party OpenAPI plugin turns a spec into a route in the same Router. It renders an operation index, endpoint cards, parameters, schemas, and an optional request console. The API reference is a normal route: it participates in the top navigation, contextual sidebar, local search, static export, and PWA shell.
 
 ## Mount the plugin
 
@@ -18,11 +18,11 @@ router.Use(openapi.Plugin{
 })
 ```
 
-The plugin accepts JSON and YAML contracts. The first `servers` URL is used by default. `ServerURL` overrides it for staging or production without changing the checked-in contract or route tree.
+The plugin accepts JSON and YAML specs. The first `servers` URL is used by default. `ServerURL` overrides it for staging or production without changing the checked-in spec or route tree.
 
 ## Use the request console
 
-The console follows the selected operation and renders the values that the contract describes:
+The console follows the selected operation and renders the values that the spec describes:
 
 - path, query, header, and cookie parameters
 - required markers and client-side required-value checks
@@ -35,7 +35,7 @@ Path parameters are substituted into the URL, query values are encoded, and requ
 
 The request console runs in the browser and requires the API server to allow CORS. The Router records the resolved origin so the GoFastr host can include it in its strict `connect-src` policy. If no server URL is configured, the reference remains readable and the console explains why requests are unavailable.
 
-This site includes a small example contract and local mock server so the plugin can be exercised end to end. They are fixtures, not an HTTP API offered by fastr-docs itself.
+This site includes a small example spec and local mock server so the plugin can be exercised end to end. They are fixtures, not an HTTP API offered by fastr-docs itself.
 
 ## Extend the plugin
 

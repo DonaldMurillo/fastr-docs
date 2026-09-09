@@ -1,6 +1,6 @@
 # OpenAPI reference
 
-The bundled OpenAPI plugin turns a contract into a first-class route. It contributes the reference index, operation filters, request console, and search records to the same router as the handbook.
+The bundled OpenAPI plugin turns a spec into a first-class route. It contributes the reference index, operation filters, request console, and search records to the same router as the handbook.
 
 ## Add the plugin
 
@@ -16,11 +16,11 @@ if err := router.Use(openapi.Plugin{
 }
 ```
 
-The contract remains the source of truth for operations and schemas. JSON and YAML contracts are supported. The optional `ServerURL` override lets the same build point at a local mock, staging API, or production host without rewriting the document.
+The spec remains the source of truth for operations and schemas. JSON and YAML specs are supported. The optional `ServerURL` override lets the same build point at a local mock, staging API, or production host without rewriting the document.
 
 ## Try it safely
 
-The generated example contract exposes a mock project endpoint. Filter operations, open an operation, inspect its path, query, header, or cookie parameters, and send a request from the console. Request bodies are validated as JSON before they are sent. The E2E suite uses a local mock server so this behavior is deterministic and does not transmit data to a third-party API.
+The generated example spec exposes a mock project endpoint. Filter operations, open an operation, inspect its path, query, header, or cookie parameters, and send a request from the console. Request bodies are validated as JSON before they are sent. The E2E suite uses a local mock server so this behavior is deterministic and does not transmit data to a third-party API.
 
 Cookie parameters are documented in the console but cannot be injected into a cross-origin browser request. The server must also allow the docs origin through CORS.
 

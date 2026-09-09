@@ -9,7 +9,7 @@ This project is a white-label documentation site built on GoFastr and fastr-docs
 - `content/blog/` is the Markdown publication collection. Its sibling blog layout, archive, search, tags, authors, post pages, and `/blog/feed.xml` RSS feed come from the same Router.
 - Typed interactive pages are GoFastr screens registered with the same router.
 - `openapi.json` is consumed by the in-project OpenAPI plugin.
-- `API_SERVER_URL` overrides the contract server URL without changing the route tree; use it for deployment-specific API hosts.
+- `API_SERVER_URL` overrides the spec's server URL without changing the route tree; use it for deployment-specific API hosts.
 - `PUBLIC_SITE_URL` is the canonical origin used by `sitemap.xml` and `robots.txt`.
 - `DOCS_INCLUDE_DRAFTS=1` enables preview content. `DOCS_LOCALE` sets the
   document language; `DOCS_CONTENT_LOCALE` and `DOCS_CONTENT_VERSION` select a
@@ -59,5 +59,5 @@ The generated host serves GoFastr's `/mcp` endpoint with read-only introspection
 9. Use `MarkdownCollection` for disk-backed content and `MarkdownCollectionFS`
    for `embed.FS` or another virtual source; both feed the same Router.
 10. Use `MarkdownBlog` for publication posts. Put `date`, `authors`, `tags`, and an optional `excerpt` in front matter; use the generated archive/search/taxonomy routes and use `RSSXML`/`MountRSS` instead of maintaining a second feed list.
-11. Run `fastr-docs doctor .`, the browser E2E suite, and the static export checks before handing off work. `fastr-docs dev` also reloads JSON/YAML contract changes through GoFastr's native rebuild loop.
+11. Run `fastr-docs doctor .`, the browser E2E suite, and the static export checks before handing off work. `fastr-docs dev` also reloads JSON/YAML spec changes through GoFastr's native rebuild loop.
 12. Keep strict validation enabled. Opt out only with a documented reason.

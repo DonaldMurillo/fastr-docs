@@ -14,7 +14,7 @@ router.MustScreen("/examples/playground", docs.ScreenConfig{
 })
 ```
 
-The screen uses the same breadcrumbs, sidebar, search index, layout selection, and previous/next navigation as a Markdown page. The rendering strategy changes; the product contract does not.
+The screen uses the same breadcrumbs, sidebar, search index, layout selection, and previous/next navigation as a Markdown page. The rendering strategy changes; the product does not.
 
 ## Keep state close to the interaction
 

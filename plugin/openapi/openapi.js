@@ -72,7 +72,7 @@
       select.addEventListener('change', () => {
         try { history.replaceState(null, '', '#' + select.value); } catch (_) {}
       });
-      // A multi-server contract can be switched without a reload.
+      // A multi-server spec can be switched without a reload.
       const serverSelect = root.querySelector('[data-openapi-servers]');
       if (serverSelect) {
         serverSelect.addEventListener('change', () => {

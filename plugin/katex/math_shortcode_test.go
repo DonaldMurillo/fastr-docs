@@ -1,8 +1,5 @@
 package katex
 
-// Math contracts from the third audit cycle: shortcode props, CRLF
-// bodies, tables, semantics, and the loader.
-
 import (
 	"context"
 	"strings"
@@ -25,7 +22,7 @@ func renderPage(t *testing.T, r *docs.Router, path string) string {
 	return string(html)
 }
 
-func TestRed283To287(t *testing.T) {
+func TestMathShortcodeRendering(t *testing.T) {
 	t.Run("the math shortcode honors a display prop", func(t *testing.T) {
 		r := mathRouter(t, Plugin{})
 		html := renderPage(t, r, "/m")

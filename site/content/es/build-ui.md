@@ -142,10 +142,10 @@ La ruta se sigue pudiendo buscar, aparece en la navegación de su sección, reci
 migas de pan y enlaces anterior/siguiente, y entra en la exportación estática y
 en el precaché de la PWA.
 
-## Contratos del framework
+## Interfaces del framework
 
-La biblioteca de UI es solo una capa. Un sitio completo depende además de los
-contratos del Router:
+La biblioteca de UI es solo una capa. Un sitio completo depende además de las
+interfaces del Router:
 
 - Un árbol de rutas para páginas, pantallas, grupos, plugins, búsqueda y exportación
 - Orden explícito entre hermanas y validación estricta
@@ -157,7 +157,7 @@ contratos del Router:
 Consulta [El Router](/es/docs/concepts/router),
 [Escribir contenido](/es/docs/concepts/content),
 [Referencia OpenAPI](/es/docs/build/openapi) y [Pruebas](/es/docs/operate/testing)
-para los contratos que hay detrás de estos componentes.
+para las interfaces que hay detrás de estos componentes.
 
 ## Cuando el conjunto nativo no basta
 

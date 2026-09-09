@@ -11,7 +11,7 @@ type Plugin interface {
 }
 ```
 
-Apply the plugin during project setup. Fail loudly when its contract is invalid; strict startup errors are safer than publishing a half-mounted extension.
+Apply the plugin during project setup. Fail loudly when its configuration is invalid; strict startup errors are safer than publishing a half-mounted extension.
 
 The package includes two reusable plugin building blocks:
 

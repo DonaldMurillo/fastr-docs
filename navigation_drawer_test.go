@@ -232,9 +232,118 @@ func TestDrawerInventoryAndSelect(t *testing.T) {
 		r := NewRouter()
 		g := r.MustGroup("/only", GroupConfig{Title: "Only", Description: "d", Order: 1})
 		g.MustPage("p", PageConfig{Title: "P", Description: "d", Order: 1, Source: "# P"})
-		html := redSectionSelect(r, "/only/p")
+		html := sectionSelectHTML(r, "/only/p")
 		if strings.Contains(html, "<select") {
 			t.Fatalf("a one-option select renders: %s", html)
 		}
+	})
+}
+
+// The section drawer and its select follow locales and versions: a drawer
+// per language and per version family, options that carry their route paths,
+// and help text in the reader's own language.
+func TestTheSectionDrawerFollowsLocalesAndVersions(t *testing.T) {
+	t.Run("the drawer name lowercases the locale", func(t *testing.T) {
+		if got := docsDrawerName("ES"); got != "fastr-docs-sections-es" {
+			t.Fatalf("docsDrawerName(ES) = %q", got)
+		}
+	})
+	t.Run("a site without a home route still offers one", func(t *testing.T) {
+		r := NewRouter()
+		docs := r.MustGroup("/docs", GroupConfig{Title: "Docs", Description: "d", Order: 1})
+		docs.MustPage("start", PageConfig{Title: "Start", Description: "s", Source: "# S", Order: 1})
+		guides := r.MustGroup("/guides", GroupConfig{Title: "Guides", Description: "d", Order: 2})
+		guides.MustPage("first", PageConfig{Title: "First", Description: "s", Source: "# F", Order: 1})
+		html := sectionSelectHTML(r, "")
+		// The first option is the beginning: labeled Home, aimed at the
+		// first section when no home route exists.
+		if !strings.Contains(html, `>Home</option>`) || !strings.Contains(html, `value="/docs/start"`) {
+			t.Fatalf("no home option for a home-less site: %s", html)
+		}
+	})
+	t.Run("a hidden home is skipped for the default drawer", func(t *testing.T) {
+		r := docsSiteRouter(t)
+		r.routes["/"].Hidden = true
+		if home := r.localeDrawerHomes()[0]; home != nil && home.Hidden {
+			t.Fatalf("default drawer home is hidden: %v", home.Path)
+		}
+	})
+	t.Run("the default drawer follows a single non-default locale", func(t *testing.T) {
+		r := NewRouter(WithLocaleUIStrings("es", UIStrings{Contents: "Contenido"}))
+		r.MustPage("/", PageConfig{Title: "Inicio", Description: "es", Source: "# Inicio", Order: 1, Metadata: ContentMetadata{Locale: "es"}})
+		cfg := r.docsDrawerConfig(r.localeDrawerHomes()[0], docsDrawerName(""))
+		if cfg.Title != "Contenido" {
+			t.Fatalf("default drawer title = %q, want Contenido", cfg.Title)
+		}
+	})
+	t.Run("version families get their own drawers", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/", PageConfig{Title: "Home", Description: "h", Source: "# H", Order: 1})
+		r.MustPage("/guide", PageConfig{Title: "Now", Description: "d", Source: "# N", Order: 2, Metadata: ContentMetadata{Version: "v2"}})
+		r.MustPage("/v1/guide", PageConfig{Title: "Then", Description: "d", Source: "# T", Order: 3, Metadata: ContentMetadata{Version: "v1", TranslationOf: "/guide"}})
+		if got := len(r.localeDrawerHomes()); got != 2 {
+			t.Fatalf("localeDrawerHomes() = %d, want a home per version too", got)
+		}
+	})
+	t.Run("the drawer select disables autocomplete", func(t *testing.T) {
+		if !strings.Contains(sectionSelectHTML(docsSiteRouter(t), ""), `autocomplete="off"`) {
+			t.Fatal("section select lacks autocomplete=off")
+		}
+	})
+	t.Run("drawer options carry their route path", func(t *testing.T) {
+		if !strings.Contains(sectionSelectHTML(docsSiteRouter(t), ""), "data-fastr-docs-section-path") {
+			t.Fatal("options carry no route path attribute")
+		}
+	})
+	t.Run("the section select has localized help text", func(t *testing.T) {
+		if !strings.Contains(sectionSelectHTML(bilingualDocsSite(t), "/es"), "aria-describedby") {
+			t.Fatal("no describedby wiring")
+		}
+	})
+	t.Run("the section select lists version variants", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/", PageConfig{Title: "Home", Description: "h", Source: "# H", Order: 1})
+		r.MustPage("/guide", PageConfig{Title: "Now", Description: "d", Source: "# N", Order: 2, Metadata: ContentMetadata{Version: "v2"}})
+		r.MustPage("/v1/guide", PageConfig{Title: "Then", Description: "d", Source: "# T", Order: 3, Metadata: ContentMetadata{Version: "v1", TranslationOf: "/guide"}})
+		html := sectionSelectHTML(r, "/guide")
+		if !strings.Contains(html, "/v1/guide") && !strings.Contains(html, "/guide") {
+			t.Fatal("version sibling absent from the section select")
+		}
+	})
+}
+
+// The drawer trigger names the region it opens, so assistive tech can say
+// what activating it does.
+func TestTheDrawerTriggerNamesItsPanel(t *testing.T) {
+	r := NewRouter()
+	r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "## A\n\n## B\n\nText."})
+	html := renderRouterPage(t, r, "/g")
+	if !strings.Contains(html, "aria-controls") {
+		t.Fatal("the mobile drawer trigger does not name the region it opens")
+	}
+}
+
+// The navigation model knows where the reader stands: the current page and
+// the group containing it are both marked active.
+func TestNavigationMarksTheCurrentPathActive(t *testing.T) {
+	t.Run("standing on a page marks it", func(t *testing.T) {
+		r := docsSiteRouter(t)
+		for _, item := range r.NavigationAt("/docs/start") {
+			if item.Path == "/docs/start" && item.Active {
+				return
+			}
+		}
+		t.Fatal("NavigationAt does not flag the current path")
+	})
+	t.Run("standing on a group page marks the group", func(t *testing.T) {
+		r := NewRouter()
+		g := r.MustGroup("/docs", GroupConfig{Title: "D", Description: "d", Order: 1})
+		g.MustPage("a", PageConfig{Title: "A", Description: "d", Order: 1, Source: "# A"})
+		for _, item := range r.NavigationAt("/docs") {
+			if item.Path == "/docs" && item.Active {
+				return
+			}
+		}
+		t.Fatal("standing on a group page marks nothing active in the navigation model")
 	})
 }

@@ -1,6 +1,6 @@
 # Custom surfaces
 
-When a product feature needs its own documentation surface, start with the route contract and work outward.
+When a product feature needs its own documentation surface, start with the route interface and work outward.
 
 ## Surface checklist
 
@@ -11,7 +11,7 @@ When a product feature needs its own documentation surface, start with the route
 5. **Search** — what title, description, tags, and terms make it discoverable?
 6. **Responsive shape** — what happens at wide, tablet, and phone widths?
 7. **Offline behavior** — can it render without a network, and which actions require one?
-8. **E2E contract** — what does a user click, type, select, submit, or navigate?
+8. **E2E flow** — what does a user click, type, select, submit, or navigate?
 
 ## A useful default
 

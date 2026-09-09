@@ -132,4 +132,146 @@ func TestRouteMetadataValidation(t *testing.T) {
 			t.Fatalf("Validate() = %v, want an overlong-badge complaint", err)
 		}
 	})
+
+	t.Run("source and source path are mutually exclusive", func(t *testing.T) {
+		r := NewRouter()
+		if err := r.Page("/x", PageConfig{Title: "X", Description: "x", Source: "# a", SourcePath: "content/build-blog.md"}); err == nil {
+			t.Fatal("Page accepted both Source and SourcePath")
+		}
+	})
+	t.Run("redirect loops are flagged", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/a", PageConfig{Title: "A", Description: "x", Source: "# a", Order: 1, Metadata: ContentMetadata{Redirects: []string{"/a"}}})
+		if err := r.Validate(); err == nil {
+			t.Fatal("Validate accepted a redirect onto itself")
+		}
+	})
+	t.Run("redirect cycles across pages are flagged", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/a", PageConfig{Title: "A", Description: "x", Source: "# a", Order: 1, Metadata: ContentMetadata{Redirects: []string{"/b"}}})
+		r.MustPage("/b", PageConfig{Title: "B", Description: "x", Source: "# b", Order: 2, Metadata: ContentMetadata{Redirects: []string{"/a"}}})
+		if err := r.Validate(); err == nil {
+			t.Fatal("Validate accepted a two-hop redirect cycle")
+		}
+	})
+	t.Run("duplicate redirects within one route are flagged", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G", Metadata: ContentMetadata{Redirects: []string{"/old", "/old"}}})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "redirect") {
+			t.Fatalf("Validate() = %v, want a duplicate-redirect complaint", err)
+		}
+	})
+	t.Run("redirects onto drafts are flagged", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G", Metadata: ContentMetadata{Redirects: []string{"/draft"}}})
+		r.MustPage("/draft", PageConfig{Title: "D", Description: "d", Order: 2, Source: "# D", Metadata: ContentMetadata{Draft: true}})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "draft") {
+			t.Fatalf("Validate() = %v, want a redirect-to-draft complaint", err)
+		}
+	})
+	t.Run("a redirect with inner whitespace is flagged", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G",
+			Metadata: ContentMetadata{Redirects: []string{"/a b"}}})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "redirect") {
+			t.Fatalf("Validate() = %v, want a redirect-whitespace complaint", err)
+		}
+	})
+	t.Run("duplicate slugs are flagged", func(t *testing.T) {
+		r := NewRouter()
+		if err := r.Page("/one", PageConfig{Title: "One", Description: "x", Source: "# a", Order: 1, Metadata: ContentMetadata{Slug: "same"}}); err != nil {
+			t.Fatal(err)
+		}
+		err := r.Page("/two", PageConfig{Title: "Two", Description: "x", Source: "# b", Order: 2, Metadata: ContentMetadata{Slug: "same"}})
+		if err == nil || !strings.Contains(err.Error(), "/same") {
+			t.Fatalf("two pages claiming one slug must collide loudly: %v", err)
+		}
+	})
+	t.Run("alternates naming unserved languages are flagged", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/x", PageConfig{Title: "X", Description: "x", Source: "# a", Order: 1,
+			Metadata: ContentMetadata{Alternates: map[string]string{"fr": "/nowhere"}}})
+		if err := r.Validate(); err == nil {
+			t.Fatal("Validate accepted a fr alternate no route serves")
+		}
+	})
+	t.Run("duplicate sibling titles are flagged", func(t *testing.T) {
+		r := docsSiteRouter(t)
+		r.MustPage("/docs/twin", PageConfig{Title: "Start", Description: "x", Source: "# a", Order: 9})
+		if err := r.Validate(); err == nil {
+			t.Fatal("Validate accepted two siblings titled Start")
+		}
+	})
+	t.Run("canonical urls must be absolute", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/x", PageConfig{Title: "X", Description: "x", Source: "# a", Order: 1,
+			Metadata: ContentMetadata{CanonicalURL: "/relative"}})
+		if err := r.Validate(); err == nil {
+			t.Fatal("Validate accepted a relative canonical URL")
+		}
+	})
+	t.Run("a canonical with a fragment is flagged", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G",
+			Metadata: ContentMetadata{CanonicalURL: "https://example.com/docs/g#section"}})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "canonical") {
+			t.Fatalf("Validate() = %v, want a canonical-fragment complaint", err)
+		}
+	})
+	t.Run("stored locales are normalized at registration", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/x", PageConfig{Title: "X", Description: "x", Source: "# a", Order: 1, Metadata: ContentMetadata{Locale: "ES"}})
+		if got := r.routeAtPath("/x").Metadata.Locale; got != "es" {
+			t.Fatalf("route keeps raw locale %q", got)
+		}
+	})
+	t.Run("translation_of to a draft warns", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/draft", PageConfig{Title: "D", Description: "d", Order: 1, Source: "# D", Metadata: ContentMetadata{Draft: true}})
+		r.MustPage("/es/draft", PageConfig{Title: "D", Description: "d", Order: 2, Source: "# D", Metadata: ContentMetadata{Locale: "es", TranslationOf: "/draft"}})
+		if err := r.Validate(); err != nil {
+			t.Fatalf("Validate() = %v, translating a not-yet-published page should warn, not fail", err)
+		}
+		for _, warning := range r.Warnings() {
+			if strings.Contains(warning, "/draft") {
+				return
+			}
+		}
+		t.Fatal("Warnings() never mentions the draft translation")
+	})
+	t.Run("an unknown page template is flagged", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G",
+			Metadata: ContentMetadata{PageTemplate: "fancy"}})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "template") {
+			t.Fatalf("Validate() = %v, want an unknown-template complaint", err)
+		}
+	})
+	t.Run("a relative edit URL is flagged", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G",
+			Metadata: ContentMetadata{EditURL: "edit/page.md"}})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "edit") {
+			t.Fatalf("Validate() = %v, want an edit-URL complaint", err)
+		}
+	})
+	t.Run("order gaps are warned", func(t *testing.T) {
+		r := NewRouter()
+		g := r.MustGroup("/docs", GroupConfig{Title: "Docs", Description: "d", Order: 1})
+		g.MustPage("a", PageConfig{Title: "A", Description: "d", Order: 1, Source: "# A"})
+		g.MustPage("z", PageConfig{Title: "Z", Description: "d", Order: 9, Source: "# Z"})
+		for _, warning := range r.Warnings() {
+			if strings.Contains(warning, "order") {
+				return
+			}
+		}
+		t.Fatal("an order gap of eight between siblings passes silently")
+	})
+	t.Run("heading level jumps are named", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "## Top\n\n#### Skipped three\n\nBody."})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "heading") {
+			t.Fatalf("Validate() = %v, want a heading-level jump complaint", err)
+		}
+	})
 }

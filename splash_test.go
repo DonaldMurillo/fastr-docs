@@ -140,3 +140,22 @@ func TestPageWithoutHeroFrontMatterRendersNothingExtra(t *testing.T) {
 		t.Fatalf("renderPageHero(empty) = %q, want empty", got)
 	}
 }
+
+func TestSplashHeroesNeedTitlesAndLinkedActions(t *testing.T) {
+	t.Run("a hero without a title is flagged", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G",
+			Metadata: ContentMetadata{PageTemplate: PageTemplateSplash, Hero: &PageHero{Tagline: "t"}}})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "hero") {
+			t.Fatalf("Validate() = %v, want a hero-title complaint", err)
+		}
+	})
+	t.Run("hero actions require links", func(t *testing.T) {
+		r := NewRouter()
+		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G",
+			Metadata: ContentMetadata{PageTemplate: PageTemplateSplash, Hero: &PageHero{Title: "T", Actions: []PageHeroAction{{Text: "Go"}}}}})
+		if err := r.Validate(); err == nil || !strings.Contains(err.Error(), "action") {
+			t.Fatalf("Validate() = %v, want a hero action link complaint", err)
+		}
+	})
+}

@@ -25,7 +25,7 @@ type Strings struct {
 	// SchemasLabel is the unit word after the schema count, "2 schemas".
 	// Same casing rule as OperationsLabel.
 	SchemasLabel string
-	// NoServer fills the meta row when the contract declares no server and
+	// NoServer fills the meta row when the spec declares no server and
 	// none was overridden. Sentence case.
 	NoServer string
 	// FilterPlaceholder is the endpoint filter's placeholder. An ellipsis
@@ -39,13 +39,13 @@ type Strings struct {
 	ConsoleNoServer string
 	// OperationLabel captions the console's operation dropdown.
 	OperationLabel string
-	// ServerLabel captions the server dropdown a multi-server contract
+	// ServerLabel captions the server dropdown a multi-server spec
 	// renders. One word.
 	ServerLabel string
 	// TokenPlaceholder is the placeholder of the bearer token field, for
-	// contracts the console can authenticate.
+	// specs the console can authenticate.
 	TokenPlaceholder string
-	// DeprecatedLabel marks an operation the contract retired. One word.
+	// DeprecatedLabel marks an operation the spec retired. One word.
 	DeprecatedLabel string
 	// ResponseHeadersLabel captions the documented response headers.
 	ResponseHeadersLabel string
@@ -57,7 +57,7 @@ type Strings struct {
 	// ResponsePrompt is the response pane's initial text and describes the
 	// action, not the pane. Full sentence, capitalized.
 	ResponsePrompt string
-	// NoOperations replaces the console controls when the contract has no
+	// NoOperations replaces the console controls when the spec has no
 	// operations. Full sentence, capitalized.
 	NoOperations string
 	// CORSNote is the footnote under the console. Full sentence,
@@ -77,9 +77,9 @@ type Strings struct {
 	RequestBodyNote string
 	ResponseLabel   string
 	// ValuePlaceholder is the fallback placeholder of a parameter input
-	// when the contract offers no example and no type. Single word.
+	// when the spec offers no example and no type. Single word.
 	ValuePlaceholder string
-	// ParameterWord fills a parameter's label when the contract does not
+	// ParameterWord fills a parameter's label when the spec does not
 	// say where it goes (path, query, ...). Single word, lowercase in
 	// English, because it sits between name and type.
 	ParameterWord string
@@ -109,13 +109,13 @@ func DefaultStrings() Strings {
 		ResponseHeadersLabel: "Response headers",
 		SendRequest:          "Send request",
 		ResponsePrompt:       "Select an operation and send a request.",
-		NoOperations:         "No operations were found in this contract.",
+		NoOperations:         "No operations were found in this spec.",
 		CORSNote:             "Requests run from the browser and require the API server to allow CORS.",
 		NoInputs:             "This operation has no request inputs.",
 		OperationIDPrefix:    "Operation ID: ",
 		ParametersLabel:      "Parameters",
 		RequestBodyLabel:     "Request body",
-		RequestBodyNote:      "Request body required by the contract.",
+		RequestBodyNote:      "Request body required by the spec.",
 		ResponseLabel:        "Response",
 		ValuePlaceholder:     "Value",
 		ParameterWord:        "parameter",
@@ -159,7 +159,7 @@ func (s Strings) withDefaults() Strings {
 
 // Reference is the server-rendered OpenAPI reference screen contributed by
 // Plugin. It is intentionally a normal GoFastr component, so projects can
-// replace it, wrap it, or add actions without changing the Router contract.
+// replace it, wrap it, or add actions without changing the Router API.
 type Reference struct {
 	// IDPrefix discriminates this mount's element ids (operation cards,
 	// console option values) so two mounts never collide on one host.
@@ -259,7 +259,7 @@ func (r *Reference) requestConsole() render.HTML {
 	children := []render.HTML{
 		render.Tag("strong", nil, render.Text(r.Strings.TryRequest)),
 	}
-	// A multi-server contract gets a selector; a single one stays prose.
+	// A multi-server spec gets a selector; a single one stays prose.
 	if len(r.Servers) > 1 {
 		options := make([]render.HTML, 0, len(r.Servers))
 		for _, server := range r.Servers {
@@ -319,7 +319,7 @@ func (r *Reference) requestInputs() render.HTML {
 				label += " — " + parameter.Description
 			}
 			// An enum is a closed set: offer it as choices rather than
-			// trusting free text the contract would reject.
+			// trusting free text the spec would reject.
 			if len(parameter.Enum) > 0 {
 				options := make([]render.HTML, 0, len(parameter.Enum))
 				for _, value := range parameter.Enum {

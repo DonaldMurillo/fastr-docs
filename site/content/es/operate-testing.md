@@ -5,7 +5,7 @@ locale: es
 
 # Pruebas
 
-El contrato del producto es el comportamiento en el navegador, no solo que
+El producto es el comportamiento en el navegador, no solo que
 compile. Prueba el modelo del Router en Go y luego recorre un proyecto generado
 o escrito a mano en un navegador de verdad.
 
@@ -38,6 +38,6 @@ exportación estática, los recursos PWA y el comportamiento sin conexión.
 ## Prueba los dos caminos
 
 La suite crea un proyecto con la CLI y además construye el fixture escrito a
-mano. Mantén cubiertos los dos flujos cuando cambies el contrato público del
+mano. Mantén cubiertos los dos flujos cuando cambies la API pública del
 Router. Para cambios visuales, revisa las capturas de escritorio y de móvil en
 lugar de aceptar la nueva referencia a ciegas.

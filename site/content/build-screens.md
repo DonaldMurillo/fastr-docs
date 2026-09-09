@@ -18,7 +18,7 @@ router.MustScreen("/examples/playground", docs.ScreenConfig{
 })
 ```
 
-The `Component` implements the normal GoFastr rendering contract. Build the surface with framework UI primitives and keep route-specific CSS next to the screen.
+The `Component` implements the normal GoFastr rendering interface. Build the surface with framework UI primitives and keep route-specific CSS next to the screen.
 
 ## Choose the boundary
 

@@ -11,13 +11,13 @@ import (
 
 // OpenAPIPlugin adds a readable API reference page to the same Router as the
 // rest of the site. It intentionally starts from the portable OpenAPI JSON
-// contract; a richer renderer can later replace the generated Markdown while
+// spec; a richer renderer can later replace the generated Markdown while
 // keeping this registration surface stable.
 type OpenAPIPlugin struct {
 	// SpecPath reads the OpenAPI document from a file; Spec wins when
 	// both are set.
 	SpecPath string
-	// Spec is the OpenAPI document as bytes, for embedded contracts.
+	// Spec is the OpenAPI document as bytes, for embedded specs.
 	Spec []byte
 	// Path mounts the reference; defaults to /api-reference.
 	Path string
@@ -75,7 +75,7 @@ func (p OpenAPIPlugin) Apply(r *Router) error {
 		description = spec.Info.Description
 	}
 	if description == "" {
-		description = "Generated from the project OpenAPI contract."
+		description = "Generated from the project OpenAPI spec."
 	}
 	source := renderOpenAPIMarkdown(title, description, spec)
 	order := p.Order
@@ -153,7 +153,7 @@ func renderOpenAPIMarkdown(title, description string, spec openAPIDocument) stri
 		}
 	}
 	if len(spec.Paths) == 0 {
-		b.WriteString("No paths were found in the contract.\n")
+		b.WriteString("No paths were found in the spec.\n")
 	}
 	return b.String()
 }

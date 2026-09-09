@@ -10,7 +10,7 @@ AI agents should not have to reverse-engineer a documentation project. The gener
 
 - `docs/router.go` owns route registration and ordering.
 - `content/` owns Markdown and front matter.
-- `openapi.json` owns the API contract consumed by the plugin.
+- `openapi.json` owns the API spec consumed by the plugin.
 - `agents/claude.md` explains project conventions.
 - `.agents/skills/docs-authoring/SKILL.md` describes safe authoring tasks.
 
@@ -32,4 +32,4 @@ When adding a page, update the route registration and its Markdown source in the
 
 ## Verify the result
 
-Agents should run `fastr-docs doctor .`, the project tests, and the browser suite for behavior changes. The route tree is a contract: a page is not complete when its file exists; it is complete when navigation, search, export, and its user flow all work.
+Agents should run `fastr-docs doctor .`, the project tests, and the browser suite for behavior changes. The route tree is a promise: a page is not complete when its file exists; it is complete when navigation, search, export, and its user flow all work.

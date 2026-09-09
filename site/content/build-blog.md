@@ -6,7 +6,7 @@ tags: [content, publishing, rss]
 
 Use `MarkdownBlog` when a docs site also publishes updates. It registers an
 archive route at the prefix and turns every other Markdown file in the
-directory into a post. Posts use the existing front matter contract, so the
+directory into a post. Posts use the existing front matter schema, so the
 same Router handles titles, descriptions, authors, dates, tags, drafts,
 locales, versions, search, navigation, and SEO.
 

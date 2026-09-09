@@ -1,6 +1,6 @@
 # Testing
 
-The product contract is browser behavior, not just successful compilation. Test the route tree in Go, then exercise the generated project and non-CLI project through a real browser.
+The product is browser behavior, not just successful compilation. Test the route tree in Go, then exercise the generated project and non-CLI project through a real browser.
 
 ## The verification layers
 

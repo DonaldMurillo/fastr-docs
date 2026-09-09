@@ -28,7 +28,7 @@ pertenecen al proyecto que usa fastr-docs.
 | Versiones | Metadatos de versión, filtros, selectores conscientes de la ruta, `MarkdownVersionedCollection` e inventario en el manifiesto. |
 | SEO y publicación | Títulos, descripciones, URLs canónicas, `noindex`, autores, fechas, imágenes sociales, redirecciones, sitemap, robots, blogs en Markdown y feeds RSS. |
 | Entrega sin conexión | Integración PWA de GoFastr y exportación estática de las rutas y recursos elegibles. |
-| Referencias de API | Plugin OpenAPI incluido, con contratos JSON o YAML y URL de servidor sustituible. |
+| Referencias de API | Plugin OpenAPI incluido, con especificaciones JSON o YAML y URL de servidor sustituible. |
 | Extensibilidad | Plugins, tres formas de shortcode, factorías de layout propias, validación, aportes a la búsqueda y una tubería de recursos común. |
 | Plantillas de página | Una envoltura `splash` desde el front matter para portadas, además de pantallas tipadas para lo que no exprese. |
 | Bloques de código | Opciones de valla para título, numeración, resaltado de líneas y desplazamiento interno. |
@@ -78,7 +78,7 @@ router := docs.NewRouter(docs.WithLayouts(docs.LayoutConfig{
 ### Hacer útiles las rutas que faltan
 
 Instala `NotFoundScreen` en el host de GoFastr, o sustitúyelo por una pantalla
-con la marca del proyecto que siga el mismo contrato. El host en vivo devuelve
+con la marca del proyecto que siga la misma forma. El host en vivo devuelve
 un 404 con la ruta pedida y un enlace al inicio. Las exportaciones estáticas
 pueden llamar a `docs.WriteStaticNotFound` después de `ExportStatic`.
 

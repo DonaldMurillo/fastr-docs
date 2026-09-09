@@ -6,7 +6,7 @@ tags: [examples, screens, product-surfaces]
 
 A custom docs surface is still a route. Start with the user task, choose the rendering strategy, and keep the route connected to the project’s shared navigation and search model.
 
-## Decide the route contract
+## Decide the route interface
 
 1. Name the task in the route title and description.
 2. Choose a Markdown Page for durable explanation or a typed Screen for interaction.

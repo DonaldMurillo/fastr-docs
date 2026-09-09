@@ -2,6 +2,7 @@ package docs
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -44,7 +45,7 @@ func TestRuntimeAssetsCollectsTheCoreFilesAndPluginContributions(t *testing.T) {
 	}
 	for _, want := range []string{"docs.js", "search.json", "manifest.json", "charts.js"} {
 		if _, ok := assets[want]; !ok {
-			t.Fatalf("RuntimeAssets() missing %q: %v", want, slices.Sorted(mapKeys(assets)))
+			t.Fatalf("RuntimeAssets() missing %q: %v", want, slices.Sorted(maps.Keys(assets)))
 		}
 	}
 	if string(assets["charts.js"]) != "chart();" {
@@ -120,16 +121,6 @@ func TestRuntimeAssetNamesAreSorted(t *testing.T) {
 	}
 	if !slices.IsSorted(names) {
 		t.Fatalf("RuntimeAssetNames() = %v, want sorted", names)
-	}
-}
-
-func mapKeys(m map[string][]byte) func(func(string) bool) {
-	return func(yield func(string) bool) {
-		for key := range m {
-			if !yield(key) {
-				return
-			}
-		}
 	}
 }
 

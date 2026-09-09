@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -92,7 +93,7 @@ func TestTranslationOfFollowsThroughAnotherTranslation(t *testing.T) {
 		t.Fatalf("selector on the original = %v", got)
 	}
 	// Coverage sees the family as translated into both languages.
-	if missing := r.UntranslatedFamilies("fr"); contains(missing, "docs/guide") {
+	if missing := r.UntranslatedFamilies("fr"); slices.Contains(missing, "docs/guide") {
 		t.Fatalf("docs/guide reported untranslated into fr: %v", missing)
 	}
 }
@@ -202,15 +203,6 @@ func TestTranslationOfFollowsRedirectSourcesAndRefusesCycles(t *testing.T) {
 			t.Fatalf("Validate() = %v, want a translation cycle complaint", err)
 		}
 	})
-}
-
-func contains(values []string, want string) bool {
-	for _, value := range values {
-		if value == want {
-			return true
-		}
-	}
-	return false
 }
 
 func containsPrefix(values []string, prefix string) bool {

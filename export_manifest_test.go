@@ -3,7 +3,6 @@ package docs
 // Export artifacts: the sitemap namespaces and dates, the
 // manifest's locales, drawers, and search index, and agent assets.
 import (
-	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,14 +21,7 @@ func TestExportArtifacts(t *testing.T) {
 	t.Run("the manifest honors a custom search index path", func(t *testing.T) {
 		r := NewRouter(WithSearchIndexPath("/idx.json"))
 		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G"})
-		body, err := r.ExportManifestJSON("")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var manifest ExportManifest
-		if err := json.Unmarshal(body, &manifest); err != nil {
-			t.Fatal(err)
-		}
+		manifest := exportManifest(t, r, "")
 		if manifest.SearchIndex != "/idx.json" {
 			t.Fatalf("manifest.SearchIndex = %q, want /idx.json", manifest.SearchIndex)
 		}
@@ -58,14 +50,7 @@ func TestExportArtifacts(t *testing.T) {
 
 	t.Run("the manifest reports the effective locale", func(t *testing.T) {
 		r := bilingualPair()
-		body, err := r.ExportManifestJSON("")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var manifest ExportManifest
-		if err := json.Unmarshal(body, &manifest); err != nil {
-			t.Fatal(err)
-		}
+		manifest := exportManifest(t, r, "")
 		for _, route := range manifest.Routes {
 			if route.Path == "/docs/guide" && route.Locale != "en" {
 				t.Fatalf("manifest locale for an unmarked page = %q, want the default en", route.Locale)
@@ -83,14 +68,7 @@ func TestExportArtifacts(t *testing.T) {
 	})
 
 	t.Run("the manifest lists the default locale", func(t *testing.T) {
-		body, err := bilingualPair().ExportManifestJSON("")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var manifest ExportManifest
-		if err := json.Unmarshal(body, &manifest); err != nil {
-			t.Fatal(err)
-		}
+		manifest := exportManifest(t, bilingualPair(), "")
 		if !strings.Contains(strings.Join(manifest.Locales, ","), "en") {
 			t.Fatalf("manifest.Locales = %v, want the default named", manifest.Locales)
 		}
@@ -103,14 +81,7 @@ func TestExportArtifacts(t *testing.T) {
 			Metadata: ContentMetadata{Version: "v2"}})
 		r.MustPage("/v1/guide", PageConfig{Title: "Guide v1", Description: "d", Order: 3, Source: "# G1",
 			Metadata: ContentMetadata{Version: "v1"}})
-		body, err := r.ExportManifestJSON("")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var manifest ExportManifest
-		if err := json.Unmarshal(body, &manifest); err != nil {
-			t.Fatal(err)
-		}
+		manifest := exportManifest(t, r, "")
 		seen := map[string]int{}
 		for _, drawer := range manifest.Drawers {
 			seen[drawer]++
@@ -161,14 +132,7 @@ func TestExportArtifacts(t *testing.T) {
 		r := NewRouter(WithLocaleFallback("en"))
 		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G"})
 		r.MustPage("/es/g", PageConfig{Title: "G", Description: "d", Order: 2, Source: "# G", Metadata: ContentMetadata{Locale: "es"}})
-		body, err := r.ExportManifestJSON("")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var manifest ExportManifest
-		if err := json.Unmarshal(body, &manifest); err != nil {
-			t.Fatal(err)
-		}
+		manifest := exportManifest(t, r, "")
 		withAlternates := 0
 		for _, route := range manifest.Routes {
 			if len(route.Alternates) > 0 {
@@ -183,14 +147,7 @@ func TestExportArtifacts(t *testing.T) {
 		r := NewRouter()
 		r.MustPage("/z", PageConfig{Title: "Z", Description: "d", Order: 1, Source: "# Z"})
 		r.MustPage("/a", PageConfig{Title: "A", Description: "d", Order: 2, Source: "# A"})
-		body, err := r.ExportManifestJSON("")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var manifest ExportManifest
-		if err := json.Unmarshal(body, &manifest); err != nil {
-			t.Fatal(err)
-		}
+		manifest := exportManifest(t, r, "")
 		zi, ai := -1, -1
 		for i, route := range manifest.Routes {
 			if route.Path == "/z" {
@@ -205,14 +162,7 @@ func TestExportArtifacts(t *testing.T) {
 		}
 	})
 	t.Run("manifest locales are sorted", func(t *testing.T) {
-		body, err := bilingualPair().ExportManifestJSON("")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var manifest ExportManifest
-		if err := json.Unmarshal(body, &manifest); err != nil {
-			t.Fatal(err)
-		}
+		manifest := exportManifest(t, bilingualPair(), "")
 		for i := 1; i < len(manifest.Locales); i++ {
 			if manifest.Locales[i-1] > manifest.Locales[i] {
 				t.Fatalf("manifest.Locales = %v, not sorted", manifest.Locales)
@@ -225,14 +175,7 @@ func TestExportArtifacts(t *testing.T) {
 			Metadata: ContentMetadata{Redirects: []string{"/zz"}}})
 		r.MustPage("/a", PageConfig{Title: "A", Description: "d", Order: 2, Source: "# A",
 			Metadata: ContentMetadata{Redirects: []string{"/aa"}}})
-		body, err := r.ExportManifestJSON("")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var manifest ExportManifest
-		if err := json.Unmarshal(body, &manifest); err != nil {
-			t.Fatal(err)
-		}
+		manifest := exportManifest(t, r, "")
 		for i := 1; i < len(manifest.Redirects); i++ {
 			if manifest.Redirects[i-1].From > manifest.Redirects[i].From {
 				t.Fatalf("manifest.Redirects = %+v, not sorted", manifest.Redirects)
@@ -242,14 +185,7 @@ func TestExportArtifacts(t *testing.T) {
 	t.Run("the manifest honors the asset prefix", func(t *testing.T) {
 		r := NewRouter()
 		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "# G"})
-		body, err := r.ExportManifestJSON("")
-		if err != nil {
-			t.Fatal(err)
-		}
-		var manifest ExportManifest
-		if err := json.Unmarshal(body, &manifest); err != nil {
-			t.Fatal(err)
-		}
+		manifest := exportManifest(t, r, "")
 		if !strings.HasPrefix(manifest.AssetsPrefix, r.AssetPrefix()) {
 			t.Fatalf("AssetsPrefix = %q, want the configured %q", manifest.AssetsPrefix, r.AssetPrefix())
 		}

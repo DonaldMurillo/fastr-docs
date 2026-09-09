@@ -148,6 +148,13 @@ func (r *Router) familyOf(route *Route) string {
 	return variantFamily(route)
 }
 
+// inPublishedFamily reports whether route is a published member of family.
+// Every loop that walks a route's translations or versions shares it, so a
+// copied loop cannot drift on what "same family" means.
+func (r *Router) inPublishedFamily(route *Route, family string) bool {
+	return r.variantPublished(route) && r.familyOf(route) == family
+}
+
 // alternatesFor is the page's hreflang map: every declared alternate, plus one
 // entry per published variant of its family in another language. A pair
 // declared either way emits both directions, so nobody hand-maintains the
@@ -160,7 +167,7 @@ func (r *Router) alternatesFor(route *Route) map[string]string {
 	family := r.familyOf(route)
 	self := r.effectiveLocale(route)
 	for _, candidate := range r.Routes() {
-		if candidate == route || !r.variantPublished(candidate) || r.familyOf(candidate) != family {
+		if candidate == route || !r.inPublishedFamily(candidate, family) {
 			continue
 		}
 		if candidate.Metadata.Version != route.Metadata.Version {

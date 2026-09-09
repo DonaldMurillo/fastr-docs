@@ -42,20 +42,12 @@ func TestParseMarkdownFrontMatterSupportsAliasesAndStripsHeader(t *testing.T) {
 
 func TestMarkdownCollectionRegistersMetadataAndFiltersDraftsLocaleAndVersion(t *testing.T) {
 	dir := t.TempDir()
-	write := func(name, body string) {
-		t.Helper()
-		path := filepath.Join(dir, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("index.md", "---\ntitle: Docs\norder: 1\nlocale: en\nversion: v2\n---\n# Docs\n\nOverview")
-	write("guide.md", "---\ntitle: Guide\ntags: [guide]\nedit_url: https://github.com/acme/docs/edit/main/guide.md\nredirects: /getting-started\n---\n# Guide\n\nRead this.")
-	write("draft.md", "---\ntitle: Draft\ndraft: true\n---\n# Draft\n\nNot public.")
-	write("fr/guide.md", "---\ntitle: French\nlocale: fr\n---\n# French\n\nBonjour.")
+	writeFiles(t, dir, map[string]string{
+		"index.md":    "---\ntitle: Docs\norder: 1\nlocale: en\nversion: v2\n---\n# Docs\n\nOverview",
+		"guide.md":    "---\ntitle: Guide\ntags: [guide]\nedit_url: https://github.com/acme/docs/edit/main/guide.md\nredirects: /getting-started\n---\n# Guide\n\nRead this.",
+		"draft.md":    "---\ntitle: Draft\ndraft: true\n---\n# Draft\n\nNot public.",
+		"fr/guide.md": "---\ntitle: French\nlocale: fr\n---\n# French\n\nBonjour.",
+	})
 
 	r := NewRouter(WithLocale("en"), WithVersion("v2"))
 	if err := r.MarkdownCollection("/docs", dir, CollectionConfig{DefaultLocale: "en", DefaultVersion: "v2"}); err != nil {

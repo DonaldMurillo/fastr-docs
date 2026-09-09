@@ -50,17 +50,7 @@ func (h *docsHeader) siteHeader(currentPath string) render.HTML {
 		drawerName = blogDrawerName(root.Path)
 	}
 	brand := render.Join(
-		render.Tag("button", map[string]string{
-			"class":                          "fastr-docs-mobile-nav-trigger",
-			"type":                           "button",
-			"data-fui-open":                  drawerName,
-			"data-fastr-docs-global-drawer":  "fastr-docs-sections",
-			"data-fastr-docs-blog-drawer":    "fastr-docs-blog-sections",
-			"data-fastr-docs-blog-prefixes":  h.router.blogPrefixes(),
-			"data-fastr-docs-blog-drawers":   h.router.blogDrawerNames(),
-			"data-fastr-docs-locale-drawers": localeDrawers,
-			"aria-label":                     labels.OpenNavigation,
-		}, render.Raw(`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>`)),
+		h.mobileNavTrigger(labels, drawerName, localeDrawers, false),
 		render.Tag("a", map[string]string{"href": "/", "class": "fastr-docs-brand", "aria-label": h.router.SiteName() + " home"},
 			h.brandMark(),
 			render.Tag("span", map[string]string{"class": "fastr-docs-brand__name"}, render.Text(h.router.SiteName())),
@@ -76,20 +66,7 @@ func (h *docsHeader) siteHeader(currentPath string) render.HTML {
 	header := ui.SiteHeader(ui.SiteHeaderConfig{
 		Brand: brand,
 		MobileBrand: render.Join(
-			render.Tag("button", map[string]string{
-				"class":                          "fastr-docs-mobile-nav-trigger",
-				"type":                           "button",
-				"data-fui-open":                  drawerName,
-				"data-fastr-docs-global-drawer":  "fastr-docs-sections",
-				"data-fastr-docs-blog-drawer":    "fastr-docs-blog-sections",
-				"data-fastr-docs-blog-prefixes":  h.router.blogPrefixes(),
-				"data-fastr-docs-blog-drawers":   h.router.blogDrawerNames(),
-				"data-fastr-docs-locale-drawers": localeDrawers,
-				"aria-label":                     labels.OpenNavigation,
-				// The trigger names the widget it opens, so assistive tech
-				// pairs them without guessing from data attributes.
-				"aria-controls": drawerName,
-			}, render.Raw(`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>`)),
+			h.mobileNavTrigger(labels, drawerName, localeDrawers, true),
 			render.Tag("a", map[string]string{"href": "/", "class": "fastr-docs-brand fastr-docs-brand--mobile", "aria-label": h.router.SiteName() + " home"},
 				h.brandMark(),
 			),
@@ -101,6 +78,27 @@ func (h *docsHeader) siteHeader(currentPath string) render.HTML {
 		NavUnderline: true,
 	})
 	return header
+}
+
+// mobileNavTrigger builds the header's hamburger button. siteHeader renders
+// it twice, in the desktop brand cluster and in the mobile brand; only the
+// mobile copy names the widget it opens, so assistive tech can pair them.
+func (h *docsHeader) mobileNavTrigger(labels UIStrings, drawerName, localeDrawers string, controls bool) render.HTML {
+	attrs := map[string]string{
+		"class":                          "fastr-docs-mobile-nav-trigger",
+		"type":                           "button",
+		"data-fui-open":                  drawerName,
+		"data-fastr-docs-global-drawer":  "fastr-docs-sections",
+		"data-fastr-docs-blog-drawer":    "fastr-docs-blog-sections",
+		"data-fastr-docs-blog-prefixes":  h.router.blogPrefixes(),
+		"data-fastr-docs-blog-drawers":   h.router.blogDrawerNames(),
+		"data-fastr-docs-locale-drawers": localeDrawers,
+		"aria-label":                     labels.OpenNavigation,
+	}
+	if controls {
+		attrs["aria-controls"] = drawerName
+	}
+	return render.Tag("button", attrs, render.Raw(`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>`))
 }
 
 // chromeTemplate is the page's own header, carried inside the region GoFastr
@@ -138,34 +136,11 @@ func (r *Router) chromeTemplate(ctx context.Context, fallbackPath string) render
 // the first published variant, but every sibling should keep that section
 // active while the reader switches language or version.
 func (r *Router) headerVariantActiveScript() render.HTML {
-	type activeConfig struct {
-		Links  map[string]string `json:"links"`
-		Routes map[string]string `json:"routes"`
-	}
-	cfg := activeConfig{Links: map[string]string{}, Routes: map[string]string{}}
-	for _, route := range r.sorted(r.roots) {
-		if !r.routeVisible(route) || route.Path == "/" {
-			continue
-		}
-		target := r.headerTarget(route)
-		if target == nil || (target.Metadata.Locale == "" && target.Metadata.Version == "") {
-			continue
-		}
-		family := r.familyOf(target)
-		if family == "" {
-			continue
-		}
-		cfg.Links[target.Path] = family
-		for _, candidate := range r.Routes() {
-			if r.variantPublished(candidate) && r.familyOf(candidate) == family {
-				cfg.Routes[candidate.Path] = family
-			}
-		}
-	}
-	if len(cfg.Links) == 0 || len(cfg.Routes) == 0 {
+	links, routes := r.headerVariantActiveFamilies()
+	if len(links) == 0 || len(routes) == 0 {
 		return render.Text("")
 	}
-	payload, err := json.Marshal(cfg)
+	payload, err := json.Marshal(map[string]map[string]string{"links": links, "routes": routes})
 	if err != nil {
 		return render.Text("")
 	}
@@ -214,8 +189,28 @@ func (r *Router) headerVariantActiveScript() render.HTML {
 // but every sibling should keep that section active while the reader switches
 // language or version.
 func (r *Router) headerVariantActiveConfig() render.HTML {
-	links := map[string]string{}
-	routes := map[string]string{}
+	links, routes := r.headerVariantActiveFamilies()
+	if len(links) == 0 || len(routes) == 0 {
+		return render.Text("")
+	}
+	payload, err := json.Marshal(map[string]map[string]string{"links": links, "routes": routes})
+	if err != nil {
+		return render.Text("")
+	}
+	return render.VoidTag("meta", map[string]string{
+		"name":    "fastr-docs-active-families",
+		"content": string(payload),
+	})
+}
+
+// headerVariantActiveFamilies builds the two tables the header's family
+// matching needs: each header tab's link path keyed by the family it opens,
+// and every published sibling route keyed by the family it belongs to. The
+// inline script and the runtime's meta config carry the same data, so both
+// read it from here.
+func (r *Router) headerVariantActiveFamilies() (links, routes map[string]string) {
+	links = map[string]string{}
+	routes = map[string]string{}
 	for _, route := range r.sorted(r.roots) {
 		if !r.routeVisible(route) || route.Path == "/" {
 			continue
@@ -230,22 +225,12 @@ func (r *Router) headerVariantActiveConfig() render.HTML {
 		}
 		links[target.Path] = family
 		for _, candidate := range r.Routes() {
-			if r.variantPublished(candidate) && r.familyOf(candidate) == family {
+			if r.inPublishedFamily(candidate, family) {
 				routes[candidate.Path] = family
 			}
 		}
 	}
-	if len(links) == 0 || len(routes) == 0 {
-		return render.Text("")
-	}
-	payload, err := json.Marshal(map[string]map[string]string{"links": links, "routes": routes})
-	if err != nil {
-		return render.Text("")
-	}
-	return render.VoidTag("meta", map[string]string{
-		"name":    "fastr-docs-active-families",
-		"content": string(payload),
-	})
+	return links, routes
 }
 
 type docsVariantOption struct {
@@ -321,9 +306,10 @@ func (r *Router) variantSelect(label, dimension string, options []docsVariantOpt
 }
 
 func (r *Router) variantOptions(current *Route, dimension string) []docsVariantOption {
+	family := r.familyOf(current)
 	values := make(map[string]bool)
 	for _, route := range r.Routes() {
-		if !r.variantPublished(route) || r.familyOf(route) != r.familyOf(current) {
+		if !r.inPublishedFamily(route, family) {
 			continue
 		}
 		value := r.effectiveLocale(route)
@@ -356,10 +342,11 @@ func (r *Router) variantOptions(current *Route, dimension string) []docsVariantO
 }
 
 func (r *Router) variantTarget(current *Route, dimension, value string) *Route {
+	family := r.familyOf(current)
 	bestScore := -1
 	var best *Route
 	for _, candidate := range r.Routes() {
-		if !r.variantPublished(candidate) || r.familyOf(candidate) != r.familyOf(current) {
+		if !r.inPublishedFamily(candidate, family) {
 			continue
 		}
 		candidateValue := r.effectiveLocale(candidate)
@@ -1112,7 +1099,7 @@ func (r *Router) familyHasCurrentVariant(family string) bool {
 		return false
 	}
 	for _, route := range r.Routes() {
-		if r.familyOf(route) == family && strings.TrimSpace(route.Metadata.Version) == "" && r.variantPublished(route) {
+		if strings.TrimSpace(route.Metadata.Version) == "" && r.inPublishedFamily(route, family) {
 			return true
 		}
 	}

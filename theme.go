@@ -205,7 +205,7 @@ func (r *Router) ThemeConfig() ThemeConfig {
 	}
 	config := r.themeConfig
 	config.Template = r.Template()
-	config.Overrides.DarkColors = cloneThemeStringMap(config.Overrides.DarkColors)
+	config.Overrides.DarkColors = cloneStringMap(config.Overrides.DarkColors)
 	return config
 }
 
@@ -576,7 +576,7 @@ func mergeThemeOverrides(base, override ThemeOverrides) ThemeOverrides {
 		merged.RadiusLg = override.RadiusLg
 	}
 	if len(override.DarkColors) > 0 {
-		merged.DarkColors = cloneThemeStringMap(merged.DarkColors)
+		merged.DarkColors = cloneStringMap(merged.DarkColors)
 		if merged.DarkColors == nil {
 			merged.DarkColors = make(map[string]string, len(override.DarkColors))
 		}
@@ -587,17 +587,6 @@ func mergeThemeOverrides(base, override ThemeOverrides) ThemeOverrides {
 		}
 	}
 	return merged
-}
-
-func cloneThemeStringMap(values map[string]string) map[string]string {
-	if len(values) == 0 {
-		return nil
-	}
-	clone := make(map[string]string, len(values))
-	for key, value := range values {
-		clone[key] = value
-	}
-	return clone
 }
 
 // templateNames lists the available templates for warnings.

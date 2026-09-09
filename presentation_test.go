@@ -10,7 +10,6 @@ import (
 func TestPresentation(t *testing.T) {
 	css := NewRouter().CSS()
 	t.Run("print hides heading anchors", func(t *testing.T) {
-		css := NewRouter().CSS()
 		start := strings.Index(css, "@media print")
 		end := start + strings.Index(css[start:], "}")
 		if start < 0 || !strings.Contains(css[start:end], "heading-anchor") {
@@ -19,7 +18,6 @@ func TestPresentation(t *testing.T) {
 	})
 
 	t.Run("reduced motion stills the blog cards", func(t *testing.T) {
-		css := NewRouter().CSS()
 		start := strings.Index(css, "prefers-reduced-motion")
 		if start < 0 || !strings.Contains(css[start:start+400], "fastr-docs-blog-card") {
 			t.Fatal("blog card transforms ignore prefers-reduced-motion")
@@ -64,25 +62,24 @@ func TestPresentation(t *testing.T) {
 	})
 
 	t.Run("the heading anchor is styled", func(t *testing.T) {
-		if !strings.Contains(NewRouter().CSS(), ".heading-anchor") {
+		if !strings.Contains(css, ".heading-anchor") {
 			t.Fatal("anchor links render as raw blue underlined text")
 		}
 	})
 
 	t.Run("the section select help line is styled", func(t *testing.T) {
-		if !strings.Contains(NewRouter().CSS(), ".ui-select__help") {
+		if !strings.Contains(css, ".ui-select__help") {
 			t.Fatal("the drawer select help paragraph renders unstyled")
 		}
 	})
 
 	t.Run("long tokens wrap in prose", func(t *testing.T) {
-		if !strings.Contains(NewRouter().CSS(), "overflow-wrap") {
+		if !strings.Contains(css, "overflow-wrap") {
 			t.Fatal("a long URL or hash blows out the content column")
 		}
 	})
 
 	t.Run("print hides the blog toolbar", func(t *testing.T) {
-		css := NewRouter().CSS()
 		start := strings.Index(css, "@media print")
 		end := start + strings.Index(css[start:], "}")
 		if !strings.Contains(css[start:end], "blog") {
@@ -91,12 +88,12 @@ func TestPresentation(t *testing.T) {
 	})
 
 	t.Run("form controls follow the accent", func(t *testing.T) {
-		if !strings.Contains(NewRouter().CSS(), "accent-color") {
+		if !strings.Contains(css, "accent-color") {
 			t.Fatal("checkboxes and radios ignore the theme accent")
 		}
 	})
 	t.Run("the search count region is styled", func(t *testing.T) {
-		if !strings.Contains(NewRouter().CSS(), ".fastr-docs-search-count") {
+		if !strings.Contains(css, ".fastr-docs-search-count") {
 			t.Fatal("the announced result count renders as bare paragraph text")
 		}
 	})
@@ -146,7 +143,6 @@ func TestPresentation(t *testing.T) {
 		}
 	})
 	t.Run("the sticky offset token is consumed", func(t *testing.T) {
-		css := NewRouter().CSS()
 		if !strings.Contains(css[strings.Index(css, "scroll-margin-top"):strings.Index(css, "scroll-margin-top")+80], "var(--docs-sticky-offset") {
 			t.Fatal("scroll margins hardcode their offsets instead of the token")
 		}
@@ -175,66 +171,63 @@ func TestPresentation(t *testing.T) {
 		}
 	})
 	t.Run("focus styling comes from a token", func(t *testing.T) {
-		if !strings.Contains(NewRouter().CSS(), "--docs-focus") {
+		if !strings.Contains(css, "--docs-focus") {
 			t.Fatal("focus ring colors are hardcoded at every use site")
 		}
 	})
 	t.Run("the palette loading row is styled", func(t *testing.T) {
-		if !strings.Contains(NewRouter().CSS(), ".fastr-docs-search-loading") {
+		if !strings.Contains(css, ".fastr-docs-search-loading") {
 			t.Fatal("the loading row renders as an unstyled list entry")
 		}
 	})
 	t.Run("the palette empty row is styled", func(t *testing.T) {
-		if !strings.Contains(NewRouter().CSS(), ".fastr-docs-search-empty") {
+		if !strings.Contains(css, ".fastr-docs-search-empty") {
 			t.Fatal("the empty result row renders unstyled")
 		}
 	})
 	t.Run("headings balance their line breaks", func(t *testing.T) {
-		if !strings.Contains(NewRouter().CSS(), "text-wrap") {
+		if !strings.Contains(css, "text-wrap") {
 			t.Fatal("long headings never balance")
 		}
 	})
 	t.Run("the palette modal contains scroll chaining", func(t *testing.T) {
-		css := NewRouter().CSS()
 		i := strings.Index(css, "fastr-docs-command-palette")
 		if i < 0 || !strings.Contains(css[i:i+700], "overscroll-behavior") {
 			t.Fatal("scrolling past the palette results scrolls the page behind")
 		}
 	})
 	t.Run("view transitions are styled", func(t *testing.T) {
-		if !strings.Contains(NewRouter().CSS(), "view-transition") {
+		if !strings.Contains(css, "view-transition") {
 			t.Fatal("SPA swaps cut hard with no crossfade")
 		}
 	})
 	t.Run("selections follow the theme", func(t *testing.T) {
-		if !strings.Contains(NewRouter().CSS(), "::selection") {
+		if !strings.Contains(css, "::selection") {
 			t.Fatal("selected text renders in the browser default blue")
 		}
 	})
 	t.Run("display math gets block styling", func(t *testing.T) {
-		if !strings.Contains(NewRouter().CSS(), "fastr-docs-math--display") {
+		if !strings.Contains(css, "fastr-docs-math--display") {
 			t.Fatal("display math renders inline with no block treatment from the docs layer")
 		}
 	})
 	t.Run("kbd chips are styled", func(t *testing.T) {
-		css := NewRouter().CSS()
 		i := strings.Index(css, "\nkbd {")
 		if i < 0 || !strings.Contains(css[i:i+220], "border") {
 			t.Fatal("keyboard keys render as plain text")
 		}
 	})
 	t.Run("sidebar group disclosures show focus", func(t *testing.T) {
-		if !strings.Contains(NewRouter().CSS(), "summary.ui-sidebar__link:focus-visible") && !strings.Contains(NewRouter().CSS(), "summary:focus-visible") {
+		if !strings.Contains(css, "summary.ui-sidebar__link:focus-visible") && !strings.Contains(css, "summary:focus-visible") {
 			t.Fatal("sidebar group summaries are invisible to keyboard focus")
 		}
 	})
 	t.Run("share buttons show a focus ring", func(t *testing.T) {
-		if !strings.Contains(NewRouter().CSS(), "fastr-docs-blog-share:focus-visible") && !strings.Contains(NewRouter().CSS(), "[data-fastr-docs-share]:focus-visible") {
+		if !strings.Contains(css, "fastr-docs-blog-share:focus-visible") && !strings.Contains(css, "[data-fastr-docs-share]:focus-visible") {
 			t.Fatal("share controls are invisible to keyboard focus")
 		}
 	})
 	t.Run("print shows where links lead", func(t *testing.T) {
-		css := NewRouter().CSS()
 		start := strings.Index(css, "@media print")
 		end := start + strings.Index(css[start:], "\n}")
 		if !strings.Contains(css[start:end], "attr(href)") {
@@ -242,7 +235,6 @@ func TestPresentation(t *testing.T) {
 		}
 	})
 	t.Run("print declares a font size", func(t *testing.T) {
-		css := NewRouter().CSS()
 		start := strings.Index(css, "@media print")
 		end := start + strings.Index(css[start:], "\n}")
 		if !strings.Contains(css[start:end], "font-size") {
@@ -250,7 +242,6 @@ func TestPresentation(t *testing.T) {
 		}
 	})
 	t.Run("print hides the share row", func(t *testing.T) {
-		css := NewRouter().CSS()
 		start := strings.Index(css, "@media print")
 		end := start + strings.Index(css[start:], "\n}")
 		if !strings.Contains(css[start:end], "share") {
@@ -258,9 +249,7 @@ func TestPresentation(t *testing.T) {
 		}
 	})
 	t.Run("the toc select hides without enough headings", func(t *testing.T) {
-		r := NewRouter()
-		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "## Only\n\nOne heading."})
-		html := renderRouterPage(t, r, "/g")
+		html := renderScratchPage(t, "## Only\n\nOne heading.")
 		if strings.Contains(html, "fastr-docs-toc-select") {
 			t.Fatal("a one-heading page still renders a toc select")
 		}

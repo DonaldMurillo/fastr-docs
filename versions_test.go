@@ -10,20 +10,12 @@ import (
 
 func TestMarkdownVersionedCollectionMountsCurrentAndArchivedPaths(t *testing.T) {
 	dir := t.TempDir()
-	write := func(version, name, body string) {
-		t.Helper()
-		path := filepath.Join(dir, version, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, version := range []string{"v1", "v2"} {
-		write(version, "index.md", "# "+version+" docs\n\nOverview")
-		write(version, "guide.md", "# Guide "+version+"\n\nRead this.")
-	}
+	writeFiles(t, dir, map[string]string{
+		"v1/index.md": "# v1 docs\n\nOverview",
+		"v1/guide.md": "# Guide v1\n\nRead this.",
+		"v2/index.md": "# v2 docs\n\nOverview",
+		"v2/guide.md": "# Guide v2\n\nRead this.",
+	})
 
 	r := NewRouter()
 	if err := r.MarkdownVersionedCollection("/docs", dir, VersionedCollectionConfig{Current: "v2", Versions: []string{"v2", "v1"}, Collection: CollectionConfig{Offline: true}}); err != nil {
@@ -57,20 +49,11 @@ func TestMarkdownVersionedCollectionMountsCurrentAndArchivedPaths(t *testing.T) 
 
 func TestMarkdownVersionedCollectionCreatesGroupsForSnapshotsWithoutIndex(t *testing.T) {
 	dir := t.TempDir()
-	for _, version := range []string{"v1", "v2"} {
-		versionDir := filepath.Join(dir, version)
-		if err := os.MkdirAll(versionDir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if version == "v2" {
-			if err := os.WriteFile(filepath.Join(versionDir, "index.md"), []byte("# Current\n\nCurrent docs."), 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := os.WriteFile(filepath.Join(versionDir, "guide.md"), []byte("# "+version+" guide\n\nGuide."), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeFiles(t, dir, map[string]string{
+		"v2/index.md": "# Current\n\nCurrent docs.",
+		"v1/guide.md": "# v1 guide\n\nGuide.",
+		"v2/guide.md": "# v2 guide\n\nGuide.",
+	})
 	r := NewRouter()
 	if err := r.MarkdownVersionedCollection("/docs", dir, VersionedCollectionConfig{Current: "v2", Versions: []string{"v2", "v1"}}); err != nil {
 		t.Fatal(err)

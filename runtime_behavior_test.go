@@ -10,9 +10,7 @@ import (
 func TestRuntimeBehavior(t *testing.T) {
 	js := RuntimeJS()
 	t.Run("heading anchors are focusable and named", func(t *testing.T) {
-		r := NewRouter()
-		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "## Sección uno\n\nText."})
-		html := renderRouterPage(t, r, "/g")
+		html := renderScratchPage(t, "## Sección uno\n\nText.")
 		index := strings.Index(html, "heading-anchor")
 		if index < 0 {
 			t.Fatal("no heading anchor rendered")
@@ -66,7 +64,6 @@ func TestRuntimeBehavior(t *testing.T) {
 	})
 
 	t.Run("the drawer select syncs the active version", func(t *testing.T) {
-		js := RuntimeJS()
 		start := strings.Index(js, "function syncSectionSelect")
 		end := strings.Index(js[start:], "function bindSectionSelect") + start
 		if !strings.Contains(js[start:end], "version") {
@@ -75,19 +72,18 @@ func TestRuntimeBehavior(t *testing.T) {
 	})
 
 	t.Run("theme color follows the page", func(t *testing.T) {
-		if !strings.Contains(RuntimeJS(), "theme-color") {
+		if !strings.Contains(js, "theme-color") {
 			t.Fatal("the runtime never touches meta theme-color; browser chrome keeps the first theme")
 		}
 	})
 
 	t.Run("scroll position survives back navigation", func(t *testing.T) {
-		if !strings.Contains(RuntimeJS(), "scrollRestoration") {
+		if !strings.Contains(js, "scrollRestoration") {
 			t.Fatal("SPA navigation drops the reader back at the top of long pages")
 		}
 	})
 
 	t.Run("the blog search folds accents", func(t *testing.T) {
-		js := RuntimeJS()
 		start := strings.Index(js, "function blogSearchTerms")
 		end := start + strings.Index(js[start:], "}")
 		if !strings.Contains(js[start:end], ".normalize(") {
@@ -96,13 +92,12 @@ func TestRuntimeBehavior(t *testing.T) {
 	})
 
 	t.Run("stale json searches are aborted", func(t *testing.T) {
-		if !strings.Contains(RuntimeJS(), "AbortController") {
+		if !strings.Contains(js, "AbortController") {
 			t.Fatal("a slow earlier query can overwrite a later result")
 		}
 	})
 
 	t.Run("the blog search announces its result count", func(t *testing.T) {
-		js := RuntimeJS()
 		start := strings.Index(js, "function initBlogSearch")
 		end := strings.Index(js[start:], "function blogShareURL") + start
 		if start < 0 || !strings.Contains(js[start:end], "announce") {

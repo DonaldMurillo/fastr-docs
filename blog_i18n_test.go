@@ -2,7 +2,6 @@ package docs
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,22 +13,14 @@ import (
 func bilingualBlogSite(t *testing.T) *Router {
 	t.Helper()
 	root := t.TempDir()
-	write := func(rel, body string) {
-		t.Helper()
-		file := filepath.Join(root, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("blog/index.md", "---\ntitle: Blog\ndescription: Updates.\n---\n# Blog\n")
-	write("blog/2026-01-02-first.md", "---\ntitle: First\ndescription: One.\ndate: 2026-01-02\ntags: [news]\n---\n# First\n\nBody.\n")
-	write("blog/second.md", "---\ntitle: Second\ndescription: Two.\ndate: 2026-01-03\n---\n# Second\n\nBody.\n")
-	write("es/blog/index.md", "---\ntitle: Blog\ndescription: Novedades.\n---\n# Blog\n")
-	write("es/blog/2026-01-02-first.md", "---\ntitle: Primera\ndescription: Uno.\ndate: 2026-01-02\ntags: [news]\n---\n# Primera\n\nCuerpo.\n")
-	write("es/blog/segunda.md", "---\ntitle: Segunda\ndescription: Dos.\ndate: 2026-01-03\ntranslation_of: /blog/second\n---\n# Segunda\n\nCuerpo.\n")
+	writeFiles(t, root, map[string]string{
+		"blog/index.md":               "---\ntitle: Blog\ndescription: Updates.\n---\n# Blog\n",
+		"blog/2026-01-02-first.md":    "---\ntitle: First\ndescription: One.\ndate: 2026-01-02\ntags: [news]\n---\n# First\n\nBody.\n",
+		"blog/second.md":              "---\ntitle: Second\ndescription: Two.\ndate: 2026-01-03\n---\n# Second\n\nBody.\n",
+		"es/blog/index.md":            "---\ntitle: Blog\ndescription: Novedades.\n---\n# Blog\n",
+		"es/blog/2026-01-02-first.md": "---\ntitle: Primera\ndescription: Uno.\ndate: 2026-01-02\ntags: [news]\n---\n# Primera\n\nCuerpo.\n",
+		"es/blog/segunda.md":          "---\ntitle: Segunda\ndescription: Dos.\ndate: 2026-01-03\ntranslation_of: /blog/second\n---\n# Segunda\n\nCuerpo.\n",
+	})
 
 	r := NewRouter(
 		WithSiteName("Docs"),

@@ -5,11 +5,15 @@ package docs
 
 import (
 	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
 
 	uiapp "github.com/DonaldMurillo/gofastr/core-ui/app"
+	gofastrRouter "github.com/DonaldMurillo/gofastr/core/router"
 )
 
 func renderRouterPage(t *testing.T, r *Router, path string) string {
@@ -25,6 +29,15 @@ func renderRouterPage(t *testing.T, r *Router, path string) string {
 	return string(html)
 }
 
+// renderScratchPage renders one ungrouped page whose body is the test's
+// whole subject; nothing about the surrounding chrome matters to it.
+func renderScratchPage(t *testing.T, source string) string {
+	t.Helper()
+	r := NewRouter()
+	r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: source})
+	return renderRouterPage(t, r, "/g")
+}
+
 func docsSiteRouter(t *testing.T) *Router {
 	t.Helper()
 	r := NewRouter()
@@ -35,17 +48,62 @@ func docsSiteRouter(t *testing.T) *Router {
 	return r
 }
 
-func blogRouter(t *testing.T, files map[string]string) *Router {
+// writeFiles lays a slash-separated virtual tree under dir, creating parent
+// directories, so disk-backed collections can read it.
+func writeFiles(t *testing.T, dir string, files map[string]string) {
 	t.Helper()
+	for name, body := range files {
+		path := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// blogRouter mounts a virtual blog at /blog; pass a config to exercise a
+// collection setting other than the default.
+func blogRouter(t *testing.T, files map[string]string, config ...BlogConfig) *Router {
+	t.Helper()
+	blog := BlogConfig{}
+	if len(config) > 0 {
+		blog = config[0]
+	}
 	mapFS := fstest.MapFS{}
 	for name, body := range files {
 		mapFS[name] = &fstest.MapFile{Data: []byte(body)}
 	}
 	r := NewRouter()
-	if err := r.MarkdownBlogFS("/blog", mapFS, ".", BlogConfig{}); err != nil {
+	if err := r.MarkdownBlogFS("/blog", mapFS, ".", blog); err != nil {
 		t.Fatal(err)
 	}
 	return r
+}
+
+// exportManifest decodes the manifest the way every artifact test reads it.
+func exportManifest(t *testing.T, r *Router, base string) ExportManifest {
+	t.Helper()
+	body, err := r.ExportManifestJSON(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest ExportManifest
+	if err := json.Unmarshal(body, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	return manifest
+}
+
+// hasRoutePattern reports whether any mounted route pattern contains want.
+func hasRoutePattern(httpRouter *gofastrRouter.Router, want string) bool {
+	for _, route := range httpRouter.Routes() {
+		if strings.Contains(route.Pattern, want) {
+			return true
+		}
+	}
+	return false
 }
 
 // blogAcrossTwoYears is the archive fixture: one post in 2025, one in 2026,

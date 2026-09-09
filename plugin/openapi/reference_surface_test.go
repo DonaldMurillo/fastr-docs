@@ -18,38 +18,32 @@ const minimalSpec = `{"openapi":"3.1.0","info":{"title":"T","description":"D"},"
 // summarySpec names an operation summary so option markup can be checked.
 const summarySpec = `{"openapi":"3.1.0","info":{"title":"T"},"paths":{"/x":{"get":{"summary":"List things","responses":{"200":{"description":"ok"}}}}}}`
 
-func specPage(t *testing.T, spec, path string) string {
+// mountSpec applies the plugin to a fresh router, mounts it, and renders
+// its page, so a test can assert on both the router and the markup.
+func mountSpec(t *testing.T, p Plugin) (*docs.Router, string) {
 	t.Helper()
 	r := docs.NewRouter()
-	if err := r.Use(Plugin{Spec: []byte(spec), Path: path}); err != nil {
+	if err := r.Use(p); err != nil {
 		t.Fatal(err)
 	}
-	site := uiapp.NewApp("T")
+	site := uiapp.NewApp("Docs")
 	if err := r.Mount(site, r.Layout()); err != nil {
 		t.Fatal(err)
 	}
-	html, err := site.RenderPage(context.Background(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(html)
-}
-
-func mountSpecPage(t *testing.T, path, locale string, strings_ Strings) (*docs.Router, string) {
-	t.Helper()
-	r := docs.NewRouter()
-	if err := r.Use(Plugin{Spec: []byte(minimalSpec), Path: path, Locale: locale, Strings: strings_}); err != nil {
-		t.Fatal(err)
-	}
-	site := uiapp.NewApp("D")
-	if err := r.Mount(site, r.Layout()); err != nil {
-		t.Fatal(err)
+	path := p.Path
+	if path == "" {
+		path = "/api-reference"
 	}
 	html, err := site.RenderPage(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return r, string(html)
+}
+
+func specPage(t *testing.T, spec, path string) string {
+	_, html := mountSpec(t, Plugin{Spec: []byte(spec), Path: path})
+	return html
 }
 
 func TestReferenceSurface(t *testing.T) {
@@ -147,19 +141,19 @@ func TestReferenceSurface(t *testing.T) {
 
 func TestReferenceMountSemantics(t *testing.T) {
 	t.Run("a mixed-case locale is normalized", func(t *testing.T) {
-		r, _ := mountSpecPage(t, "/es/api", "ES", Strings{})
+		r, _ := mountSpec(t, Plugin{Spec: []byte(minimalSpec), Path: "/es/api", Locale: "ES"})
 		if got := r.Routes()[0].Metadata.Locale; got != "es" {
 			t.Fatalf("metadata locale = %q, want es", got)
 		}
 	})
 	t.Run("the reference screen opts into preload", func(t *testing.T) {
-		r, _ := mountSpecPage(t, "/api", "", Strings{})
+		r, _ := mountSpec(t, Plugin{Spec: []byte(minimalSpec), Path: "/api"})
 		if r.Routes()[0].Preload == "" {
 			t.Fatal("plugin screen sets no Preload")
 		}
 	})
 	t.Run("operation ids are unique per mount", func(t *testing.T) {
-		_, html := mountSpecPage(t, "/es/api", "es", Strings{})
+		_, html := mountSpec(t, Plugin{Spec: []byte(minimalSpec), Path: "/es/api", Locale: "es"})
 		if !strings.Contains(html, `id="fastr-openapi-operation-es-api-1"`) {
 			t.Fatal("operation ids carry no mount discriminator; two mounts collide")
 		}

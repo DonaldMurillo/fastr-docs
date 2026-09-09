@@ -19,5 +19,7 @@ func siteFile(parts ...string) string {
 
 func contentFile(name string) string { return siteFile("content", name) }
 
+func esContentFile(name string) string { return siteFile("content", "es", name) }
+
 func specFile() string   { return siteFile("openapi.json") }
 func specFileES() string { return siteFile("openapi.es.json") }

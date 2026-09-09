@@ -5,9 +5,11 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing/fstest"
 
@@ -35,20 +37,22 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	if dir := exportDir(os.Args[1:]); dir != "" {
-		if err := built.server.ExportStatic(context.Background(), dir, normalizeBase(exportBase(os.Args[1:]))); err != nil {
+	args := os.Args[1:]
+	if dir := exportDir(args); dir != "" {
+		base := normalizeBase(exportBase(args))
+		if err := built.server.ExportStatic(context.Background(), dir, base); err != nil {
 			panic(err)
 		}
-		if err := docs.WriteStaticRSS(dir, normalizeBase(exportBase(os.Args[1:])), "/blog/feed.xml", built.rss); err != nil {
+		if err := docs.WriteStaticRSS(dir, base, "/blog/feed.xml", built.rss); err != nil {
 			panic(err)
 		}
-		if err := writeRuntimeAssets(dir, built.openAPIRuntime, built.searchIndex, built.manifest); err != nil {
+		if err := writeRuntimeAssets(dir, built.assets); err != nil {
 			panic(err)
 		}
 		if err := writeManualAssets(dir); err != nil {
 			panic(err)
 		}
-		if err := docs.WriteAgentAssets(dir, normalizeBase(exportBase(os.Args[1:])), built.server.Router()); err != nil {
+		if err := docs.WriteAgentAssets(dir, base, built.server.Router()); err != nil {
 			panic(err)
 		}
 		if err := docs.RewriteStaticCSP(dir, docs.ContentSecurityPolicy(built.connectOrigins...)); err != nil {
@@ -87,9 +91,7 @@ func listenURL(addr string) string {
 
 type builtSite struct {
 	server         *framework.App
-	openAPIRuntime []byte
-	searchIndex    []byte
-	manifest       []byte
+	assets         fstest.MapFS
 	rss            []byte
 	connectOrigins []string
 }
@@ -273,7 +275,7 @@ func buildSite() (*builtSite, error) {
 	if err := router.MountAssets(server.Router(), docs.AssetConfig{FS: fstest.MapFS{"fixture.txt": &fstest.MapFile{Data: []byte("manual asset")}}, Prefix: "/assets"}); err != nil {
 		return nil, err
 	}
-	return &builtSite{server: server, openAPIRuntime: openAPIRuntime, searchIndex: searchIndex, manifest: manifest, rss: rss, connectOrigins: router.ConnectOrigins()}, nil
+	return &builtSite{server: server, assets: assets, rss: rss, connectOrigins: router.ConnectOrigins()}, nil
 }
 
 func manualAppIconPNG() []byte {
@@ -411,21 +413,20 @@ const frameworkLabCSS = `.manual-lab { max-width: 1120px; margin: 0 auto; paddin
 @media (max-width: 860px) { .manual-lab__stats, .manual-lab__grid, .manual-lab__charts { grid-template-columns: 1fr; } }
 `
 
-func writeRuntimeAssets(dir string, openAPIRuntime, searchIndex, manifest []byte) error {
+// writeRuntimeAssets persists the same asset set the server mounts at
+// /__manual, so an export serves byte-identical files without a second
+// hand-maintained name list.
+func writeRuntimeAssets(dir string, assets fstest.MapFS) error {
 	assetDir := filepath.Join(dir, "__manual")
 	if err := os.MkdirAll(assetDir, 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(assetDir, "docs.js"), []byte(docs.RuntimeJS()), 0o644); err != nil {
-		return err
+	for _, name := range slices.Sorted(maps.Keys(assets)) {
+		if err := os.WriteFile(filepath.Join(assetDir, name), assets[name].Data, 0o644); err != nil {
+			return err
+		}
 	}
-	if err := os.WriteFile(filepath.Join(assetDir, "openapi.js"), openAPIRuntime, 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(assetDir, "search.json"), searchIndex, 0o644); err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(assetDir, "manifest.json"), manifest, 0o644)
+	return nil
 }
 
 func writeManualAssets(dir string) error {
@@ -440,10 +441,6 @@ func manualSiteURL() string {
 		return strings.TrimRight(value, "/")
 	}
 	return "http://localhost:3078"
-}
-
-func rewriteStaticCSP(dir, policy string) error {
-	return docs.RewriteStaticCSP(dir, policy)
 }
 
 func exportDir(args []string) string {

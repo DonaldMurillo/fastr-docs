@@ -1,8 +1,6 @@
 package docs
 
 import (
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -169,14 +167,10 @@ func TestBlogChromeUsesTranslatedLabels(t *testing.T) {
 		AllPosts: "Tous les articles", NoPostsYet: "Aucun article pour le moment.",
 	}}))
 	dir := t.TempDir()
-	for name, body := range map[string]string{
+	writeFiles(t, dir, map[string]string{
 		"index.md": "# Blog\n\nUpdates.",
 		"post.md":  "---\ntitle: A post\ndescription: One post.\ndate: 2026-02-01\nauthors: [Ada]\ntags: [release]\n---\n# A post\n\nBody.",
-	} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	})
 	if err := r.MarkdownBlog("/blog", dir, BlogConfig{Title: "Blog", Description: "Posts", Order: 1}); err != nil {
 		t.Fatalf("MarkdownBlog() error = %v", err)
 	}

@@ -62,11 +62,11 @@ func Run(args []string, stdout, stderr io.Writer) error {
 	case "doctor":
 		return runDoctor(args[1:], stdout, stderr)
 	case "build":
-		return runGofastrBuild(args[1:], stdout, stderr)
+		return runGofastr("build", args[1:], stdout, stderr)
 	case "dev":
 		return runDev(args[1:], stdout, stderr)
 	case "upgrade":
-		return runGofastrUpgrade(args[1:], stdout, stderr)
+		return runGofastr("upgrade", args[1:], stdout, stderr)
 	case "export":
 		return runExport(args[1:], stdout, stderr)
 	case "sync-skills":
@@ -163,10 +163,7 @@ func splitInitArgs(args []string) (flags, positionals []string, err error) {
 }
 
 func runCheck(args []string, stdout, stderr io.Writer) error {
-	target := "."
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		target = args[0]
-	}
+	target, _ := targetFromArgs(args)
 	absTarget, err := filepath.Abs(target)
 	if err != nil {
 		return fmt.Errorf("resolve target: %w", err)
@@ -299,65 +296,53 @@ func readModulePath(target string) (string, error) {
 func runGo(args []string, command string, extra []string, stdout, stderr io.Writer) error {
 	// The first argument may be a project directory. The remainder is passed to
 	// Go unchanged, so the CLI remains a thin, predictable wrapper.
-	var target string
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		target = args[0]
-		args = args[1:]
-	}
-	if target == "" {
-		target = "."
-	}
+	target, args := targetFromArgs(args)
 	cmdArgs := append([]string{command}, extra...)
 	cmdArgs = append(cmdArgs, args...)
 	goExecutable, err := findGoExecutable()
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(goExecutable, cmdArgs...)
-	cmd.Dir = target
+	return runCommand(target, goExecutable, cmdArgs, stdout, stderr)
+}
+
+// runCommand executes name inside dir with the output wiring every project
+// command shares.
+func runCommand(dir, name string, args []string, stdout, stderr io.Writer) error {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	return cmd.Run()
 }
 
-func runGofastrBuild(args []string, stdout, stderr io.Writer) error {
-	target, args, err := projectTarget(args, "build")
+// runGofastr runs one of the GoFastr project commands (build, upgrade)
+// against the resolved project directory.
+func runGofastr(subcommand string, args []string, stdout, stderr io.Writer) error {
+	target, rest, err := projectTarget(args, subcommand)
 	if err != nil {
 		return err
 	}
-	name, cmdArgs, err := gofastrProjectCommand("build", target, args)
+	name, cmdArgs, err := gofastrCommand(subcommand, target, rest)
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(name, cmdArgs...)
-	cmd.Dir = target
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	return cmd.Run()
+	return runCommand(target, name, cmdArgs, stdout, stderr)
 }
 
-func runGofastrUpgrade(args []string, stdout, stderr io.Writer) error {
-	target, args, err := projectTarget(args, "upgrade")
-	if err != nil {
-		return err
-	}
-	name, cmdArgs, err := gofastrProjectCommand("upgrade", target, args)
-	if err != nil {
-		return err
-	}
-	cmd := exec.Command(name, cmdArgs...)
-	cmd.Dir = target
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	return cmd.Run()
-}
-
-func projectTarget(args []string, command string) (string, []string, error) {
-	target := "."
+// targetFromArgs splits a leading non-flag positional argument off args,
+// defaulting to the working directory the way every project command does.
+func targetFromArgs(args []string) (string, []string) {
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		target = args[0]
-		args = args[1:]
+		return args[0], args[1:]
 	}
+	return ".", args
+}
+
+// projectTarget resolves the project directory for a command and confirms it
+// exists, so every command reports a missing target the same way.
+func projectTarget(args []string, command string) (string, []string, error) {
+	target, args := targetFromArgs(args)
 	absTarget, err := filepath.Abs(target)
 	if err != nil {
 		return "", nil, fmt.Errorf("resolve %s project: %w", command, err)
@@ -372,21 +357,31 @@ func projectTarget(args []string, command string) (string, []string, error) {
 	return absTarget, args, nil
 }
 
-func gofastrProjectCommand(subcommand, target string, args []string) (string, []string, error) {
-	return gofastrProjectCommandWithLookup(subcommand, target, args, exec.LookPath)
+// gofastrCommand resolves how to invoke a GoFastr subcommand for a project.
+// The installed gofast binary wins when present. Otherwise the command runs
+// through the target module with go run, which keeps the CLI usable without a
+// second globally installed binary and respects that project's selected
+// GoFastr version and any local replace directive.
+func gofastrCommand(subcommand, target string, args []string) (string, []string, error) {
+	return gofastrCommandWithLookup(subcommand, target, args, exec.LookPath)
 }
 
-func gofastrProjectCommandWithLookup(subcommand, target string, args []string, lookPath func(string) (string, error)) (string, []string, error) {
-	commandArgs := append([]string{subcommand}, args...)
-	if subcommand == "upgrade" {
-		commandArgs = append([]string{subcommand, target}, args...)
+func gofastrCommandWithLookup(subcommand, target string, args []string, lookPath func(string) (string, error)) (string, []string, error) {
+	var commandArgs []string
+	switch subcommand {
+	case "dev":
+		commandArgs = append([]string{"dev", "--dir", target}, args...)
+	case "upgrade":
+		commandArgs = append([]string{"upgrade", target}, args...)
+	default:
+		commandArgs = append([]string{subcommand}, args...)
 	}
 	if executable, err := lookPath("gofastr"); err == nil {
 		return executable, commandArgs, nil
 	}
 	goExecutable, err := lookPath("go")
 	if err != nil {
-		return "", nil, errors.New("fastr-docs " + subcommand + " requires the GoFastr CLI or the Go toolchain; install gofastr or add go to PATH")
+		return "", nil, fmt.Errorf("fastr-docs %s requires the GoFastr CLI or the Go toolchain; install gofastr or add go to PATH", subcommand)
 	}
 	return goExecutable, append([]string{"run", "-mod=mod", "github.com/DonaldMurillo/gofastr/cmd/gofastr"}, commandArgs...), nil
 }
@@ -395,21 +390,9 @@ func runDev(args []string, stdout, stderr io.Writer) error {
 	// Keep the first positional argument as the project directory, matching
 	// the other project commands. The remaining arguments are GoFastr dev
 	// flags, such as --addr, --pkg, and --no-a11y.
-	target := "."
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		target = args[0]
-		args = args[1:]
-	}
-	absTarget, err := filepath.Abs(target)
+	absTarget, args, err := projectTarget(args, "dev")
 	if err != nil {
-		return fmt.Errorf("resolve dev project: %w", err)
-	}
-	info, err := os.Stat(absTarget)
-	if err != nil {
-		return fmt.Errorf("stat dev project %q: %w", target, err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("dev project %q is not a directory", target)
+		return err
 	}
 	reloadMarker, err := createDevReloadMarker(absTarget)
 	if err != nil {
@@ -420,15 +403,11 @@ func runDev(args []string, stdout, stderr io.Writer) error {
 	defer close(stopExtraWatch)
 	go watchDevExtraFiles(absTarget, reloadMarker, stopExtraWatch)
 
-	name, cmdArgs, err := gofastrDevCommand(absTarget, args)
+	name, cmdArgs, err := gofastrCommand("dev", absTarget, args)
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(name, cmdArgs...)
-	cmd.Dir = absTarget
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	return cmd.Run()
+	return runCommand(absTarget, name, cmdArgs, stdout, stderr)
 }
 
 // createDevReloadMarker gives the fastr-docs wrapper a harmless .go file that
@@ -529,29 +508,7 @@ func devExtraFilesChanged(previous, current map[string]time.Time) bool {
 	return false
 }
 
-func gofastrDevCommand(target string, args []string) (string, []string, error) {
-	return gofastrDevCommandWithLookup(target, args, exec.LookPath)
-}
-
-func gofastrDevCommandWithLookup(target string, args []string, lookPath func(string) (string, error)) (string, []string, error) {
-	devArgs := append([]string{"dev", "--dir", target}, args...)
-	if executable, err := lookPath("gofastr"); err == nil {
-		return executable, devArgs, nil
-	}
-
-	// A generated project already depends on GoFastr, so this keeps the CLI
-	// usable without requiring a second globally installed binary. Running the
-	// package through the target module also respects that project's selected
-	// GoFastr version and any local replace directive.
-	goExecutable, err := lookPath("go")
-	if err != nil {
-		return "", nil, errors.New("fastr-docs dev requires the GoFastr CLI or the Go toolchain; install gofastr or add go to PATH")
-	}
-	return goExecutable, append([]string{"run", "-mod=mod", "github.com/DonaldMurillo/gofastr/cmd/gofastr"}, devArgs...), nil
-}
-
 func runExport(args []string, stdout, stderr io.Writer) error {
-	target := "."
 	out := "dist"
 	base := ""
 	pagefind := false
@@ -579,19 +536,9 @@ func runExport(args []string, stdout, stderr io.Writer) error {
 			positionals = append(positionals, args[i])
 		}
 	}
-	if len(positionals) > 0 {
-		target = positionals[0]
-	}
-	absTarget, err := filepath.Abs(target)
+	absTarget, _, err := projectTarget(positionals, "export")
 	if err != nil {
-		return fmt.Errorf("resolve export project: %w", err)
-	}
-	info, err := os.Stat(absTarget)
-	if err != nil {
-		return fmt.Errorf("stat export project %q: %w", target, err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("export project %q is not a directory", target)
+		return err
 	}
 	goExecutable, err := findGoExecutable()
 	if err != nil {
@@ -607,11 +554,7 @@ func runExport(args []string, stdout, stderr io.Writer) error {
 	}
 	_ = os.Remove(binaryPath)
 	defer os.Remove(binaryPath)
-	build := exec.Command(goExecutable, "build", "-o", binaryPath, ".")
-	build.Dir = absTarget
-	build.Stdout = stdout
-	build.Stderr = stderr
-	if err := build.Run(); err != nil {
+	if err := runCommand(absTarget, goExecutable, []string{"build", "-o", binaryPath, "."}, stdout, stderr); err != nil {
 		return err
 	}
 	appArgs := []string{"--export", out}
@@ -631,7 +574,7 @@ func runExport(args []string, stdout, stderr io.Writer) error {
 	if !pagefind {
 		return nil
 	}
-	return runPagefind(target, out, stdout, stderr)
+	return runPagefind(absTarget, out, stdout, stderr)
 }
 
 func runPagefind(target, site string, stdout, stderr io.Writer) error {
@@ -650,11 +593,7 @@ func runPagefind(target, site string, stdout, stderr io.Writer) error {
 	if filepath.Base(pagefindBin) == "npx" || filepath.Base(pagefindBin) == "npx.cmd" {
 		args = append([]string{"--no-install", "pagefind"}, args...)
 	}
-	cmd := exec.Command(pagefindBin, args...)
-	cmd.Dir = target
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	return cmd.Run()
+	return runCommand(target, pagefindBin, args, stdout, stderr)
 }
 
 type templateData struct {
@@ -794,9 +733,9 @@ func writeStarter(target string, data templateData, force bool) error {
 // on disk rather than the template list, so a project's own skills are mirrored
 // too.
 func mirrorSkills(target string, overwrite bool) error {
-	sources, err := skillFiles(filepath.Join(target, filepath.FromSlash(agentSkillsDir)))
+	sources, err := readSkillDir(target, agentSkillsDir)
 	if err != nil {
-		return fmt.Errorf("read %s: %w", agentSkillsDir, err)
+		return err
 	}
 	for _, rel := range sortedKeys(sources) {
 		destination := filepath.Join(target, filepath.FromSlash(claudeSkillsDir), filepath.FromSlash(rel))
@@ -842,6 +781,16 @@ func skillFiles(root string) (map[string][]byte, error) {
 	return files, err
 }
 
+// readSkillDir loads one of the mirrored skills trees under target, reporting
+// failures with the tree's repository-relative name.
+func readSkillDir(target, dir string) (map[string][]byte, error) {
+	files, err := skillFiles(filepath.Join(target, filepath.FromSlash(dir)))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", dir, err)
+	}
+	return files, nil
+}
+
 func sortedKeys(files map[string][]byte) []string {
 	keys := make([]string, 0, len(files))
 	for key := range files {
@@ -856,13 +805,13 @@ func sortedKeys(files map[string][]byte) []string {
 // an edit landed in only one of them and one of the agents is reading stale
 // guidance.
 func skillDrift(target string) ([]string, error) {
-	agents, err := skillFiles(filepath.Join(target, filepath.FromSlash(agentSkillsDir)))
+	agents, err := readSkillDir(target, agentSkillsDir)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", agentSkillsDir, err)
+		return nil, err
 	}
-	claude, err := skillFiles(filepath.Join(target, filepath.FromSlash(claudeSkillsDir)))
+	claude, err := readSkillDir(target, claudeSkillsDir)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", claudeSkillsDir, err)
+		return nil, err
 	}
 	var drift []string
 	for _, rel := range sortedKeys(agents) {
@@ -883,10 +832,7 @@ func skillDrift(target string) ([]string, error) {
 }
 
 func runSyncSkills(args []string, stdout, stderr io.Writer) error {
-	target := "."
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		target = args[0]
-	}
+	target, _ := targetFromArgs(args)
 	absTarget, err := filepath.Abs(target)
 	if err != nil {
 		return fmt.Errorf("resolve target: %w", err)
@@ -920,14 +866,14 @@ func runSyncSkills(args []string, stdout, stderr io.Writer) error {
 // pruneMirroredSkills deletes files under .claude/skills with no counterpart in
 // .agents/skills and reports what it removed.
 func pruneMirroredSkills(target string) ([]string, error) {
-	agents, err := skillFiles(filepath.Join(target, filepath.FromSlash(agentSkillsDir)))
+	agents, err := readSkillDir(target, agentSkillsDir)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", agentSkillsDir, err)
+		return nil, err
 	}
 	claudeRoot := filepath.Join(target, filepath.FromSlash(claudeSkillsDir))
-	claude, err := skillFiles(claudeRoot)
+	claude, err := readSkillDir(target, claudeSkillsDir)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", claudeSkillsDir, err)
+		return nil, err
 	}
 	var removed []string
 	for _, rel := range sortedKeys(claude) {

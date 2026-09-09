@@ -190,15 +190,14 @@ func (r *Router) MarkdownCollection(prefix, dir string, cfg CollectionConfig) er
 	return r.markdownCollection(prefix, dir, cfg, "", false)
 }
 
-func (r *Router) markdownCollection(prefix, dir string, cfg CollectionConfig, version string, prefixVersion bool) error {
-	if r == nil {
-		return errors.New("docs: MarkdownCollection requires a Router")
-	}
-	if strings.TrimSpace(dir) == "" {
-		return errors.New("docs: MarkdownCollection requires a directory")
-	}
+// collectMarkdownFiles walks a content tree and returns the Markdown files a
+// collection or blog registers, sorted: hidden files and directories are
+// skipped, as are _-underscore partials. walker is filepath.WalkDir over a
+// disk root or fs.WalkDir over an fs.FS, and extOf must match the walker's
+// path shape so the .md test agrees with the separator style.
+func collectMarkdownFiles(walk func(string, fs.WalkDirFunc) error, root string, extOf func(string) string) ([]string, error) {
 	var files []string
-	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
+	err := walk(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -208,16 +207,30 @@ func (r *Router) markdownCollection(prefix, dir string, cfg CollectionConfig, ve
 			}
 			return nil
 		}
-		if strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), "_") || !strings.EqualFold(filepath.Ext(path), ".md") {
+		if strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), "_") || !strings.EqualFold(extOf(path), ".md") {
 			return nil
 		}
 		files = append(files, path)
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("docs: scan Markdown collection %q: %w", dir, err)
+		return nil, err
 	}
 	sort.Strings(files)
+	return files, nil
+}
+
+func (r *Router) markdownCollection(prefix, dir string, cfg CollectionConfig, version string, prefixVersion bool) error {
+	if r == nil {
+		return errors.New("docs: MarkdownCollection requires a Router")
+	}
+	if strings.TrimSpace(dir) == "" {
+		return errors.New("docs: MarkdownCollection requires a directory")
+	}
+	files, err := collectMarkdownFiles(filepath.WalkDir, dir, filepath.Ext)
+	if err != nil {
+		return fmt.Errorf("docs: scan Markdown collection %q: %w", dir, err)
+	}
 	if cfg.OrderStart < 1 {
 		cfg.OrderStart = 1
 	}
@@ -270,27 +283,10 @@ func (r *Router) markdownCollectionFS(prefix string, content fs.FS, root string,
 	if !fs.ValidPath(root) {
 		return fmt.Errorf("docs: MarkdownCollectionFS root %q is not a valid fs path", root)
 	}
-	var files []string
-	err := fs.WalkDir(content, root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			if entry.Name() != "." && strings.HasPrefix(entry.Name(), ".") {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), "_") || !strings.EqualFold(pathpkg.Ext(path), ".md") {
-			return nil
-		}
-		files = append(files, path)
-		return nil
-	})
+	files, err := collectMarkdownFiles(func(root string, fn fs.WalkDirFunc) error { return fs.WalkDir(content, root, fn) }, root, pathpkg.Ext)
 	if err != nil {
 		return fmt.Errorf("docs: scan Markdown collection FS %q: %w", root, err)
 	}
-	sort.Strings(files)
 	if len(files) == 0 {
 		// A collection with no documents registers a section with nothing
 		// in it: a silent dead link in the tree.

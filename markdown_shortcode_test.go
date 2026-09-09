@@ -34,18 +34,13 @@ func TestMarkdownShortcodes(t *testing.T) {
 	})
 
 	t.Run("shortcode prop names fold case", func(t *testing.T) {
-		r := NewRouter()
-		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1,
-			Source: "{{< callout Variant=\"warning\" >}}x{{< /callout >}}"})
-		html := renderRouterPage(t, r, "/g")
+		html := renderScratchPage(t, "{{< callout Variant=\"warning\" >}}x{{< /callout >}}")
 		if !strings.Contains(html, "warning") {
 			t.Fatal("a capitalized prop name is silently ignored")
 		}
 	})
 	t.Run("h4 headings carry anchors", func(t *testing.T) {
-		r := NewRouter()
-		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "#### Deep section\n\nText."})
-		html := renderRouterPage(t, r, "/g")
+		html := renderScratchPage(t, "#### Deep section\n\nText.")
 		if !strings.Contains(html, "heading-anchor") {
 			t.Fatal("h4 joins the toc but cannot be linked")
 		}
@@ -93,9 +88,7 @@ func TestMarkdownShortcodes(t *testing.T) {
 		}
 	})
 	t.Run("heading ids fold apostrophes", func(t *testing.T) {
-		r := NewRouter()
-		r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "## What's new\n\nText."})
-		html := renderRouterPage(t, r, "/g")
+		html := renderScratchPage(t, "## What's new\n\nText.")
 		if !strings.Contains(html, `id="whats-new"`) {
 			t.Fatal("an apostrophe in a heading poisons its id")
 		}

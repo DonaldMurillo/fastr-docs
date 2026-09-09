@@ -761,16 +761,7 @@ func (r *Router) wrapBlogPost(route *Route, body render.HTML, source string) ren
 	}, content)
 	children := []render.HTML{render.Tag("div", map[string]string{"class": "fastr-docs-blog-post__crumbs"}, r.blogCrumbs(route)...)}
 	if len(headings) > 0 {
-		items := make([]ui.RailItem, 0, len(headings))
-		for _, heading := range headings {
-			items = append(items, ui.RailItem{Anchor: heading.ID, Text: heading.Title})
-		}
-		rail := ui.AnchoredRail(ui.AnchoredRailConfig{
-			Label: r.uiAt(r.blogPrefixForPost(route)).OnThisPage, Items: items,
-			ObserveSelector: ".fastr-docs-blog-post__content",
-			TargetSelector:  "h2[id], h3[id]",
-			Class:           "fastr-docs-toc fastr-docs-toc--rail",
-		})
+		rail := docsHeadingRail(headings, r.uiAt(r.blogPrefixForPost(route)).OnThisPage, ".fastr-docs-blog-post__content")
 		children = append(children, render.Tag("div", map[string]string{"class": "fastr-docs-blog-post__grid"}, article, corehtml.Aside(corehtml.AsideConfig{Label: r.uiAt(r.blogPrefixForPost(route)).OnThisPage, Class: "fastr-docs-blog-post__toc"}, rail, r.docsTocSelect(headings, r.uiAt(r.blogPrefixForPost(route)).OnThisPage))))
 	} else {
 		children = append(children, article)
@@ -788,20 +779,6 @@ func (r *Router) wrapBlogPost(route *Route, body render.HTML, source string) ren
 		))
 	}
 	return render.Tag("div", map[string]string{"class": "fastr-docs-blog-page fastr-docs-blog-page--post", "data-blog-view": "post"}, children...)
-}
-
-func joinWithDot(parts ...render.HTML) render.HTML {
-	if len(parts) == 0 {
-		return ""
-	}
-	joined := make([]render.HTML, 0, len(parts)*2-1)
-	for index, part := range parts {
-		if index > 0 {
-			joined = append(joined, render.Text(" · "))
-		}
-		joined = append(joined, part)
-	}
-	return render.Join(joined...)
 }
 
 func (r *Router) blogCrumbs(route *Route) []render.HTML {

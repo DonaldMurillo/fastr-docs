@@ -177,27 +177,10 @@ func (r *Router) MarkdownBlogFS(prefix string, content fs.FS, root string, cfg B
 	if !fs.ValidPath(root) {
 		return fmt.Errorf("docs: MarkdownBlogFS root %q is not a valid fs path", root)
 	}
-	var paths []string
-	err := fs.WalkDir(content, root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			if entry.Name() != "." && strings.HasPrefix(entry.Name(), ".") {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), "_") || !strings.EqualFold(pathpkg.Ext(path), ".md") {
-			return nil
-		}
-		paths = append(paths, path)
-		return nil
-	})
+	paths, err := collectMarkdownFiles(func(root string, fn fs.WalkDirFunc) error { return fs.WalkDir(content, root, fn) }, root, pathpkg.Ext)
 	if err != nil {
 		return fmt.Errorf("docs: scan Markdown blog FS %q: %w", root, err)
 	}
-	sort.Strings(paths)
 	documents := make([]blogDocument, 0, len(paths))
 	for _, filePath := range paths {
 		body, err := fs.ReadFile(content, filePath)
@@ -225,28 +208,7 @@ type blogDocument struct {
 }
 
 func scanBlogFiles(dir string) ([]string, error) {
-	var files []string
-	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			if entry.Name() != "." && strings.HasPrefix(entry.Name(), ".") {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if strings.HasPrefix(entry.Name(), ".") || strings.HasPrefix(entry.Name(), "_") || !strings.EqualFold(filepath.Ext(path), ".md") {
-			return nil
-		}
-		files = append(files, path)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(files)
-	return files, nil
+	return collectMarkdownFiles(filepath.WalkDir, dir, filepath.Ext)
 }
 
 func (r *Router) registerBlogDocuments(prefix string, documents []blogDocument, cfg BlogConfig, sourceRoot string, virtual bool) error {

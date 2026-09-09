@@ -2,7 +2,7 @@ package openapi
 
 import (
 	"context"
-	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/DonaldMurillo/gofastr/core/render"
@@ -126,34 +126,28 @@ func DefaultStrings() Strings {
 
 func (s Strings) withDefaults() Strings {
 	def := DefaultStrings()
-	set := func(value, fallback string) string {
-		if strings.TrimSpace(value) == "" {
-			return fallback
-		}
-		return value
-	}
-	s.Eyebrow = set(s.Eyebrow, def.Eyebrow)
-	s.OperationsLabel = set(s.OperationsLabel, def.OperationsLabel)
-	s.SchemasLabel = set(s.SchemasLabel, def.SchemasLabel)
-	s.NoServer = set(s.NoServer, def.NoServer)
-	s.FilterPlaceholder = set(s.FilterPlaceholder, def.FilterPlaceholder)
-	s.TryRequest = set(s.TryRequest, def.TryRequest)
-	s.ConsoleNoServer = set(s.ConsoleNoServer, def.ConsoleNoServer)
-	s.OperationLabel = set(s.OperationLabel, def.OperationLabel)
-	s.SendRequest = set(s.SendRequest, def.SendRequest)
-	s.ResponsePrompt = set(s.ResponsePrompt, def.ResponsePrompt)
-	s.NoOperations = set(s.NoOperations, def.NoOperations)
-	s.CORSNote = set(s.CORSNote, def.CORSNote)
-	s.NoInputs = set(s.NoInputs, def.NoInputs)
-	s.OperationIDPrefix = set(s.OperationIDPrefix, def.OperationIDPrefix)
-	s.ParametersLabel = set(s.ParametersLabel, def.ParametersLabel)
-	s.RequestBodyLabel = set(s.RequestBodyLabel, def.RequestBodyLabel)
-	s.RequestBodyNote = set(s.RequestBodyNote, def.RequestBodyNote)
-	s.ResponseLabel = set(s.ResponseLabel, def.ResponseLabel)
-	s.ValuePlaceholder = set(s.ValuePlaceholder, def.ValuePlaceholder)
-	s.ParameterWord = set(s.ParameterWord, def.ParameterWord)
-	s.RequiredWord = set(s.RequiredWord, def.RequiredWord)
-	s.NoSummary = set(s.NoSummary, def.NoSummary)
+	s.Eyebrow = firstNonEmpty(s.Eyebrow, def.Eyebrow)
+	s.OperationsLabel = firstNonEmpty(s.OperationsLabel, def.OperationsLabel)
+	s.SchemasLabel = firstNonEmpty(s.SchemasLabel, def.SchemasLabel)
+	s.NoServer = firstNonEmpty(s.NoServer, def.NoServer)
+	s.FilterPlaceholder = firstNonEmpty(s.FilterPlaceholder, def.FilterPlaceholder)
+	s.TryRequest = firstNonEmpty(s.TryRequest, def.TryRequest)
+	s.ConsoleNoServer = firstNonEmpty(s.ConsoleNoServer, def.ConsoleNoServer)
+	s.OperationLabel = firstNonEmpty(s.OperationLabel, def.OperationLabel)
+	s.SendRequest = firstNonEmpty(s.SendRequest, def.SendRequest)
+	s.ResponsePrompt = firstNonEmpty(s.ResponsePrompt, def.ResponsePrompt)
+	s.NoOperations = firstNonEmpty(s.NoOperations, def.NoOperations)
+	s.CORSNote = firstNonEmpty(s.CORSNote, def.CORSNote)
+	s.NoInputs = firstNonEmpty(s.NoInputs, def.NoInputs)
+	s.OperationIDPrefix = firstNonEmpty(s.OperationIDPrefix, def.OperationIDPrefix)
+	s.ParametersLabel = firstNonEmpty(s.ParametersLabel, def.ParametersLabel)
+	s.RequestBodyLabel = firstNonEmpty(s.RequestBodyLabel, def.RequestBodyLabel)
+	s.RequestBodyNote = firstNonEmpty(s.RequestBodyNote, def.RequestBodyNote)
+	s.ResponseLabel = firstNonEmpty(s.ResponseLabel, def.ResponseLabel)
+	s.ValuePlaceholder = firstNonEmpty(s.ValuePlaceholder, def.ValuePlaceholder)
+	s.ParameterWord = firstNonEmpty(s.ParameterWord, def.ParameterWord)
+	s.RequiredWord = firstNonEmpty(s.RequiredWord, def.RequiredWord)
+	s.NoSummary = firstNonEmpty(s.NoSummary, def.NoSummary)
 	return s
 }
 
@@ -225,8 +219,8 @@ func (r *Reference) Render() render.HTML {
 			render.Tag("p", nil, render.Text(r.Description)),
 			render.Tag("div", map[string]string{"class": "fastr-openapi-reference__meta"},
 				metaTag("OpenAPI "+r.Version),
-				metaTag(intText(len(r.Operations))+" "+r.Strings.OperationsLabel),
-				metaTag(intText(len(r.Schemas))+" "+r.Strings.SchemasLabel),
+				metaTag(strconv.Itoa(len(r.Operations))+" "+r.Strings.OperationsLabel),
+				metaTag(strconv.Itoa(len(r.Schemas))+" "+r.Strings.SchemasLabel),
 				metaTag(firstNonEmpty(r.ServerURL, r.Strings.NoServer)),
 			),
 		),
@@ -459,20 +453,10 @@ func (r *Reference) operationCards() []render.HTML {
 	flush()
 	items = append(items, groups...)
 	if len(r.Schemas) > 0 {
-		names := make([]string, 0, len(r.Schemas))
-		for name := range r.Schemas {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
+		for _, name := range sortedKeys(r.Schemas) {
 			schema := r.Schemas[name]
 			properties := make([]render.HTML, 0, len(schema.Properties))
-			propertyNames := make([]string, 0, len(schema.Properties))
-			for property := range schema.Properties {
-				propertyNames = append(propertyNames, property)
-			}
-			sort.Strings(propertyNames)
-			for _, property := range propertyNames {
+			for _, property := range sortedKeys(schema.Properties) {
 				item := schema.Properties[property]
 				properties = append(properties, render.Tag("li", nil, render.Tag("code", nil, render.Text(property)), render.Text(" · "+item.Type)))
 			}
@@ -566,21 +550,7 @@ func (r *Reference) operationID(index int) string {
 	if r.IDPrefix != "" {
 		prefix += "-" + r.IDPrefix
 	}
-	return prefix + "-" + intText(index+1)
-}
-
-func intText(value int) string {
-	if value == 0 {
-		return "0"
-	}
-	var digits [20]byte
-	i := len(digits)
-	for value > 0 {
-		i--
-		digits[i] = byte('0' + value%10)
-		value /= 10
-	}
-	return string(digits[i:])
+	return prefix + "-" + strconv.Itoa(index+1)
 }
 
 func firstNonEmpty(values ...string) string {

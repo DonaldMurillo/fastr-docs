@@ -42,17 +42,9 @@ func (r *Router) MarkdownVersionedCollection(prefix, dir string, cfg VersionedCo
 	if err != nil {
 		return fmt.Errorf("docs: scan version directory %q: %w", dir, err)
 	}
-	available := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			// A file at the collection root is neither a version nor an
-			// index; letting it through would make it the body of every
-			// version's collection config.
-			return fmt.Errorf("docs: versioned collection %q contains a stray root file %q; only version directories belong at the root", dir, entry.Name())
-		}
-		if !strings.HasPrefix(entry.Name(), ".") {
-			available = append(available, entry.Name())
-		}
+	available, err := versionDirNames(dir, entries)
+	if err != nil {
+		return err
 	}
 	versions, err := normalizeVersionedCollection(cfg, available)
 	if err != nil {
@@ -71,14 +63,9 @@ func (r *Router) MarkdownVersionedCollection(prefix, dir string, cfg VersionedCo
 		if !info.IsDir() {
 			return fmt.Errorf("docs: version %q is not a directory", version)
 		}
-		if !markdownDirectoryHasIndex(versionDir) {
-			groupPath := joinPath(prefix, version)
-			if _, err := r.Group(groupPath, GroupConfig{
-				Title:       version,
-				Description: formatLabel(r.UIStrings().VersionDescription, version),
-				Order:       r.nextChildOrder(groupPath, cfg.Collection.OrderStart+index),
-			}); err != nil {
-				return fmt.Errorf("docs: register version group %q: %w", version, err)
+		if !versionFSHasIndex(os.DirFS(versionDir), ".") {
+			if err := r.registerVersionGroup(prefix, cfg, index, version); err != nil {
+				return err
 			}
 		}
 		collection := versionedCollectionConfig(cfg.Collection, cfg.Current, version)
@@ -110,14 +97,9 @@ func (r *Router) MarkdownVersionedCollectionFS(prefix string, content fs.FS, roo
 	if err != nil {
 		return fmt.Errorf("docs: scan version FS directory %q: %w", root, err)
 	}
-	available := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			return fmt.Errorf("docs: versioned collection %q contains a stray root file %q; only version directories belong at the root", root, entry.Name())
-		}
-		if !strings.HasPrefix(entry.Name(), ".") {
-			available = append(available, entry.Name())
-		}
+	available, err := versionDirNames(root, entries)
+	if err != nil {
+		return err
 	}
 	versions, err := normalizeVersionedCollection(cfg, available)
 	if err != nil {
@@ -137,13 +119,8 @@ func (r *Router) MarkdownVersionedCollectionFS(prefix string, content fs.FS, roo
 			return fmt.Errorf("docs: version %q is not a directory", version)
 		}
 		if !versionFSHasIndex(content, versionRoot) {
-			groupPath := joinPath(prefix, version)
-			if _, err := r.Group(groupPath, GroupConfig{
-				Title:       version,
-				Description: formatLabel(r.UIStrings().VersionDescription, version),
-				Order:       r.nextChildOrder(groupPath, cfg.Collection.OrderStart+index),
-			}); err != nil {
-				return fmt.Errorf("docs: register version group %q: %w", version, err)
+			if err := r.registerVersionGroup(prefix, cfg, index, version); err != nil {
+				return err
 			}
 		}
 		collection := versionedCollectionConfig(cfg.Collection, cfg.Current, version)
@@ -201,19 +178,6 @@ func versionedCollectionConfig(collection CollectionConfig, current, version str
 	return collection
 }
 
-func markdownDirectoryHasIndex(dir string) bool {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return false
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.EqualFold(entry.Name(), "index.md") {
-			return true
-		}
-	}
-	return false
-}
-
 func versionFSHasIndex(content fs.FS, root string) bool {
 	entries, err := fs.ReadDir(content, root)
 	if err != nil {
@@ -227,6 +191,36 @@ func versionFSHasIndex(content fs.FS, root string) bool {
 	return false
 }
 
+// versionDirNames lists a versioned collection's version directories from a
+// directory scan. A file at the collection root is refused rather than
+// ignored: it is neither a version nor an index, and letting it through would
+// make it the body of every version's collection config.
+func versionDirNames(display string, entries []fs.DirEntry) ([]string, error) {
+	available := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			return nil, fmt.Errorf("docs: versioned collection %q contains a stray root file %q; only version directories belong at the root", display, entry.Name())
+		}
+		if !strings.HasPrefix(entry.Name(), ".") {
+			available = append(available, entry.Name())
+		}
+	}
+	return available, nil
+}
+
+// registerVersionGroup registers the placeholder group a version without its
+// own index gets, so the version is still a navigable section.
+func (r *Router) registerVersionGroup(prefix string, cfg VersionedCollectionConfig, index int, version string) error {
+	groupPath := joinPath(prefix, version)
+	if _, err := r.Group(groupPath, GroupConfig{
+		Title:       version,
+		Description: formatLabel(r.UIStrings().VersionDescription, version),
+		Order:       r.nextChildOrder(groupPath, cfg.Collection.OrderStart+index),
+	}); err != nil {
+		return fmt.Errorf("docs: register version group %q: %w", version, err)
+	}
+	return nil
+}
 func (r *Router) nextChildOrder(path string, start int) int {
 	if start < 1 {
 		start = 1

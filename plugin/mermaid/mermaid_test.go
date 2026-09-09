@@ -31,6 +31,24 @@ func renderDiagram(t *testing.T, r *docs.Router, props map[string]string, raw st
 	return string(component(props, raw))
 }
 
+// pluginAssetServer mounts the plugin's asset routes over HTTP, which is the
+// only way to observe their headers. The generic runtime routes are mounted
+// first, so the plugin's own routes take precedence for the framed files.
+func pluginAssetServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	r := routerWithPlugin(t, Plugin{})
+	httpRouter := gofastrRouter.New()
+	if err := r.MountRuntimeAssets(httpRouter, r.AssetPrefix(), ""); err != nil {
+		t.Fatalf("MountRuntimeAssets() error = %v", err)
+	}
+	if err := r.MountPluginAssets(httpRouter); err != nil {
+		t.Fatalf("MountPluginAssets() error = %v", err)
+	}
+	server := httptest.NewServer(httpRouter)
+	t.Cleanup(server.Close)
+	return server
+}
+
 func TestShortcodeEmitsAPlaceholderCarryingTheSource(t *testing.T) {
 	r := routerWithPlugin(t, Plugin{})
 	html := renderDiagram(t, r, map[string]string{"title": "Flow"}, "\n```\ngraph TD\n    A --> B\n```\n")
@@ -119,16 +137,7 @@ func TestRuntimeAssetsCarryTheFrameAndAdapter(t *testing.T) {
 // stylesheet are cross-origin requests. Without this header the browser blocks
 // them and the diagram silently never renders.
 func TestFramedAssetsAreServedCrossOriginAndTheAdapterIsNot(t *testing.T) {
-	r := routerWithPlugin(t, Plugin{})
-	httpRouter := gofastrRouter.New()
-	if err := r.MountRuntimeAssets(httpRouter, r.AssetPrefix(), ""); err != nil {
-		t.Fatalf("MountRuntimeAssets() error = %v", err)
-	}
-	if err := r.MountPluginAssets(httpRouter); err != nil {
-		t.Fatalf("MountPluginAssets() error = %v", err)
-	}
-	server := httptest.NewServer(httpRouter)
-	defer server.Close()
+	server := pluginAssetServer(t)
 
 	for _, path := range []string{"/diagram.html", "/diagram.css", "/frame/frame.js"} {
 		response, err := http.Get(server.URL + "/__fastr-docs/mermaid" + path)
@@ -162,13 +171,7 @@ func TestFramedAssetsAreServedCrossOriginAndTheAdapterIsNot(t *testing.T) {
 
 // The relaxation Mermaid needs must reach the frame document and nothing else.
 func TestFrameDocumentCarriesItsOwnRelaxedPolicy(t *testing.T) {
-	r := routerWithPlugin(t, Plugin{})
-	httpRouter := gofastrRouter.New()
-	if err := r.MountPluginAssets(httpRouter); err != nil {
-		t.Fatalf("MountPluginAssets() error = %v", err)
-	}
-	server := httptest.NewServer(httpRouter)
-	defer server.Close()
+	server := pluginAssetServer(t)
 
 	response, err := http.Get(server.URL + "/__fastr-docs/mermaid/diagram.html")
 	if err != nil {
@@ -246,13 +249,7 @@ func TestOnlyTheAdapterIsAPageScript(t *testing.T) {
 // are content-addressed so a year is safe. The document is the exception: it
 // carries the current entry hash and has to stay revalidated.
 func TestFramedAssetsAreCacheableAndTheDocumentIsNot(t *testing.T) {
-	r := routerWithPlugin(t, Plugin{})
-	httpRouter := gofastrRouter.New()
-	if err := r.MountPluginAssets(httpRouter); err != nil {
-		t.Fatalf("MountPluginAssets() error = %v", err)
-	}
-	server := httptest.NewServer(httpRouter)
-	defer server.Close()
+	server := pluginAssetServer(t)
 
 	for path, wantImmutable := range map[string]bool{
 		"/__fastr-docs/mermaid/frame/frame.js": true,

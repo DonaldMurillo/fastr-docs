@@ -406,7 +406,7 @@ func WithSearchIndexPath(path string) Option {
 type JSONSearchProvider struct{}
 
 func (JSONSearchProvider) Build(r *Router) ([]byte, error) {
-	return json.MarshalIndent(r.searchIndexEntries(), "", "  ")
+	return json.MarshalIndent(r.SearchIndex(), "", "  ")
 }
 
 // WithSearchProvider replaces the default local JSON search artifact.
@@ -655,12 +655,9 @@ func (r *Router) variantValues(dimension string) []string {
 // registrations; global components are useful for a project's shared
 // callouts, tabs, code samples, or custom content blocks.
 func (r *Router) RegisterMarkdownComponent(name string, component MarkdownComponent) error {
-	if r == nil {
-		return errors.New("docs: RegisterMarkdownComponent requires a Router")
-	}
-	name = strings.TrimSpace(name)
-	if !markdownShortcodeName.MatchString(name) || strings.HasPrefix(name, "/") {
-		return fmt.Errorf("docs: invalid Markdown component name %q", name)
+	name, err := r.prepareShortcodeRegistration("RegisterMarkdownComponent", "Markdown component", name)
+	if err != nil {
+		return err
 	}
 	if component == nil {
 		return fmt.Errorf("docs: Markdown component %q is nil", name)
@@ -680,12 +677,9 @@ func (r *Router) RegisterMarkdownComponent(name string, component MarkdownCompon
 // shortcodes as separate children. A name may resolve to a component or a
 // container, so registering one clears the other.
 func (r *Router) RegisterMarkdownContainer(name string, container MarkdownContainer) error {
-	if r == nil {
-		return errors.New("docs: RegisterMarkdownContainer requires a Router")
-	}
-	name = strings.TrimSpace(name)
-	if !markdownShortcodeName.MatchString(name) {
-		return fmt.Errorf("docs: invalid Markdown container name %q", name)
+	name, err := r.prepareShortcodeRegistration("RegisterMarkdownContainer", "Markdown container", name)
+	if err != nil {
+		return err
 	}
 	if container == nil {
 		return fmt.Errorf("docs: Markdown container %q is nil", name)
@@ -702,12 +696,9 @@ func (r *Router) RegisterMarkdownContainer(name string, container MarkdownContai
 // RegisterMarkdownRawComponent registers a shortcode that receives its body
 // unrendered. A name resolves to one kind, so registering one retires the rest.
 func (r *Router) RegisterMarkdownRawComponent(name string, raw MarkdownRawComponent) error {
-	if r == nil {
-		return errors.New("docs: RegisterMarkdownRawComponent requires a Router")
-	}
-	name = strings.TrimSpace(name)
-	if !markdownShortcodeName.MatchString(name) {
-		return fmt.Errorf("docs: invalid Markdown component name %q", name)
+	name, err := r.prepareShortcodeRegistration("RegisterMarkdownRawComponent", "Markdown component", name)
+	if err != nil {
+		return err
 	}
 	if raw == nil {
 		return fmt.Errorf("docs: Markdown raw component %q is nil", name)
@@ -726,7 +717,7 @@ func (r *Router) MarkdownRawComponents() map[string]MarkdownRawComponent {
 	if r == nil || len(r.markdownRaws) == 0 {
 		return nil
 	}
-	return cloneMarkdownRaws(r.markdownRaws)
+	return cloneShortcodeMap(r.markdownRaws)
 }
 
 // MarkdownContainers returns the registered container vocabulary.
@@ -734,16 +725,16 @@ func (r *Router) MarkdownContainers() map[string]MarkdownContainer {
 	if r == nil || len(r.markdownContainers) == 0 {
 		return nil
 	}
-	return cloneMarkdownContainers(r.markdownContainers)
+	return cloneShortcodeMap(r.markdownContainers)
 }
 
 // vocabulary merges the Router's shortcode namespace with a page's local
 // additions. Page-local entries win.
 func (r *Router) vocabulary(components map[string]MarkdownComponent, containers map[string]MarkdownContainer) markdownVocabulary {
 	return markdownVocabulary{
-		components: mergeMarkdownComponents(r.markdownComponents, components),
-		containers: mergeMarkdownContainers(r.markdownContainers, containers),
-		raws:       mergeMarkdownRaws(r.markdownRaws, nil),
+		components: mergeShortcodeMap(r.markdownComponents, components),
+		containers: mergeShortcodeMap(r.markdownContainers, containers),
+		raws:       mergeShortcodeMap(r.markdownRaws, nil),
 		transforms: r.markdownTransforms,
 	}
 }
@@ -755,7 +746,7 @@ func (r *Router) MarkdownComponents() map[string]MarkdownComponent {
 	if r == nil || len(r.markdownComponents) == 0 {
 		return nil
 	}
-	return cloneMarkdownComponents(r.markdownComponents)
+	return cloneShortcodeMap(r.markdownComponents)
 }
 
 // SearchBackend returns the configured browser search backend.
@@ -1244,10 +1235,8 @@ func (r *Router) SearchIndexJSON() ([]byte, error) {
 	if r.searchProvider != nil {
 		return r.searchProvider.Build(r)
 	}
-	return json.MarshalIndent(r.searchIndexEntries(), "", "  ")
+	return json.MarshalIndent(r.SearchIndex(), "", "  ")
 }
-
-func (r *Router) searchIndexEntries() []SearchEntry { return r.SearchIndex() }
 
 // Search ranks published content using title, description, tags, headings,
 // and body text. Exact title matches receive the strongest weight; ties are
@@ -1484,22 +1473,7 @@ func (r *Router) Warnings() []string {
 		warnings = append(warnings, fmt.Sprintf("template %q is not one of %s; the site renders the editorial default", raw, strings.Join(templateNames(), ", ")))
 	}
 	for locale, set := range r.localeUI {
-		setCount, total := 0, 0
-		var count func(v reflect.Value)
-		count = func(v reflect.Value) {
-			for i := range v.NumField() {
-				switch v.Field(i).Kind() {
-				case reflect.String:
-					total++
-					if v.Field(i).String() != "" {
-						setCount++
-					}
-				case reflect.Struct:
-					count(v.Field(i))
-				}
-			}
-		}
-		count(reflect.ValueOf(set))
+		setCount, total := countSetLabels(reflect.ValueOf(set))
 		if setCount > 0 && setCount < total {
 			warnings = append(warnings, fmt.Sprintf("locale %q translates %d of %d chrome labels", locale, setCount, total))
 		}
@@ -1532,21 +1506,9 @@ func (r *Router) Warnings() []string {
 	}
 	sort.Strings(locales)
 	for _, locale := range locales {
-		set := r.localeUI[locale]
-		blog := reflect.ValueOf(set.Blog)
-		blogType := blog.Type()
-		set_, total := 0, 0
-		for i := range blogType.NumField() {
-			if blogType.Field(i).Type.Kind() != reflect.String {
-				continue
-			}
-			total++
-			if blog.Field(i).String() != "" {
-				set_++
-			}
-		}
-		if set_ > 0 && set_ < total {
-			warnings = append(warnings, fmt.Sprintf("locale %q translates %d of %d blog labels", locale, set_, total))
+		blogCount, blogTotal := countSetLabels(reflect.ValueOf(r.localeUI[locale].Blog))
+		if blogCount > 0 && blogCount < blogTotal {
+			warnings = append(warnings, fmt.Sprintf("locale %q translates %d of %d blog labels", locale, blogCount, blogTotal))
 		}
 	}
 	return warnings
@@ -2711,7 +2673,7 @@ func (r *Router) defaultVariantFor(route *Route) string {
 	family := r.familyOf(route)
 	var firstUnmarked string
 	for _, candidate := range r.Routes() {
-		if candidate == route || !r.variantPublished(candidate) || r.familyOf(candidate) != family {
+		if candidate == route || !r.inPublishedFamily(candidate, family) {
 			continue
 		}
 		locale := r.effectiveLocale(candidate)

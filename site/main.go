@@ -23,9 +23,9 @@ func main() {
 		panic(err)
 	}
 	server := built.server
-	if dir := exportDir(os.Args[1:]); dir != "" {
-		for i := 0; i < len(os.Args[1:]); i++ {
-			args := os.Args[1:]
+	args := os.Args[1:]
+	if dir := exportDir(args); dir != "" {
+		for i := 0; i < len(args); i++ {
 			if args[i] == "--export" || args[i] == "--export-base" {
 				if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 					panic(fmt.Errorf("%s requires a value", args[i]))
@@ -35,7 +35,7 @@ func main() {
 		if strings.TrimSpace(os.Getenv("PUBLIC_SITE_URL")) == "" {
 			fmt.Println("warning: PUBLIC_SITE_URL is unset; feeds and the sitemap carry http://localhost:3079 URLs")
 		}
-		base := normalizeBase(exportBase(os.Args[1:]))
+		base := normalizeBase(exportBase(args))
 		if err := server.ExportStatic(context.Background(), dir, base); err != nil {
 			panic(err)
 		}
@@ -48,7 +48,7 @@ func main() {
 		if err := fastrdocs.WriteStaticNotFound(dir, base, built.notFound, built.notFoundCSS); err != nil {
 			panic(err)
 		}
-		if err := built.router.WriteRuntimeAssets(dir, built.router.AssetPrefix(), normalizeBase(exportBase(os.Args[1:]))); err != nil {
+		if err := built.router.WriteRuntimeAssets(dir, built.router.AssetPrefix(), base); err != nil {
 			panic(err)
 		}
 		if err := copyPublicAssets(dir); err != nil {
@@ -119,20 +119,21 @@ func buildSite() (*generatedSite, error) {
 	// that was missed. It is the one surface with no route to read a
 	// language from.
 	notFound := router.NotFoundScreen()
+	base := normalizeBase(exportBase(os.Args[1:]))
 	// Each page carries its own <html lang>, which Pagefind reads to choose a
 	// language index and a screen reader reads to choose pronunciation rules.
 	site := uiapp.NewApp("fastr-docs").WithTheme(router.Theme()).WithLang(router.Language()).WithLangFunc(router.LanguageFor)
 	if err := router.Mount(site, router.Layout()); err != nil {
 		return nil, err
 	}
-	assetNames, err := router.RuntimeAssetNames(normalizeBase(exportBase(os.Args[1:])))
+	assetNames, err := router.RuntimeAssetNames(base)
 	if err != nil {
 		return nil, err
 	}
 	// Page scripts are asked for by name rather than filtered by suffix: a
 	// plugin may ship JavaScript that belongs somewhere other than the page,
 	// such as the Mermaid bundle the sandboxed frame loads for itself.
-	scriptNames, err := router.RuntimeScriptNames(normalizeBase(exportBase(os.Args[1:])))
+	scriptNames, err := router.RuntimeScriptNames(base)
 	if err != nil {
 		return nil, err
 	}
@@ -143,9 +144,10 @@ func buildSite() (*generatedSite, error) {
 	if router.SearchBackend() == fastrdocs.SearchBackendPagefind {
 		precache = append(precache, "/pagefind/pagefind.js")
 	}
+	baseCSS := router.CSS() + "\n" + router.BrandCSS()
 	host := uihost.New(site,
 		uihost.WithDescription("fastr-docs"+" — reusable documentation built with GoFastr."),
-		uihost.WithCustomCSS(router.CSS()+"\n"+router.BrandCSS()+"\n"+docsite.ExamplesCSS()+"\n"+docsite.OpenAPICSS()),
+		uihost.WithCustomCSS(baseCSS+"\n"+docsite.ExamplesCSS()+"\n"+docsite.OpenAPICSS()),
 		uihost.WithNotFoundScreen(notFound),
 		uihost.WithPublicLLMMD(),
 		uihost.WithAgentReady(uihost.AgentReadyConfig{
@@ -218,7 +220,7 @@ func buildSite() (*generatedSite, error) {
 	}
 	// One call serves the docs runtime, the search index, the export manifest,
 	// and every plugin's assets.
-	if err := router.MountRuntimeAssets(server.Router(), router.AssetPrefix(), normalizeBase(exportBase(os.Args[1:]))); err != nil {
+	if err := router.MountRuntimeAssets(server.Router(), router.AssetPrefix(), base); err != nil {
 		return nil, err
 	}
 	publicDir := sitePath("public")
@@ -227,7 +229,7 @@ func buildSite() (*generatedSite, error) {
 			return nil, err
 		}
 	}
-	return &generatedSite{server: server, router: router, rss: rss, rssES: rssES, serverConnectOrigins: router.ConnectOrigins(), notFound: notFound, notFoundCSS: router.CSS() + "\n" + router.BrandCSS()}, nil
+	return &generatedSite{server: server, router: router, rss: rss, rssES: rssES, serverConnectOrigins: router.ConnectOrigins(), notFound: notFound, notFoundCSS: baseCSS}, nil
 }
 
 func copyPublicAssets(dir string) error {
@@ -292,10 +294,6 @@ func rewriteRuntimeURLs(dir, base string) error {
 		}
 		return os.WriteFile(path, []byte(updated), 0o644)
 	})
-}
-
-func rewriteStaticCSP(dir, policy string) error {
-	return fastrdocs.RewriteStaticCSP(dir, policy)
 }
 
 func normalizeBase(base string) string {

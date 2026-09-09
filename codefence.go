@@ -86,6 +86,15 @@ func openingFence(line string) (string, string, bool) {
 	return "", "", false
 }
 
+// isFenceLine reports whether a line opens or closes a fenced code block:
+// three or more backticks or tildes after optional indentation. The TOC
+// scanner, link checks, and shortcode expansion all skip fenced content
+// with it, so they agree on what a fence is.
+func isFenceLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~")
+}
+
 func closingFenceIndex(lines []string, from int, marker string) int {
 	for i := from; i < len(lines); i++ {
 		trimmed := strings.TrimSpace(lines[i])

@@ -24,12 +24,7 @@ func TestMarkdownBlogBuildsArchiveAndPublishedRSS(t *testing.T) {
 		"draft.md":   "---\ntitle: Work in progress\ndate: 2026-03-01\ndraft: true\n---\n# Work in progress",
 		"private.md": "---\ntitle: Private note\ndate: 2026-04-01\nnoindex: true\n---\n# Private note",
 	}
-	for name, body := range files {
-		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeFiles(t, dir, files)
 
 	r := NewRouter(WithSiteName("Release notes"))
 	if err := r.MarkdownBlog("/blog", dir, BlogConfig{Title: "Release notes", Description: "Project updates.", Order: 2}); err != nil {
@@ -55,7 +50,7 @@ func TestMarkdownBlogBuildsArchiveAndPublishedRSS(t *testing.T) {
 		t.Fatalf("RSSXML() error = %v", err)
 	}
 	if !strings.HasPrefix(string(body), "<?xml version=") {
-		t.Fatalf("RSS body has no XML header: %q", body[:minInt(len(body), 40)])
+		t.Fatalf("RSS body has no XML header: %q", body[:min(len(body), 40)])
 	}
 	var feed rssDocument
 	if err := xml.Unmarshal(body, &feed); err != nil {
@@ -116,11 +111,7 @@ func TestMarkdownBlogArchiveYearsHaveDistinctChildOrders(t *testing.T) {
 		"2025-01-old.md": "---\ntitle: Old\ndate: 2025-01-01\n---\n# Old\n\nOld.",
 		"2026-01-new.md": "---\ntitle: New\ndate: 2026-01-01\n---\n# New\n\nNew.",
 	}
-	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeFiles(t, dir, files)
 	r := NewRouter()
 	if err := r.MarkdownBlog("/blog", dir, BlogConfig{}); err != nil {
 		t.Fatal(err)
@@ -138,10 +129,7 @@ func TestMarkdownBlogArchiveYearsHaveDistinctChildOrders(t *testing.T) {
 }
 
 func TestRSSRejectsUnsafeSiteURLAndStaticPath(t *testing.T) {
-	r := NewRouter()
-	if err := r.MarkdownBlogFS("/blog", fstest.MapFS{"index.md": &fstest.MapFile{Data: []byte("# Blog")}}, ".", BlogConfig{}); err != nil {
-		t.Fatal(err)
-	}
+	r := blogRouter(t, map[string]string{"index.md": "# Blog"})
 	if _, err := r.RSSXML(RSSConfig{Prefix: "/blog", SiteURL: "javascript:alert(1)"}); err == nil {
 		t.Fatal("RSSXML accepted an unsafe site URL")
 	}
@@ -163,11 +151,7 @@ func TestMarkdownBlogRegistersPublicationViewsAndUsesBlogTemplate(t *testing.T) 
 		"2026-08-01-router.md": "---\ntitle: Router notes\nauthors: [Core team]\ntags: [routing, release]\n---\n# Router notes\n\n## What changed\n\nA useful update.",
 		"second.md":            "---\ntitle: Second note\ndate: 2026-07-01\nauthors: Core team\ntags: release\n---\n# Second note\n\n## Details\n\nMore context.",
 	}
-	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeFiles(t, dir, files)
 	r := NewRouter(WithSiteName("Updates"))
 	if err := r.MarkdownBlog("/blog", dir, BlogConfig{Title: "Updates", Description: "Product news."}); err != nil {
 		t.Fatal(err)
@@ -311,11 +295,4 @@ func TestGeneratedBlogViewsStayOutOfIndexes(t *testing.T) {
 			t.Fatal("generated listing pages are offered to crawlers as content")
 		}
 	})
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

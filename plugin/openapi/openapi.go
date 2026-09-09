@@ -290,6 +290,17 @@ type serverVariable struct {
 	Default string `json:"default"`
 }
 
+// resolvedURL returns the server's URL with each declared variable
+// substituted by its default, trailing slash trimmed, so a templated
+// server becomes a URL the console can call.
+func (s server) resolvedURL() string {
+	value := strings.TrimSpace(s.URL)
+	for name, variable := range s.Variables {
+		value = strings.ReplaceAll(value, "{"+name+"}", variable.Default)
+	}
+	return strings.TrimRight(value, "/")
+}
+
 type operation struct {
 	Summary     string          `json:"summary"`
 	Description string          `json:"description"`
@@ -425,11 +436,7 @@ func (d document) serverURL(override string) string {
 		}
 		return strings.TrimRight(scheme+"://"+strings.TrimSpace(d.Host)+"/"+basePath, "/")
 	}
-	value := strings.TrimSpace(d.Servers[0].URL)
-	for name, variable := range d.Servers[0].Variables {
-		value = strings.ReplaceAll(value, "{"+name+"}", variable.Default)
-	}
-	return strings.TrimRight(value, "/")
+	return d.Servers[0].resolvedURL()
 }
 
 // serverURLs lists every declared server, variables resolved, so the
@@ -437,14 +444,9 @@ func (d document) serverURL(override string) string {
 func (d document) serverURLs() []string {
 	var urls []string
 	for _, declared := range d.Servers {
-		value := strings.TrimSpace(declared.URL)
-		if value == "" {
-			continue
+		if value := declared.resolvedURL(); value != "" {
+			urls = append(urls, value)
 		}
-		for name, variable := range declared.Variables {
-			value = strings.ReplaceAll(value, "{"+name+"}", variable.Default)
-		}
-		urls = append(urls, strings.TrimRight(value, "/"))
 	}
 	return urls
 }
@@ -524,23 +526,12 @@ func (d document) operations() ([]Operation, error) {
 				}
 				params = append(params, label)
 			}
+			codes := sortedKeys(op.Responses)
 			response := ""
-			responseHeaders := make([]string, 0)
-			codes := make([]string, 0, len(op.Responses))
-			for code := range op.Responses {
-				codes = append(codes, code)
-			}
-			sort.Strings(codes)
+			responseHeaders := []string{}
 			if len(codes) > 0 {
 				response = codes[0]
-				if declared := op.Responses[response]; len(declared.Headers) > 0 {
-					names := make([]string, 0, len(declared.Headers))
-					for name := range declared.Headers {
-						names = append(names, name)
-					}
-					sort.Strings(names)
-					responseHeaders = names
-				}
+				responseHeaders = sortedKeys(op.Responses[response].Headers)
 			}
 			hasBody, bodyRequired, contentType, bodyExample := normalizeRequestBody(op.RequestBody, parameterSpecs, d.Consumes)
 			out = append(out, Operation{
@@ -621,11 +612,7 @@ func normalizeRequestBody(raw *rawRequestBody, parameters []Parameter, consumes 
 	media := raw.Content[contentType]
 	example := rawJSONText(media.Example)
 	if example == "" {
-		exampleNames := make([]string, 0, len(media.Examples))
-		for name := range media.Examples {
-			exampleNames = append(exampleNames, name)
-		}
-		sort.Strings(exampleNames)
+		exampleNames := sortedKeys(media.Examples)
 		if len(exampleNames) > 0 {
 			example = rawJSONText(media.Examples[exampleNames[0]].Value)
 		}
@@ -646,10 +633,7 @@ func firstContentTypeMap(values map[string]rawMediaType) string {
 	if len(values) == 0 {
 		return ""
 	}
-	names := make([]string, 0, len(values))
-	for name := range values {
-		names = append(names, name)
-	}
+	names := sortedKeys(values)
 	sort.Slice(names, func(i, j int) bool {
 		iJSON := strings.Contains(strings.ToLower(names[i]), "json")
 		jJSON := strings.Contains(strings.ToLower(names[j]), "json")
@@ -702,4 +686,16 @@ func (d document) searchText(operations []Operation) string {
 		fmt.Fprintf(&b, "%s %s %s\n", name, item.Type, item.Description)
 	}
 	return b.String()
+}
+
+// sortedKeys lists a map's keys alphabetically, because operations,
+// response headers, media types, and schemas all render in a stable
+// order regardless of Go's map iteration.
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }

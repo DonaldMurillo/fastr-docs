@@ -1,24 +1,19 @@
 package openapi
 
 import (
-	"context"
 	"strings"
 	"testing"
 
 	docs "github.com/DonaldMurillo/fastr-docs"
-	uiapp "github.com/DonaldMurillo/gofastr/core-ui/app"
 )
 
 func TestPluginRegistersRichReferenceScreen(t *testing.T) {
 	spec := []byte(`{"openapi":"3.1.0","info":{"title":"Public API","description":"The spec."},"servers":[{"url":"https://api.example.com/{version}","variables":{"version":{"default":"v1"}}}],"paths":{"/projects":{"get":{"summary":"List projects","operationId":"listProjects","responses":{"200":{"description":"ok"}}}}},"components":{"schemas":{"Project":{"type":"object","description":"A project","properties":{"id":{"type":"string"}}}}}}`)
-	router := docs.NewRouter()
-	if err := router.Use(Plugin{
+	router, html := mountSpec(t, Plugin{
 		Spec:  spec,
 		Order: 1,
 		Badge: docs.NavBadge{Label: "Demo", Tone: docs.NavBadgeToneNeutral},
-	}); err != nil {
-		t.Fatalf("Use() error = %v", err)
-	}
+	})
 	if got := router.ConnectOrigins(); len(got) != 1 || got[0] != "https://api.example.com" {
 		t.Fatalf("OpenAPI connect origins = %#v, want spec server origin", got)
 	}
@@ -35,16 +30,8 @@ func TestPluginRegistersRichReferenceScreen(t *testing.T) {
 	if len(entries) != 1 || !strings.Contains(entries[0].Text, "listProjects") {
 		t.Fatalf("search entry = %#v", entries)
 	}
-	site := uiapp.NewApp("Docs")
-	if err := router.Mount(site, router.Layout()); err != nil {
-		t.Fatalf("Mount() error = %v", err)
-	}
-	html, err := site.RenderPage(context.Background(), "/api-reference")
-	if err != nil {
-		t.Fatalf("RenderPage() error = %v", err)
-	}
 	for _, marker := range []string{"data-openapi-reference", "data-openapi-server-url=\"https://api.example.com/v1\"", "data-fui-scrollspy", "ui-anchored-rail", "data-openapi-try", "data-openapi-inputs-for=\"fastr-openapi-operation-api-reference-1\"", "#fastr-openapi-operation-api-reference-1", "GET", "/projects", "Project"} {
-		if !strings.Contains(string(html), marker) {
+		if !strings.Contains(html, marker) {
 			t.Fatalf("rendered reference missing %q: %s", marker, html)
 		}
 	}
@@ -52,38 +39,16 @@ func TestPluginRegistersRichReferenceScreen(t *testing.T) {
 
 func TestPluginServerURLOverrideWins(t *testing.T) {
 	spec := []byte(`{"openapi":"3.1.0","servers":[{"url":"https://api.example.com"}],"paths":{}}`)
-	router := docs.NewRouter()
-	if err := router.Use(Plugin{Spec: spec, ServerURL: "https://staging.example.com/api/"}); err != nil {
-		t.Fatalf("Use() error = %v", err)
-	}
-	site := uiapp.NewApp("Docs")
-	if err := router.Mount(site, router.Layout()); err != nil {
-		t.Fatalf("Mount() error = %v", err)
-	}
-	html, err := site.RenderPage(context.Background(), "/api-reference")
-	if err != nil {
-		t.Fatalf("RenderPage() error = %v", err)
-	}
-	if !strings.Contains(string(html), `data-openapi-server-url="https://staging.example.com/api"`) {
+	_, html := mountSpec(t, Plugin{Spec: spec, ServerURL: "https://staging.example.com/api/"})
+	if !strings.Contains(html, `data-openapi-server-url="https://staging.example.com/api"`) {
 		t.Fatalf("server URL override missing: %s", html)
 	}
 }
 
 func TestSwaggerServerURLFallback(t *testing.T) {
 	spec := []byte(`{"swagger":"2.0","host":"api.example.com","basePath":"/v1","schemes":["https"],"paths":{}}`)
-	router := docs.NewRouter()
-	if err := router.Use(Plugin{Spec: spec}); err != nil {
-		t.Fatalf("Use() error = %v", err)
-	}
-	site := uiapp.NewApp("Docs")
-	if err := router.Mount(site, router.Layout()); err != nil {
-		t.Fatalf("Mount() error = %v", err)
-	}
-	html, err := site.RenderPage(context.Background(), "/api-reference")
-	if err != nil {
-		t.Fatalf("RenderPage() error = %v", err)
-	}
-	if !strings.Contains(string(html), `data-openapi-server-url="https://api.example.com/v1"`) {
+	_, html := mountSpec(t, Plugin{Spec: spec})
+	if !strings.Contains(html, `data-openapi-server-url="https://api.example.com/v1"`) {
 		t.Fatalf("Swagger server URL fallback missing: %s", html)
 	}
 }
@@ -97,19 +62,8 @@ func TestPluginRejectsInvalidSpec(t *testing.T) {
 
 func TestPluginMergesPathItemParameters(t *testing.T) {
 	spec := []byte(`{"openapi":"3.1.0","info":{"title":"API"},"paths":{"/v1/projects":{"parameters":[{"name":"trace","in":"header"}],"get":{"operationId":"listProjects"}}}}`)
-	router := docs.NewRouter()
-	if err := router.Use(Plugin{Spec: spec, Order: 1}); err != nil {
-		t.Fatalf("Use() error = %v", err)
-	}
-	site := uiapp.NewApp("Docs")
-	if err := router.Mount(site, router.Layout()); err != nil {
-		t.Fatalf("Mount() error = %v", err)
-	}
-	html, err := site.RenderPage(context.Background(), "/api-reference")
-	if err != nil {
-		t.Fatalf("RenderPage() error = %v", err)
-	}
-	if !strings.Contains(string(html), "listProjects") || !strings.Contains(string(html), "data-openapi-param-name=\"trace\"") {
+	_, html := mountSpec(t, Plugin{Spec: spec, Order: 1})
+	if !strings.Contains(html, "listProjects") || !strings.Contains(html, "data-openapi-param-name=\"trace\"") {
 		t.Fatalf("rendered operations omitted path-level parameter: %s", html)
 	}
 }
@@ -147,8 +101,7 @@ paths:
 // is otherwise English whatever the spec says.
 func TestTranslatedMountCarriesLocaleAndStrings(t *testing.T) {
 	spec := []byte(`{"openapi":"3.1.0","info":{"title":"API de contenido de ejemplo","description":"Una especificación pequeña."},"paths":{"/v1/projects":{"get":{"summary":"Listar proyectos","operationId":"listProjects","responses":{"200":{"description":"ok"}}}}}}`)
-	router := docs.NewRouter()
-	if err := router.Use(Plugin{
+	router, html := mountSpec(t, Plugin{
 		Spec:        spec,
 		Path:        "/es/api-reference",
 		Title:       "Referencia de la API de ejemplo",
@@ -162,9 +115,7 @@ func TestTranslatedMountCarriesLocaleAndStrings(t *testing.T) {
 			SendRequest:  "Enviar la petición",
 			NoOperations: "Esta especificación no tiene operaciones.",
 		},
-	}); err != nil {
-		t.Fatalf("Use() error = %v", err)
-	}
+	})
 	routes := router.Routes()
 	if len(routes) != 1 || routes[0].Metadata.Locale != "es" {
 		t.Fatalf("translated route metadata = %#v, want locale es", routes)
@@ -172,21 +123,13 @@ func TestTranslatedMountCarriesLocaleAndStrings(t *testing.T) {
 	if got := router.LanguageFor("/es/api-reference"); got != "es" {
 		t.Fatalf("LanguageFor = %q, want es", got)
 	}
-	site := uiapp.NewApp("Docs")
-	if err := router.Mount(site, router.Layout()); err != nil {
-		t.Fatalf("Mount() error = %v", err)
-	}
-	html, err := site.RenderPage(context.Background(), "/es/api-reference")
-	if err != nil {
-		t.Fatalf("RenderPage() error = %v", err)
-	}
 	for _, want := range []string{"Referencia OpenAPI", "Prueba una petición", "Enviar la petición"} {
-		if !strings.Contains(string(html), want) {
+		if !strings.Contains(html, want) {
 			t.Fatalf("translated reference missing %q", want)
 		}
 	}
 	// An empty field keeps the default rather than rendering blank.
-	if !strings.Contains(string(html), "Filter endpoints…") {
+	if !strings.Contains(html, "Filter endpoints…") {
 		t.Fatal("untranslated field lost the English default")
 	}
 }

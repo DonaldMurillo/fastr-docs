@@ -278,21 +278,21 @@ func NewRouter() *docs.Router {
 	router.MustPage("/es", docs.PageConfig{
 		Title:       "Español",
 		Description: "Documentación construida sobre un árbol de rutas.",
-		SourcePath:  siteFile("content", "es", "index-splash.md"),
+		SourcePath:  esContentFile("index-splash.md"),
 		Order:       6,
 		Offline:     true,
 	})
 	router.MustPage("/es/docs", docs.PageConfig{
 		Title:       "Documentación",
 		Description: "Aprende el modelo de rutas, escribe contenido y publica.",
-		SourcePath:  siteFile("content", "es", "index.md"),
+		SourcePath:  esContentFile("index.md"),
 		Order:       1,
 		Offline:     true,
 	})
 	router.MustPage("/es/docs/getting-started", docs.PageConfig{
 		Title:       "Primeros pasos",
 		Description: "Crea tu primer proyecto y entiende qué se traduce.",
-		SourcePath:  siteFile("content", "es", "getting-started.md"),
+		SourcePath:  esContentFile("getting-started.md"),
 		Order:       2,
 		Offline:     true,
 	})
@@ -305,21 +305,21 @@ func NewRouter() *docs.Router {
 	conceptosES.MustPage("router", docs.PageConfig{
 		Title:       "El Router",
 		Description: "El objeto central: un solo árbol de rutas.",
-		SourcePath:  siteFile("content", "es", "concepts-router.md"),
+		SourcePath:  esContentFile("concepts-router.md"),
 		Order:       1,
 		Offline:     true,
 	})
 	conceptosES.MustPage("content", docs.PageConfig{
 		Title:       "Escribir contenido",
 		Description: "Markdown con front matter, y el campo que enlaza una traducción.",
-		SourcePath:  siteFile("content", "es", "concepts-content.md"),
+		SourcePath:  esContentFile("concepts-content.md"),
 		Order:       2,
 		Offline:     true,
 	})
 	conceptosES.MustPage("layouts", docs.PageConfig{
 		Title:       "Layouts y navegación",
 		Description: "Compón envolturas globales y barras laterales por sección.",
-		SourcePath:  siteFile("content", "es", "concepts-layouts.md"),
+		SourcePath:  esContentFile("concepts-layouts.md"),
 		Order:       3,
 		Offline:     true,
 	})
@@ -332,63 +332,63 @@ func NewRouter() *docs.Router {
 	construirES.MustPage("screens", docs.PageConfig{
 		Title:       "Pantallas y componentes",
 		Description: "Usa pantallas tipadas cuando Markdown no basta.",
-		SourcePath:  siteFile("content", "es", "build-screens.md"),
+		SourcePath:  esContentFile("build-screens.md"),
 		Order:       1,
 		Offline:     true,
 	})
 	construirES.MustPage("framework-ui", docs.PageConfig{
 		Title:       "UI del framework",
 		Description: "Los componentes nativos de GoFastr en páginas y pantallas.",
-		SourcePath:  siteFile("content", "es", "build-ui.md"),
+		SourcePath:  esContentFile("build-ui.md"),
 		Order:       2,
 		Offline:     true,
 	})
 	construirES.MustPage("openapi", docs.PageConfig{
 		Title:       "Referencia OpenAPI",
 		Description: "Convierte una especificación de API en una consola de peticiones.",
-		SourcePath:  siteFile("content", "es", "build-openapi.md"),
+		SourcePath:  esContentFile("build-openapi.md"),
 		Order:       3,
 		Offline:     true,
 	})
 	construirES.MustPage("plugins", docs.PageConfig{
 		Title:       "Plugins y extensiones",
 		Description: "Extiende el mismo router sin bifurcar la envoltura.",
-		SourcePath:  siteFile("content", "es", "build-plugins.md"),
+		SourcePath:  esContentFile("build-plugins.md"),
 		Order:       4,
 		Offline:     true,
 	})
 	construirES.MustPage("blog", docs.PageConfig{
 		Title:       "Blog y RSS",
 		Description: "Publica novedades en Markdown y expónlas como RSS.",
-		SourcePath:  siteFile("content", "es", "build-blog.md"),
+		SourcePath:  esContentFile("build-blog.md"),
 		Order:       5,
 		Offline:     true,
 	})
 	construirES.MustPage("themes", docs.PageConfig{
 		Title:       "Temas y plantillas",
 		Description: "Elige un punto de partida visual y ajusta sus tokens.",
-		SourcePath:  siteFile("content", "es", "build-themes.md"),
+		SourcePath:  esContentFile("build-themes.md"),
 		Order:       6,
 		Offline:     true,
 	})
 	construirES.MustPage("components", docs.PageConfig{
 		Title:       "Componentes de Markdown",
 		Description: "El vocabulario de shortcodes con el que arranca todo proyecto.",
-		SourcePath:  siteFile("content", "es", "build-components.md"),
+		SourcePath:  esContentFile("build-components.md"),
 		Order:       7,
 		Offline:     true,
 	})
 	construirES.MustPage("diagrams", docs.PageConfig{
 		Title:       "Diagramas",
 		Description: "Dibuja diagramas de Mermaid sin debilitar la política de contenido.",
-		SourcePath:  siteFile("content", "es", "build-diagrams.md"),
+		SourcePath:  esContentFile("build-diagrams.md"),
 		Order:       8,
 		Offline:     true,
 	})
 	construirES.MustPage("math", docs.PageConfig{
 		Title:       "Matemáticas",
 		Description: "Escribe TeX con dólares y renderízalo en la página.",
-		SourcePath:  siteFile("content", "es", "build-math.md"),
+		SourcePath:  esContentFile("build-math.md"),
 		Order:       9,
 		Offline:     true,
 	})
@@ -401,49 +401,49 @@ func NewRouter() *docs.Router {
 	operarES.MustPage("search", docs.PageConfig{
 		Title:       "Búsqueda",
 		Description: "Haz que cada ruta se pueda encontrar con un índice local.",
-		SourcePath:  siteFile("content", "es", "operate-search.md"),
+		SourcePath:  esContentFile("operate-search.md"),
 		Order:       1,
 		Offline:     true,
 	})
 	operarES.MustPage("offline", docs.PageConfig{
 		Title:       "Sin conexión y PWA",
 		Description: "Mantén el contenido estático disponible sin red.",
-		SourcePath:  siteFile("content", "es", "operate-offline.md"),
+		SourcePath:  esContentFile("operate-offline.md"),
 		Order:       2,
 		Offline:     true,
 	})
 	operarES.MustPage("testing", docs.PageConfig{
 		Title:       "Pruebas",
 		Description: "Verifica el comportamiento en el router, el navegador y la exportación.",
-		SourcePath:  siteFile("content", "es", "operate-testing.md"),
+		SourcePath:  esContentFile("operate-testing.md"),
 		Order:       3,
 		Offline:     true,
 	})
 	operarES.MustPage("deploy", docs.PageConfig{
 		Title:       "Desplegar y personalizar",
 		Description: "Configura recursos, hosts y rutas de despliegue estático.",
-		SourcePath:  siteFile("content", "es", "operate-deploy.md"),
+		SourcePath:  esContentFile("operate-deploy.md"),
 		Order:       4,
 		Offline:     true,
 	})
 	operarES.MustPage("i18n", docs.PageConfig{
 		Title:       "Idiomas y traducción",
 		Description: "Traduce el contenido y la interfaz, y deja usable una traducción parcial.",
-		SourcePath:  siteFile("content", "es", "operate-i18n.md"),
+		SourcePath:  esContentFile("operate-i18n.md"),
 		Order:       5,
 		Offline:     true,
 	})
 	operarES.MustPage("assets", docs.PageConfig{
 		Title:       "Recursos de ejecución",
 		Description: "Reúne el runtime, el índice y los recursos de plugin en una llamada.",
-		SourcePath:  siteFile("content", "es", "operate-assets.md"),
+		SourcePath:  esContentFile("operate-assets.md"),
 		Order:       6,
 		Offline:     true,
 	})
 	operarES.MustPage("feature-coverage", docs.PageConfig{
 		Title:       "Qué cubre",
 		Description: "Mira qué soporta fastr-docs y qué compromisos son deliberados.",
-		SourcePath:  siteFile("content", "es", "feature-coverage.md"),
+		SourcePath:  esContentFile("feature-coverage.md"),
 		Order:       7,
 		Offline:     true,
 	})
@@ -456,7 +456,7 @@ func NewRouter() *docs.Router {
 	colaborarES.MustPage("ai-authoring", docs.PageConfig{
 		Title:       "Escribir con agentes",
 		Description: "Dale a los agentes convenciones explícitas y seguras.",
-		SourcePath:  siteFile("content", "es", "collaborate-ai-authoring.md"),
+		SourcePath:  esContentFile("collaborate-ai-authoring.md"),
 		Order:       1,
 		Offline:     true,
 	})
@@ -474,14 +474,14 @@ func NewRouter() *docs.Router {
 	ejemplosES.MustPage("arbol-de-rutas", docs.PageConfig{
 		Title:       "Ejemplo de árbol de rutas",
 		Description: "Una guía visual de cómo un solo árbol mueve el sitio.",
-		SourcePath:  siteFile("content", "es", "examples-route-tree.md"),
+		SourcePath:  esContentFile("examples-route-tree.md"),
 		Order:       1,
 		Offline:     true,
 	})
 	ejemplosES.MustPage("superficies-propias", docs.PageConfig{
 		Title:       "Superficies propias",
 		Description: "Una lista para convertir una función del producto en documentación.",
-		SourcePath:  siteFile("content", "es", "examples-custom-surface.md"),
+		SourcePath:  esContentFile("examples-custom-surface.md"),
 		Order:       2,
 		Offline:     true,
 	})
@@ -497,7 +497,7 @@ func NewRouter() *docs.Router {
 	// landing, archive, tags, authors and search pair with the English ones by
 	// path shape, and so does a post that keeps its file name; a post with a
 	// translated slug names its original with translation_of.
-	if err := router.MarkdownBlog("/es/blog", siteFile("content", "es", "blog"), docs.BlogConfig{
+	if err := router.MarkdownBlog("/es/blog", esContentFile("blog"), docs.BlogConfig{
 		Title: "Blog", Description: "Notas de versión y cambios de implementación de fastr-docs.", Order: 8,
 		PostsPerPage: 10, RelatedPosts: 3,
 		DefaultLocale: "es",

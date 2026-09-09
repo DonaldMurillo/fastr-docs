@@ -21,6 +21,7 @@ import (
 	"errors"
 	"io/fs"
 	"net/http"
+	"strconv"
 	"strings"
 
 	docs "github.com/DonaldMurillo/fastr-docs"
@@ -189,16 +190,9 @@ func formula(tex string, display bool) render.HTML {
 		"data-fastr-docs-katex":        "1",
 		"aria-label":                   tex,
 		"role":                         "math",
-		"data-fastr-docs-math-display": boolAttr(display),
+		"data-fastr-docs-math-display": strconv.FormatBool(display),
 	}
 	return render.Tag("span", attrs, render.Text(tex))
-}
-
-func boolAttr(value bool) string {
-	if value {
-		return "true"
-	}
-	return "false"
 }
 
 // stripFence removes an optional fenced-code wrapper, so a {{< math >}} block

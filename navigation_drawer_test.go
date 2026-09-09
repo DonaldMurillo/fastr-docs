@@ -14,11 +14,7 @@ import (
 // what lets a reader jump between top-level sections without scrolling the
 // whole tree.
 func TestDrawerCarriesASectionSelect(t *testing.T) {
-	r := NewRouter()
-	r.MustPage("/", PageConfig{Title: "Home", Description: "Home", Source: "# Home", Order: 1})
-	docs := r.MustGroup("/docs", GroupConfig{Title: "Docs", Description: "Guides", Order: 2})
-	docs.MustPage("start", PageConfig{Title: "Start", Description: "Start", Source: "# Start", Order: 1})
-	r.MustPage("/api-reference", PageConfig{Title: "API reference", Description: "API", Source: "# API", Order: 3})
+	r := docsSiteRouter(t)
 
 	home := r.localeHome("")
 	body := string(r.docsDrawerBody(home, docsDrawerName("")))
@@ -91,14 +87,7 @@ func TestEachLocaleGetsItsOwnDrawer(t *testing.T) {
 		t.Fatalf("MountNavigation() error = %v", err)
 	}
 	for _, name := range []string{"fastr-docs-sections", "fastr-docs-sections-es"} {
-		var found bool
-		for _, route := range httpRouter.Routes() {
-			if strings.Contains(route.Pattern, name) {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !hasRoutePattern(httpRouter, name) {
 			t.Fatalf("MountNavigation did not register the %q drawer", name)
 		}
 	}
@@ -124,14 +113,7 @@ func TestMountNavigationSurvivesASiteWithNoHomeRoute(t *testing.T) {
 	if err := r.MountNavigation(httpRouter); err != nil {
 		t.Fatalf("MountNavigation() error = %v", err)
 	}
-	var found bool
-	for _, route := range httpRouter.Routes() {
-		if strings.Contains(route.Pattern, "fastr-docs-sections") {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if !hasRoutePattern(httpRouter, "fastr-docs-sections") {
 		t.Fatal("a home-less site still needs the default drawer under its pinned name")
 	}
 }
@@ -315,9 +297,7 @@ func TestTheSectionDrawerFollowsLocalesAndVersions(t *testing.T) {
 // The drawer trigger names the region it opens, so assistive tech can say
 // what activating it does.
 func TestTheDrawerTriggerNamesItsPanel(t *testing.T) {
-	r := NewRouter()
-	r.MustPage("/g", PageConfig{Title: "G", Description: "d", Order: 1, Source: "## A\n\n## B\n\nText."})
-	html := renderRouterPage(t, r, "/g")
+	html := renderScratchPage(t, "## A\n\n## B\n\nText.")
 	if !strings.Contains(html, "aria-controls") {
 		t.Fatal("the mobile drawer trigger does not name the region it opens")
 	}

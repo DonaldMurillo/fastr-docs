@@ -22,7 +22,7 @@ func WriteAgentAssets(dir, basePath string, handler http.Handler) error {
 	if handler == nil {
 		return fmt.Errorf("docs: WriteAgentAssets requires an HTTP handler")
 	}
-	basePath = normalizeExportBase(basePath)
+	basePath = normalizeBasePath(basePath)
 	for _, route := range []string{"/llms.txt", "/.well-known/agent-card.json", "/.well-known/agent.json"} {
 		req := httptest.NewRequest(http.MethodGet, route, nil)
 		res := httptest.NewRecorder()
@@ -51,17 +51,6 @@ func WriteAgentAssets(dir, basePath string, handler http.Handler) error {
 		}
 	}
 	return nil
-}
-
-func normalizeExportBase(path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" || path == "/" {
-		return ""
-	}
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	return strings.TrimRight(path, "/")
 }
 
 func prefixRootLinks(body, basePath string) string {

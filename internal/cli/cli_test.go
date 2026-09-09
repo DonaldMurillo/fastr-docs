@@ -15,15 +15,35 @@ import (
 	"testing"
 )
 
-func TestInitAndCheckGenerateACompleteProject(t *testing.T) {
+// initProject scaffolds a generated project and returns its directory plus
+// the init output, the fixture every command test starts from.
+func initProject(t *testing.T, name, module string) (string, string) {
+	t.Helper()
 	target := t.TempDir()
 	var output bytes.Buffer
-	if err := Run([]string{"init", target, "--name", "Northstar Docs", "--module", "example.com/northstar-docs"}, &output, &output); err != nil {
-		t.Fatalf("init error = %v\n%s", err, output.String())
+	if err := Run([]string{"init", target, "--name", name, "--module", module}, &output, &output); err != nil {
+		t.Fatalf("init %s: %v\n%s", name, err, output.String())
 	}
-	if !strings.Contains(output.String(), "created fastr-docs project") {
-		t.Fatalf("init output = %q", output.String())
+	return target, output.String()
+}
+
+// lookupStub stands in for exec.LookPath, resolving only the executables a
+// test wants installed.
+func lookupStub(paths map[string]string) func(string) (string, error) {
+	return func(name string) (string, error) {
+		if path, ok := paths[name]; ok {
+			return path, nil
+		}
+		return "", fmt.Errorf("%s is not installed", name)
 	}
+}
+
+func TestInitAndCheckGenerateACompleteProject(t *testing.T) {
+	target, initOutput := initProject(t, "Northstar Docs", "example.com/northstar-docs")
+	if !strings.Contains(initOutput, "created fastr-docs project") {
+		t.Fatalf("init output = %q", initOutput)
+	}
+	var output bytes.Buffer
 	if err := Run([]string{"check", target}, &output, &output); err != nil {
 		t.Fatalf("check error = %v\n%s", err, output.String())
 	}
@@ -125,14 +145,9 @@ func TestCreateDevReloadMarkerRemovesStaleMarkers(t *testing.T) {
 func TestGofastrDevCommandPrefersInstalledCLIAndForwardsFlags(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "docs")
 	want := []string{"dev", "--dir", target, "--addr", "localhost:4173", "--no-a11y"}
-	name, got, err := gofastrDevCommandWithLookup(target, want[3:], func(name string) (string, error) {
-		if name == "gofastr" {
-			return `C:\tools\gofastr.exe`, nil
-		}
-		return "", fmt.Errorf("unexpected lookup for %s", name)
-	})
+	name, got, err := gofastrCommandWithLookup("dev", target, want[3:], lookupStub(map[string]string{"gofastr": `C:\tools\gofastr.exe`}))
 	if err != nil {
-		t.Fatalf("gofastrDevCommand error = %v", err)
+		t.Fatalf("gofastrCommand error = %v", err)
 	}
 	if name != `C:\tools\gofastr.exe` {
 		t.Fatalf("command name = %q", name)
@@ -144,14 +159,9 @@ func TestGofastrDevCommandPrefersInstalledCLIAndForwardsFlags(t *testing.T) {
 
 func TestGofastrDevCommandFallsBackToProjectGoModule(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "docs")
-	name, got, err := gofastrDevCommandWithLookup(target, []string{"--pkg", "./cmd/docs"}, func(name string) (string, error) {
-		if name == "go" {
-			return `C:\Go\bin\go.exe`, nil
-		}
-		return "", fmt.Errorf("%s is not installed", name)
-	})
+	name, got, err := gofastrCommandWithLookup("dev", target, []string{"--pkg", "./cmd/docs"}, lookupStub(map[string]string{"go": `C:\Go\bin\go.exe`}))
 	if err != nil {
-		t.Fatalf("gofastrDevCommand fallback error = %v", err)
+		t.Fatalf("gofastrCommand fallback error = %v", err)
 	}
 	if name != `C:\Go\bin\go.exe` {
 		t.Fatalf("fallback command name = %q", name)
@@ -164,12 +174,7 @@ func TestGofastrDevCommandFallsBackToProjectGoModule(t *testing.T) {
 
 func TestGofastrBuildCommandUsesInstalledCLI(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "docs")
-	name, got, err := gofastrProjectCommandWithLookup("build", target, []string{"--no-a11y"}, func(name string) (string, error) {
-		if name == "gofastr" {
-			return `C:\tools\gofastr.exe`, nil
-		}
-		return "", fmt.Errorf("unexpected lookup for %s", name)
-	})
+	name, got, err := gofastrCommandWithLookup("build", target, []string{"--no-a11y"}, lookupStub(map[string]string{"gofastr": `C:\tools\gofastr.exe`}))
 	if err != nil {
 		t.Fatalf("gofastr build command error = %v", err)
 	}
@@ -184,12 +189,7 @@ func TestGofastrBuildCommandUsesInstalledCLI(t *testing.T) {
 
 func TestGofastrUpgradeCommandPassesProjectRoot(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "docs")
-	name, got, err := gofastrProjectCommandWithLookup("upgrade", target, []string{"--apply"}, func(name string) (string, error) {
-		if name == "gofastr" {
-			return `C:\tools\gofastr.exe`, nil
-		}
-		return "", fmt.Errorf("unexpected lookup for %s", name)
-	})
+	name, got, err := gofastrCommandWithLookup("upgrade", target, []string{"--apply"}, lookupStub(map[string]string{"gofastr": `C:\tools\gofastr.exe`}))
 	if err != nil {
 		t.Fatalf("gofastr upgrade command error = %v", err)
 	}
@@ -232,11 +232,8 @@ func TestDevExtraFileScanWatchesJSONAndYAMLSpecs(t *testing.T) {
 }
 
 func TestInitEscapesSiteNameForGeneratedGoAndJSON(t *testing.T) {
-	target := t.TempDir()
 	name := `Acme "Docs"`
-	if err := Run([]string{"init", target, "--name", name, "--module", "example.com/quoted-docs"}, nil, nil); err != nil {
-		t.Fatalf("init error = %v", err)
-	}
+	target, _ := initProject(t, name, "example.com/quoted-docs")
 	for _, file := range []string{"main.go", filepath.Join("docs", "router.go"), filepath.Join("docs", "icon.go")} {
 		if _, err := parser.ParseFile(token.NewFileSet(), filepath.Join(target, file), nil, parser.AllErrors); err != nil {
 			t.Fatalf("generated %s is not valid Go: %v", file, err)
@@ -263,10 +260,7 @@ func TestInitRejectsNamesWithPathSeparators(t *testing.T) {
 }
 
 func TestCheckRunsStrictRouterValidation(t *testing.T) {
-	target := t.TempDir()
-	if err := Run([]string{"init", target, "--name", "Validation Docs", "--module", "example.com/validation-docs"}, nil, nil); err != nil {
-		t.Fatalf("init error = %v", err)
-	}
+	target, _ := initProject(t, "Validation Docs", "example.com/validation-docs")
 	routerPath := filepath.Join(target, "docs", "router.go")
 	routerSource, err := os.ReadFile(routerPath)
 	if err != nil {
@@ -294,10 +288,7 @@ func TestCheckRunsStrictRouterValidation(t *testing.T) {
 }
 
 func TestGeneratedProjectCompilesAgainstTheLocalWorkspace(t *testing.T) {
-	target := t.TempDir()
-	if err := Run([]string{"init", target, "--name", "Build Test", "--module", "example.com/build-test"}, nil, nil); err != nil {
-		t.Fatalf("init error = %v", err)
-	}
+	target, _ := initProject(t, "Build Test", "example.com/build-test")
 	goMod := filepath.Join(target, "go.mod")
 	modBody, err := os.ReadFile(goMod)
 	if err != nil {
@@ -507,11 +498,7 @@ func TestGeneratedLiveHostRoutes(t *testing.T) {
 }
 
 func TestInitShipsSkillsToBothAgentDirectoriesAndTheGitignore(t *testing.T) {
-	target := t.TempDir()
-	var output bytes.Buffer
-	if err := Run([]string{"init", target, "--name", "Skill Docs", "--module", "example.com/skill-docs"}, &output, &output); err != nil {
-		t.Fatalf("init: %v\n%s", err, output.String())
-	}
+	target, _ := initProject(t, "Skill Docs", "example.com/skill-docs")
 
 	skills := starterSkills()
 	if len(skills) < 2 {
@@ -550,11 +537,8 @@ func TestInitShipsSkillsToBothAgentDirectoriesAndTheGitignore(t *testing.T) {
 }
 
 func TestCheckReportsEveryKindOfSkillDrift(t *testing.T) {
-	target := t.TempDir()
+	target, _ := initProject(t, "Drift Docs", "example.com/drift-docs")
 	var output bytes.Buffer
-	if err := Run([]string{"init", target, "--name", "Drift Docs", "--module", "example.com/drift-docs"}, &output, &output); err != nil {
-		t.Fatalf("init: %v\n%s", err, output.String())
-	}
 	if drift, err := skillDrift(target); err != nil || len(drift) != 0 {
 		t.Fatalf("skillDrift() on a fresh project = %v, %v; want none", drift, err)
 	}

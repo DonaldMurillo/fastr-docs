@@ -218,8 +218,7 @@ func markdownLinks(source string) []markdownLink {
 	inFence := false
 	lineStart := 0
 	for _, line := range strings.SplitAfter(strings.ReplaceAll(source, "\r\n", "\n"), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+		if isFenceLine(line) {
 			inFence = !inFence
 			lineStart += len(line)
 			continue
@@ -284,25 +283,11 @@ func resolveContentLink(currentPath, raw string) (string, string, contentLinkKin
 func markdownAnchorIDs(source string) map[string]bool {
 	ids := make(map[string]bool)
 	counts := make(map[string]int)
-	inFence := false
-	for _, line := range strings.Split(strings.ReplaceAll(source, "\r\n", "\n"), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			inFence = !inFence
+	for _, found := range markdownHeadingLines(source) {
+		if found.Level > 6 || !found.Spaced {
 			continue
 		}
-		if inFence || len(trimmed) < 2 || trimmed[0] != '#' {
-			continue
-		}
-		level := 0
-		for level < len(trimmed) && trimmed[level] == '#' {
-			level++
-		}
-		if level < 1 || level > 6 || (level < len(trimmed) && trimmed[level] != ' ') {
-			continue
-		}
-		title := strings.TrimSpace(strings.TrimLeft(trimmed, "# "))
-		id := headingSlug(title)
+		id := headingSlug(found.Title)
 		if id == "" {
 			continue
 		}

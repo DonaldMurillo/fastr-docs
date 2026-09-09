@@ -49,20 +49,10 @@ func (r *Router) wrapDocPage(route *Route, body render.HTML, headings []Heading)
 		cfg.Class += " fastr-docs-splash"
 	}
 	if len(headings) > 0 {
-		items := make([]ui.RailItem, 0, len(headings))
-		for _, heading := range headings {
-			items = append(items, ui.RailItem{Anchor: heading.ID, Text: heading.Title})
-		}
-		if len(items) > 0 {
-			rail := ui.AnchoredRail(ui.AnchoredRailConfig{
-				Label:           r.uiForRoute(route).OnThisPage,
-				Items:           items,
-				ObserveSelector: ".ui-doc-layout__content",
-				TargetSelector:  "h2[id], h3[id]",
-				Class:           "fastr-docs-toc fastr-docs-toc--rail",
-			})
-			cfg.Toc = render.Join(rail, r.docsTocSelect(headings, r.uiForRoute(route).OnThisPage))
-		}
+		cfg.Toc = render.Join(
+			docsHeadingRail(headings, r.uiForRoute(route).OnThisPage, ".ui-doc-layout__content"),
+			r.docsTocSelect(headings, r.uiForRoute(route).OnThisPage),
+		)
 	}
 	return ui.DocLayout(cfg, body)
 }
@@ -126,16 +116,45 @@ func (r *Router) docMetadata(route *Route) render.HTML {
 	if len(meta.Authors) > 0 {
 		parts = append(parts, render.Text(labels.By+" "+strings.Join(meta.Authors, ", ")))
 	}
-	content := make([]render.HTML, 0, len(parts)*2-1)
-	for i, part := range parts {
-		if i > 0 {
-			content = append(content, render.Text(" · "))
-		}
-		content = append(content, part)
-	}
 	return render.Tag("p", map[string]string{
 		"class": "fastr-docs-page-meta", "data-docs-page-meta": "true",
-	}, content...)
+	}, joinWithDot(parts...))
+}
+
+// joinWithDot interleaves a middle dot between meta fragments.
+func joinWithDot(parts ...render.HTML) render.HTML {
+	if len(parts) == 0 {
+		return ""
+	}
+	joined := make([]render.HTML, 0, len(parts)*2-1)
+	for index, part := range parts {
+		if index > 0 {
+			joined = append(joined, render.Text(" · "))
+		}
+		joined = append(joined, part)
+	}
+	return render.Join(joined...)
+}
+
+// docsHeadingRail builds the scrollspy rail over a page's headings. Doc pages
+// and blog posts share it; only the content container the observer watches
+// differs.
+func docsHeadingRail(headings []Heading, label, observeSelector string) render.HTML {
+	return ui.AnchoredRail(ui.AnchoredRailConfig{
+		Label:           label,
+		Items:           headingRailItems(headings),
+		ObserveSelector: observeSelector,
+		TargetSelector:  "h2[id], h3[id]",
+		Class:           "fastr-docs-toc fastr-docs-toc--rail",
+	})
+}
+
+func headingRailItems(headings []Heading) []ui.RailItem {
+	items := make([]ui.RailItem, 0, len(headings))
+	for _, heading := range headings {
+		items = append(items, ui.RailItem{Anchor: heading.ID, Text: heading.Title})
+	}
+	return items
 }
 
 func (r *Router) docCrumbs(route *Route) []ui.DocCrumb {
@@ -200,27 +219,14 @@ func (r *Router) docPager(route *Route) *ui.DocPager {
 func markdownHeadings(source string) []Heading {
 	var headings []Heading
 	seen := make(map[string]int)
-	inFence := false
-	for _, line := range strings.Split(strings.ReplaceAll(source, "\r\n", "\n"), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			inFence = !inFence
-			continue
-		}
-		if inFence || !strings.HasPrefix(trimmed, "##") {
-			continue
-		}
-		level := 0
-		for level < len(trimmed) && trimmed[level] == '#' {
-			level++
-		}
+	for _, found := range markdownHeadingLines(source) {
 		// h2 and h3 drive the rail; h4 joins when it is the deepest level
 		// the page uses, so a page organized entirely in h4s still gets a
 		// table of contents instead of none at all.
-		if level < 2 || level > 4 {
+		if found.Level < 2 || found.Level > 4 {
 			continue
 		}
-		title := plainHeadingTitle(strings.TrimSpace(strings.TrimLeft(trimmed, "# ")))
+		title := plainHeadingTitle(found.Title)
 		if title == "" {
 			continue
 		}
@@ -232,9 +238,48 @@ func markdownHeadings(source string) []Heading {
 		if seen[id] > 1 {
 			id += "-" + strconv.Itoa(seen[id])
 		}
-		headings = append(headings, Heading{ID: id, Title: title, Level: level})
+		headings = append(headings, Heading{ID: id, Title: title, Level: found.Level})
 	}
 	return headings
+}
+
+// markdownHeadingLine is one ATX heading a source scan found.
+type markdownHeadingLine struct {
+	Level int
+	Title string
+	// Spaced reports whether a blank follows the # run, as Markdown
+	// requires. Link checking rejects a heading without one; the table of
+	// contents still reads one, because GoFastr's renderer does.
+	Spaced bool
+}
+
+// markdownHeadingLines walks a document's ATX headings outside code fences.
+// It only scans; callers decide which levels count and how titles are
+// cleaned, so the TOC and the link checker cannot disagree about what a
+// heading is or where a fence starts.
+func markdownHeadingLines(source string) []markdownHeadingLine {
+	inFence := false
+	var found []markdownHeadingLine
+	for _, line := range strings.Split(strings.ReplaceAll(source, "\r\n", "\n"), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if isFenceLine(line) {
+			inFence = !inFence
+			continue
+		}
+		if inFence || !strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		level := 0
+		for level < len(trimmed) && trimmed[level] == '#' {
+			level++
+		}
+		found = append(found, markdownHeadingLine{
+			Level:  level,
+			Title:  strings.TrimSpace(strings.TrimLeft(trimmed, "# ")),
+			Spaced: level >= len(trimmed) || trimmed[level] == ' ',
+		})
+	}
+	return found
 }
 
 // dedupeMarkdownHeadingIDs keeps the framework Markdown renderer as the

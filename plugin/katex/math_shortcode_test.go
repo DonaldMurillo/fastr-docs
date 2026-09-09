@@ -31,10 +31,7 @@ func TestMathShortcodeRendering(t *testing.T) {
 		}
 	})
 	t.Run("crlf shortcode bodies still render", func(t *testing.T) {
-		r := docs.NewRouter()
-		if err := r.Use(Plugin{}); err != nil {
-			t.Fatal(err)
-		}
+		r := routerWithPlugin(t, Plugin{})
 		if err := r.Page("/m", docs.PageConfig{Title: "M", Description: "d", Order: 1, Source: "{{< math >}}\r\nx^2\r\n{{< /math >}}"}); err != nil {
 			t.Fatalf("a CRLF-wrapped shortcode body fails to register: %v", err)
 		}
@@ -44,10 +41,7 @@ func TestMathShortcodeRendering(t *testing.T) {
 		}
 	})
 	t.Run("math renders inside table cells", func(t *testing.T) {
-		r := docs.NewRouter()
-		if err := r.Use(Plugin{}); err != nil {
-			t.Fatal(err)
-		}
+		r := routerWithPlugin(t, Plugin{})
 		r.MustPage("/m", docs.PageConfig{Title: "M", Description: "d", Order: 1, Source: "| a | b |\n| --- | --- |\n| $x$ | y |"})
 		html := renderPage(t, r, "/m")
 		if !strings.Contains(html, "fastr-docs-math") {
@@ -55,10 +49,7 @@ func TestMathShortcodeRendering(t *testing.T) {
 		}
 	})
 	t.Run("formulas carry a math role", func(t *testing.T) {
-		r := docs.NewRouter()
-		if err := r.Use(Plugin{}); err != nil {
-			t.Fatal(err)
-		}
+		r := routerWithPlugin(t, Plugin{})
 		r.MustPage("/m", docs.PageConfig{Title: "M", Description: "d", Order: 1, Source: "$x^2$"})
 		html := renderPage(t, r, "/m")
 		if !strings.Contains(html, `role="math"`) {
@@ -66,11 +57,7 @@ func TestMathShortcodeRendering(t *testing.T) {
 		}
 	})
 	t.Run("the loader announces failures inline", func(t *testing.T) {
-		assets, err := Plugin{}.RuntimeAssets()
-		if err != nil {
-			t.Fatal(err)
-		}
-		loader := string(assets[LoaderPath])
+		loader := string(runtimeAssets(t)[LoaderPath])
 		if !strings.Contains(loader, "aria") {
 			t.Fatal("a failed render leaves a silent placeholder")
 		}
@@ -79,10 +66,7 @@ func TestMathShortcodeRendering(t *testing.T) {
 
 func mathRouter(t *testing.T, p Plugin) *docs.Router {
 	t.Helper()
-	r := docs.NewRouter()
-	if err := r.Use(p); err != nil {
-		t.Fatal(err)
-	}
+	r := routerWithPlugin(t, p)
 	r.MustPage("/m", docs.PageConfig{Title: "M", Description: "d", Order: 1,
 		Source: "{{< math display=false >}}x^2{{< /math >}}"})
 	return r

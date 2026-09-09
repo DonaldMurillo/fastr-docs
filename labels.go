@@ -446,6 +446,26 @@ func uiStringKeys() []string {
 	return keys
 }
 
+// countSetLabels counts a label struct's string fields, descending into
+// nested groups, and reports how many carry a value. Coverage warnings use
+// it to say how much of a locale is translated.
+func countSetLabels(v reflect.Value) (set, total int) {
+	for i := range v.NumField() {
+		switch v.Field(i).Kind() {
+		case reflect.String:
+			total++
+			if v.Field(i).String() != "" {
+				set++
+			}
+		case reflect.Struct:
+			nestedSet, nestedTotal := countSetLabels(v.Field(i))
+			set += nestedSet
+			total += nestedTotal
+		}
+	}
+	return set, total
+}
+
 // formatCount renders a counted label. A label may carry the CLDR pipe form
 // "1 post|%d posts" so a language with different plural rules can name both;
 // without a pipe the label renders as written, count and all.

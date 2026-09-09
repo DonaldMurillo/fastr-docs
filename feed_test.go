@@ -110,14 +110,10 @@ func TestBlogFeeds(t *testing.T) {
 		}
 	})
 	t.Run("the feed declares its collection language", func(t *testing.T) {
-		mapFS := fstest.MapFS{
-			"index.md": &fstest.MapFile{Data: []byte("---\ntitle: Blog\n---\n\nIntro.\n")},
-			"post.md":  &fstest.MapFile{Data: []byte("---\ntitle: Post\ndate: 2026-08-01\n---\n\nBody.\n")},
-		}
-		r := NewRouter()
-		if err := r.MarkdownBlogFS("/blog", mapFS, ".", BlogConfig{Title: "Blog", Order: 2, DefaultLocale: "es"}); err != nil {
-			t.Fatal(err)
-		}
+		r := blogRouter(t, map[string]string{
+			"index.md": "---\ntitle: Blog\n---\n\nIntro.\n",
+			"post.md":  "---\ntitle: Post\ndate: 2026-08-01\n---\n\nBody.\n",
+		}, BlogConfig{Title: "Blog", Order: 2, DefaultLocale: "es"})
 		xml, err := r.RSSXML(RSSConfig{Prefix: "/blog", Title: "T", Description: "D", SiteURL: "https://x.example"})
 		if err != nil {
 			t.Fatal(err)
@@ -163,13 +159,9 @@ func TestBlogFeeds(t *testing.T) {
 		}
 	})
 	t.Run("feeds carry their collection title", func(t *testing.T) {
-		mapFS := fstest.MapFS{
-			"index.md": &fstest.MapFile{Data: []byte("---\ntitle: Notas\ndescription: d\n---\n\nWelcome.")},
-		}
-		r := NewRouter()
-		if err := r.MarkdownBlogFS("/blog", mapFS, ".", BlogConfig{Title: "Engineering Notes"}); err != nil {
-			t.Fatal(err)
-		}
+		r := blogRouter(t, map[string]string{
+			"index.md": "---\ntitle: Notas\ndescription: d\n---\n\nWelcome.",
+		}, BlogConfig{Title: "Engineering Notes"})
 		feed, err := r.RSSXML(RSSConfig{Prefix: "/blog"})
 		if err != nil {
 			t.Fatal(err)

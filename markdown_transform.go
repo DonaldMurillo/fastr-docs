@@ -1,9 +1,7 @@
 package docs
 
 import (
-	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/DonaldMurillo/gofastr/core/render"
 )
@@ -28,12 +26,9 @@ type MarkdownSourceTransform func(source string, place func(render.HTML) string)
 // Transforms run in registration order. Keep one narrow: a transform that
 // claims text another one wanted makes the two order-dependent.
 func (r *Router) RegisterMarkdownSourceTransform(name string, transform MarkdownSourceTransform) error {
-	if r == nil {
-		return errors.New("docs: RegisterMarkdownSourceTransform requires a Router")
-	}
-	name = strings.TrimSpace(name)
-	if !markdownShortcodeName.MatchString(name) {
-		return fmt.Errorf("docs: invalid Markdown source transform name %q", name)
+	name, err := r.prepareShortcodeRegistration("RegisterMarkdownSourceTransform", "Markdown source transform", name)
+	if err != nil {
+		return err
 	}
 	if transform == nil {
 		return fmt.Errorf("docs: Markdown source transform %q is nil", name)

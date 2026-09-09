@@ -2,7 +2,6 @@ package docs
 
 import (
 	"context"
-	"encoding/json"
 	"net/http/httptest"
 	"os"
 	"regexp"
@@ -224,14 +223,7 @@ func TestExportManifestContainsPublishedRoutesAndRedirects(t *testing.T) {
 		Title: "Private", Description: "Private", Source: "# Private", Order: 2,
 		Metadata: ContentMetadata{Draft: true},
 	})
-	body, err := r.ExportManifestJSON("/docs")
-	if err != nil {
-		t.Fatalf("ExportManifestJSON() error = %v", err)
-	}
-	var manifest ExportManifest
-	if err := json.Unmarshal(body, &manifest); err != nil {
-		t.Fatal(err)
-	}
+	manifest := exportManifest(t, r, "/docs")
 	if manifest.Schema != "fastr-docs/v1" || manifest.SearchIndex != "/docs/__fastr-docs/search.json" || manifest.SearchBackend != SearchBackendJSON {
 		t.Fatalf("manifest header = %#v", manifest)
 	}
@@ -243,14 +235,21 @@ func TestExportManifestContainsPublishedRoutesAndRedirects(t *testing.T) {
 	}
 }
 
+// nestedDocsPages is the sidebar fixture: one parent page with one child,
+// the shape whose disclosure and active states the sidebar tests examine.
+func nestedDocsPages() *Router {
+	r := NewRouter()
+	r.MustPage("/docs", PageConfig{Title: "Documentation", Description: "Docs", Source: "# Docs", Order: 1})
+	r.MustPage("/docs/getting-started", PageConfig{Title: "Getting started", Description: "Start here", Source: "# Start here", Order: 1})
+	return r
+}
+
 type searchProviderFunc func(*Router) ([]byte, error)
 
 func (f searchProviderFunc) Build(r *Router) ([]byte, error) { return f(r) }
 
 func TestSidebarDoesNotDuplicateAParentPageWithChildren(t *testing.T) {
-	r := NewRouter()
-	r.MustPage("/docs", PageConfig{Title: "Documentation", Description: "Docs", Source: "# Docs", Order: 1})
-	r.MustPage("/docs/getting-started", PageConfig{Title: "Getting started", Description: "Start here", Source: "# Start here", Order: 1})
+	r := nestedDocsPages()
 
 	items := r.sidebarItems(r.roots, "")
 	if len(items) != 1 || items[0].Label != "Documentation" {
@@ -265,9 +264,7 @@ func TestSidebarDoesNotDuplicateAParentPageWithChildren(t *testing.T) {
 }
 
 func TestSidebarOpensTheActiveNestedRoute(t *testing.T) {
-	r := NewRouter()
-	r.MustPage("/docs", PageConfig{Title: "Documentation", Description: "Docs", Source: "# Docs", Order: 1})
-	r.MustPage("/docs/getting-started", PageConfig{Title: "Getting started", Description: "Start here", Source: "# Start here", Order: 1})
+	r := nestedDocsPages()
 	req := httptest.NewRequest("GET", "/docs/getting-started", nil)
 	html := (&docsSidebar{router: r}).RenderCtx(uiapp.WithRequest(context.Background(), req))
 	if !strings.Contains(string(html), `<details class="ui-sidebar__group"`) || !strings.Contains(string(html), " open>") {
@@ -276,9 +273,7 @@ func TestSidebarOpensTheActiveNestedRoute(t *testing.T) {
 }
 
 func TestSidebarMarksAnActiveParentPageWithChildren(t *testing.T) {
-	r := NewRouter()
-	r.MustPage("/docs", PageConfig{Title: "Documentation", Description: "Docs", Source: "# Docs", Order: 1})
-	r.MustPage("/docs/getting-started", PageConfig{Title: "Getting started", Description: "Start here", Source: "# Start here", Order: 1})
+	r := nestedDocsPages()
 
 	req := httptest.NewRequest("GET", "/docs", nil)
 	html := (&docsSidebar{router: r}).RenderCtx(uiapp.WithRequest(context.Background(), req))
@@ -674,14 +669,7 @@ func TestMountNavigationRegistersTheFrameworkDrawer(t *testing.T) {
 	if err := r.MountNavigation(httpRouter); err != nil {
 		t.Fatalf("MountNavigation() error = %v", err)
 	}
-	var found bool
-	for _, route := range httpRouter.Routes() {
-		if strings.Contains(route.Pattern, "fastr-docs-sections") {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if !hasRoutePattern(httpRouter, "fastr-docs-sections") {
 		t.Fatal("framework Sidebar drawer route was not registered")
 	}
 }

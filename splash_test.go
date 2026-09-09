@@ -25,18 +25,18 @@ hero:
 Regular Markdown below the hero.
 `
 
-func splashRoute(t *testing.T, source string) *Route {
+func splashRoute(t *testing.T, source string) (*Router, *Route) {
 	t.Helper()
 	r := NewRouter()
 	r.MustPage("/", PageConfig{Title: "Home", Description: "Landing", Order: 1, Source: source})
 	if err := r.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
-	return r.Routes()[0]
+	return r, r.Routes()[0]
 }
 
 func TestSplashFrontMatterParsesTheHero(t *testing.T) {
-	route := splashRoute(t, splashSource)
+	_, route := splashRoute(t, splashSource)
 	if route.Metadata.PageTemplate != PageTemplateSplash {
 		t.Fatalf("PageTemplate = %q, want %q", route.Metadata.PageTemplate, PageTemplateSplash)
 	}
@@ -56,12 +56,8 @@ func TestSplashFrontMatterParsesTheHero(t *testing.T) {
 }
 
 func TestSplashPageRendersTheHeroAndDropsTheTOC(t *testing.T) {
-	r := NewRouter()
-	r.MustPage("/", PageConfig{Title: "Home", Description: "Landing", Order: 1, Source: splashSource})
-	if err := r.Validate(); err != nil {
-		t.Fatalf("Validate() error = %v", err)
-	}
-	html := string((&pageComponent{router: r, route: r.Routes()[0]}).Render())
+	r, route := splashRoute(t, splashSource)
+	html := string((&pageComponent{router: r, route: route}).Render())
 
 	for _, want := range []string{
 		"Docs for builders",
@@ -105,7 +101,7 @@ func TestOrdinaryPagesKeepTheirTOCAndCrumbs(t *testing.T) {
 // Hero links come from front matter, which is content, so they get the same
 // treatment as a shortcode's href.
 func TestSplashHeroRejectsScriptLinksAndEmptyActions(t *testing.T) {
-	route := splashRoute(t, `---
+	_, route := splashRoute(t, `---
 template: splash
 hero:
   title: Landing

@@ -1,7 +1,6 @@
 package katex
 
 import (
-	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,6 +27,17 @@ func place(collected *[]string) func(render.HTML) string {
 		*collected = append(*collected, string(html))
 		return "MARK" + string(rune('0'+len(*collected)-1))
 	}
+}
+
+// runtimeAssets returns the plugin's served files, failing the test on the
+// error path.
+func runtimeAssets(t *testing.T) map[string][]byte {
+	t.Helper()
+	assets, err := Plugin{}.RuntimeAssets()
+	if err != nil {
+		t.Fatalf("RuntimeAssets() error = %v", err)
+	}
+	return assets
 }
 
 func TestShortcodeEmitsDisplayMath(t *testing.T) {
@@ -149,10 +159,7 @@ func TestMathAndCodeSpanCoexistOnOneLine(t *testing.T) {
 }
 
 func TestRuntimeAssetsCarryTheRuntimeStylesheetAndFonts(t *testing.T) {
-	assets, err := Plugin{}.RuntimeAssets()
-	if err != nil {
-		t.Fatalf("RuntimeAssets() error = %v", err)
-	}
+	assets := runtimeAssets(t)
 	for _, want := range []string{"katex/katex.js", "katex/katex.css"} {
 		if len(assets[want]) == 0 {
 			t.Fatalf("RuntimeAssets() missing or empty %q", want)
@@ -211,10 +218,7 @@ func TestOnlyTheLoaderIsAPageScript(t *testing.T) {
 // The loader has to stay small enough that carrying it on a page with no math
 // is not worth thinking about, and it must not have KaTeX bundled into it.
 func TestTheLoaderIsTinyAndCarriesNoRenderer(t *testing.T) {
-	assets, err := Plugin{}.RuntimeAssets()
-	if err != nil {
-		t.Fatalf("RuntimeAssets() error = %v", err)
-	}
+	assets := runtimeAssets(t)
 	loader := assets[LoaderPath]
 	if len(loader) == 0 {
 		t.Fatalf("RuntimeAssets() missing %q", LoaderPath)
@@ -270,10 +274,7 @@ func TestThePagePolicyStaysStrict(t *testing.T) {
 	// KaTeX's own error path writes a style attribute, which the policy would
 	// block, so the runtime must catch errors rather than let KaTeX render
 	// them.
-	runtime, err := fs.ReadFile(assetsFS, "assets/katex.js")
-	if err != nil {
-		t.Fatalf("read runtime: %v", err)
-	}
+	runtime := runtimeAssets(t)[ScriptPath]
 	if !strings.Contains(string(runtime), "throwOnError:!0") && !strings.Contains(string(runtime), "throwOnError: true") {
 		t.Fatal("the runtime does not set throwOnError, so KaTeX would render its own error markup")
 	}

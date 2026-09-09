@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -109,6 +110,20 @@ type shortcodeReplacement struct {
 var markdownShortcodeName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
 var markdownShortcodeToken = regexp.MustCompile(`\{\{<\s*(/)?([A-Za-z][A-Za-z0-9_-]*)([^>]*)>\}\}`)
 var markdownShortcodeProp = regexp.MustCompile(`([A-Za-z][A-Za-z0-9_-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s]+))`)
+
+// prepareShortcodeRegistration validates the front half every vocabulary
+// registration shares: a live Router and a name the shortcode grammar
+// accepts. caller and kind name the exported entry point in its errors.
+func (r *Router) prepareShortcodeRegistration(caller, kind, name string) (string, error) {
+	if r == nil {
+		return "", errors.New("docs: " + caller + " requires a Router")
+	}
+	name = strings.TrimSpace(name)
+	if !markdownShortcodeName.MatchString(name) {
+		return "", fmt.Errorf("docs: invalid %s name %q", kind, name)
+	}
+	return name, nil
+}
 
 func validateMarkdownComponents(source string, vocab markdownVocabulary) error {
 	_, _, err := expandMarkdownShortcodes(source, vocab, false)
@@ -228,8 +243,7 @@ func markdownOffsetInFence(source string, offset int) bool {
 	position := 0
 	for _, line := range strings.SplitAfter(strings.ReplaceAll(source, "\r\n", "\n"), "\n") {
 		end := position + len(line)
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+		if isFenceLine(line) {
 			if offset >= position && offset < end {
 				return inFence
 			}
@@ -280,77 +294,32 @@ func replaceShortcode(source render.HTML, replacement shortcodeReplacement) rend
 	return render.HTML(strings.ReplaceAll(html, replacement.marker, string(replacement.html)))
 }
 
-func cloneMarkdownComponents(in map[string]MarkdownComponent) map[string]MarkdownComponent {
+// cloneShortcodeMap copies one vocabulary map, keeping the nil-means-empty
+// convention the registries rely on.
+func cloneShortcodeMap[V any](in map[string]V) map[string]V {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make(map[string]MarkdownComponent, len(in))
-	for name, component := range in {
-		out[name] = component
+	out := make(map[string]V, len(in))
+	for name, value := range in {
+		out[name] = value
 	}
 	return out
 }
 
-func mergeMarkdownComponents(global, local map[string]MarkdownComponent) map[string]MarkdownComponent {
+// mergeShortcodeMap overlays page-local entries on the Router's vocabulary;
+// local names win, and an empty pair stays nil so pages without shortcodes
+// skip the whole pipeline.
+func mergeShortcodeMap[V any](global, local map[string]V) map[string]V {
 	if len(global) == 0 && len(local) == 0 {
 		return nil
 	}
-	out := cloneMarkdownComponents(global)
+	out := cloneShortcodeMap(global)
 	if out == nil {
-		out = make(map[string]MarkdownComponent)
+		out = make(map[string]V)
 	}
-	for name, component := range local {
-		out[name] = component
-	}
-	return out
-}
-
-func cloneMarkdownContainers(in map[string]MarkdownContainer) map[string]MarkdownContainer {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make(map[string]MarkdownContainer, len(in))
-	for name, container := range in {
-		out[name] = container
-	}
-	return out
-}
-
-func mergeMarkdownContainers(global, local map[string]MarkdownContainer) map[string]MarkdownContainer {
-	if len(global) == 0 && len(local) == 0 {
-		return nil
-	}
-	out := cloneMarkdownContainers(global)
-	if out == nil {
-		out = make(map[string]MarkdownContainer)
-	}
-	for name, container := range local {
-		out[name] = container
-	}
-	return out
-}
-
-func cloneMarkdownRaws(in map[string]MarkdownRawComponent) map[string]MarkdownRawComponent {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make(map[string]MarkdownRawComponent, len(in))
-	for name, raw := range in {
-		out[name] = raw
-	}
-	return out
-}
-
-func mergeMarkdownRaws(global, local map[string]MarkdownRawComponent) map[string]MarkdownRawComponent {
-	if len(global) == 0 && len(local) == 0 {
-		return nil
-	}
-	out := cloneMarkdownRaws(global)
-	if out == nil {
-		out = make(map[string]MarkdownRawComponent)
-	}
-	for name, raw := range local {
-		out[name] = raw
+	for name, value := range local {
+		out[name] = value
 	}
 	return out
 }
@@ -367,14 +336,9 @@ func stripShortcodeFence(raw string) string {
 	for end > start && strings.TrimSpace(lines[end-1]) == "" {
 		end--
 	}
-	if start < end && isShortcodeFence(lines[start]) && isShortcodeFence(lines[end-1]) {
+	if start < end && isFenceLine(lines[start]) && isFenceLine(lines[end-1]) {
 		start++
 		end--
 	}
 	return strings.Join(lines[start:end], "\n")
-}
-
-func isShortcodeFence(line string) bool {
-	trimmed := strings.TrimSpace(line)
-	return strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~")
 }
